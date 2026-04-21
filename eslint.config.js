@@ -1,7 +1,9 @@
 export default [
   {
+    ignores: ['node_modules/**', 'node_modules.nosync/**'],
+  },
+  {
     files: ['**/*.js'],
-    ignores: ['node_modules/**'],
     languageOptions: {
       ecmaVersion: 2024,
       sourceType: 'module',
@@ -30,6 +32,7 @@ export default [
         MessageEvent: 'readonly',
         CloseEvent: 'readonly',
         Plyr: 'readonly',
+        Sortable: 'readonly',
         tailwind: 'readonly',
         localStorage: 'readonly',
         matchMedia: 'readonly',

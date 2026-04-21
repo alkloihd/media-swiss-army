@@ -108,16 +108,16 @@ function resolutionSelectHTML(file) {
 
   return `
     <div class="file-card-resolution" style="margin-top: 4px; display: flex; align-items: center; gap: 6px;">
-      <span style="font-size: 11px; color: #6b7280;">Resolution:</span>
+      <span style="font-size: 11px; color: var(--text-muted);">Resolution:</span>
       <select
         class="resolution-select"
         data-file-id="${file.id}"
         style="
-          background: rgba(255,255,255,0.08);
-          border: 1px solid rgba(255,255,255,0.15);
-          color: #e5e7eb;
+          background: var(--input-bg);
+          border: 2px solid var(--input-border);
+          color: var(--input-text);
           padding: 2px 8px;
-          border-radius: 6px;
+          border-radius: 4px;
           font-size: 12px;
           cursor: pointer;
           outline: none;
@@ -150,33 +150,33 @@ function buildFileCard(file) {
     const statsRight = [etaText, fpsText].filter(Boolean).join(' \u00b7 ');
     progressHTML = `
       <div class="file-card-progress" id="progress-${file.jobId}">
-        <div class="progress-bar" style="height: 8px; background: rgba(255,255,255,0.08); border-radius: 4px; overflow: hidden; position: relative;">
+        <div class="progress-bar" style="height: 8px; background: var(--progress-track); border-radius: 4px; overflow: hidden; position: relative;">
           <div class="progress-bar-fill" style="width: ${pct}%; height: 100%; border-radius: 4px; transition: width 0.4s ease;"></div>
           <span class="progress-pct-label" style="
             position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-            font-size: 7px; font-weight: 700; color: #fff; text-shadow: 0 1px 2px rgba(0,0,0,0.6);
+            font-size: 7px; font-weight: 700; color: var(--text-primary); text-shadow: 0 1px 2px rgba(0,0,0,0.6);
             pointer-events: none; line-height: 1;
           ">${pct}%</span>
         </div>
         <div class="progress-stats" style="display: flex; justify-content: space-between; margin-top: 4px; font-size: 11px;">
-          <span class="progress-speed" style="color: #a78bfa; font-weight: 500;">${speedText || '--'}</span>
-          <span class="progress-eta" style="color: #6b7280;">${pct}%${statsRight ? ' \u00b7 ' + statsRight : ''}</span>
+          <span class="progress-speed" style="color: var(--progress-speed); font-weight: 500;">${speedText || '--'}</span>
+          <span class="progress-eta" style="color: var(--progress-eta);">${pct}%${statsRight ? ' \u00b7 ' + statsRight : ''}</span>
         </div>
       </div>
     `;
   } else if (file.status === 'queued') {
     progressHTML = `
       <div class="file-card-progress" id="progress-queued-${file.id}">
-        <div class="progress-bar" style="height: 8px; background: rgba(255,255,255,0.08); border-radius: 4px; overflow: hidden; position: relative;">
+        <div class="progress-bar" style="height: 8px; background: var(--progress-track); border-radius: 4px; overflow: hidden; position: relative;">
           <div class="progress-bar-fill" style="width: 0%; height: 100%; border-radius: 4px; background: linear-gradient(90deg, #eab308, #fde047, #eab308); background-size: 200% 100%; animation: shimmer 2s ease-in-out infinite;"></div>
           <span class="progress-pct-label" style="
             position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-            font-size: 7px; font-weight: 700; color: #fde047; text-shadow: 0 1px 2px rgba(0,0,0,0.6);
+            font-size: 7px; font-weight: 700; color: var(--status-queued-text); text-shadow: 0 1px 2px rgba(0,0,0,0.6);
             pointer-events: none; line-height: 1;
           ">Queued</span>
         </div>
         <div class="progress-stats" style="display: flex; justify-content: center; margin-top: 4px; font-size: 11px;">
-          <span style="color: #fde047;">Waiting to start...</span>
+          <span style="color: var(--status-queued-text);">Waiting to start...</span>
         </div>
       </div>
     `;
@@ -194,6 +194,22 @@ function buildFileCard(file) {
         <span class="size-compressed">${formatBytes(compressedSize)}</span>
         <span class="size-reduction">-${reduction}%</span>
       </div>
+    `;
+  }
+
+  let downloadHTML = '';
+  if (isDone && file.outputPath) {
+    downloadHTML = `
+      <a href="/api/download?path=${encodeURIComponent(file.outputPath)}"
+         class="file-card-download"
+         style="display: inline-flex; align-items: center; gap: 4px; margin-top: 6px; padding: 4px 10px; font-size: 11px; font-weight: 600; color: var(--accent-primary); background: var(--accent-bg-10); border: 2px solid var(--accent-border-25); border-radius: 4px; text-decoration: none; font-family: 'SF Mono', 'Fira Code', 'JetBrains Mono', monospace; text-transform: uppercase; letter-spacing: 0.05em;"
+         onclick="event.stopPropagation();"
+         title="Download compressed file">
+        <svg style="width:12px;height:12px;" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+        </svg>
+        Download
+      </a>
     `;
   }
 
@@ -222,6 +238,7 @@ function buildFileCard(file) {
         ${resolutionSelectHTML(file)}
         ${progressHTML}
         ${sizeComparisonHTML}
+        ${downloadHTML}
         ${errorHTML}
       </div>
     </div>

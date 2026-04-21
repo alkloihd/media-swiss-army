@@ -1,19 +1,42 @@
 /**
- * compression.js - Compression settings panel (quality, codec, format, resolution, estimation)
+ * compression.js - Compression settings panel with matrix integration
+ * Dynamically generates all UI into #matrix-container and #compression-controls
  */
 
 import { appState } from './app.js';
 import { formatBytes } from './filemanager.js';
+import {
+  initMatrix,
+  getMatrixSelection,
+  updateMatrixEstimates,
+  onMatrixChange,
+  setMatrixSelection,
+} from './matrix.js';
 
 let currentPreset = 'balanced';
 let currentCodec = 'h265';
 let currentFormat = 'mp4';
-let currentScale = 'original';
-let currentCrf = 23;
+let currentScale = '1080p';
+let currentCrf = 28;
 let currentSpeed = 'medium';
+let currentEncoder = 'hw';
+let currentAudioBitrate = 192;
+let currentAudioCodec = 'aac';
+let currentFps = 'original';
+let twoPass = false;
+let preserveMetadata = true;
+let fastStart = true;
+let currentMode = 'matrix'; // 'matrix' or 'target'
 let hwInfo = null;
 
-// Codec -> compatible formats
+// Row index -> preset name
+const ROW_TO_PRESET = ['lossless', 'maximum', 'high', 'balanced', 'compact', 'tiny'];
+// Preset name -> CRF approximation for estimation
+const PRESET_CRF = { lossless: 0, maximum: 16, high: 22, balanced: 28, compact: 34, tiny: 42 };
+
+// Col index -> scale value
+const COL_TO_SCALE = ['2160p', '1440p', '1440p', '1080p', '720p', '480p'];
+
 const CODEC_FORMAT_MAP = {
   h264: ['mp4', 'mov', 'mkv'],
   h265: ['mp4', 'mov', 'mkv'],
@@ -21,7 +44,6 @@ const CODEC_FORMAT_MAP = {
   prores: ['mov'],
 };
 
-// Default format when switching codec
 const CODEC_DEFAULT_FORMAT = {
   h264: 'mp4',
   h265: 'mp4',
@@ -29,41 +51,440 @@ const CODEC_DEFAULT_FORMAT = {
   prores: 'mov',
 };
 
-// Scale option heights
 const SCALE_HEIGHTS = {
+  '2160p': 2160,
+  '1440p': 1440,
   '1080p': 1080,
   '720p': 720,
   '480p': 480,
-  '360p': 360,
 };
 
-// ─── Estimation Tables ────────────────────────────────────────────
+// ─── Estimation ──────────────────────────────────────────────────
 
-// HW encoder target bitrates in kbps
 const HW_BITRATES = {
-  h264_videotoolbox: { max: 20000, balanced: 8000, small: 4000, streaming: 5000 },
-  hevc_videotoolbox: { max: 12000, balanced: 6000, small: 3000, streaming: 4000 },
-  prores_videotoolbox: { max: 100000, balanced: 60000, small: 30000 },
+  h264_videotoolbox: {
+    lossless: 30000,
+    maximum: 20000,
+    high: 12000,
+    balanced: 8000,
+    compact: 4000,
+    tiny: 2000,
+  },
+  hevc_videotoolbox: {
+    lossless: 20000,
+    maximum: 12000,
+    high: 8000,
+    balanced: 6000,
+    compact: 3000,
+    tiny: 1500,
+  },
+  prores_videotoolbox: {
+    lossless: 150000,
+    maximum: 100000,
+    high: 80000,
+    balanced: 60000,
+    compact: 30000,
+    tiny: 15000,
+  },
 };
 
-// SW/CRF encoder size as percentage of original
 const SW_RATIOS = {
-  libx264: { max: 0.9, balanced: 0.6, small: 0.35, streaming: 0.5 },
-  libx265: { max: 0.8, balanced: 0.5, small: 0.25, streaming: 0.4 },
-  libsvtav1: { max: 0.7, balanced: 0.4, small: 0.2, streaming: 0.35 },
-  prores_ks: { max: 2.0, balanced: 1.2, small: 0.8 },
+  libx264: { lossless: 1.0, maximum: 0.9, high: 0.7, balanced: 0.6, compact: 0.35, tiny: 0.15 },
+  libx265: { lossless: 0.9, maximum: 0.8, high: 0.6, balanced: 0.5, compact: 0.25, tiny: 0.12 },
+  libsvtav1: { lossless: 0.8, maximum: 0.7, high: 0.5, balanced: 0.4, compact: 0.2, tiny: 0.1 },
+  prores_ks: { lossless: 3.0, maximum: 2.0, high: 1.5, balanced: 1.2, compact: 0.8, tiny: 0.5 },
 };
+
+function isHWAvailable(codec) {
+  if (!hwInfo) return false;
+  if (codec === 'h264') return !!hwInfo.h264_videotoolbox;
+  if (codec === 'h265') return !!hwInfo.hevc_videotoolbox;
+  if (codec === 'prores') return !!hwInfo.prores_videotoolbox;
+  return false;
+}
+
+function getEncoderName(codec) {
+  const useHW = currentEncoder === 'hw' && isHWAvailable(codec);
+  switch (codec) {
+    case 'h264':
+      return useHW ? 'h264_videotoolbox' : 'libx264';
+    case 'h265':
+      return useHW ? 'hevc_videotoolbox' : 'libx265';
+    case 'prores':
+      return useHW ? 'prores_videotoolbox' : 'prores_ks';
+    case 'av1':
+      return 'libsvtav1';
+    default:
+      return 'libx264';
+  }
+}
+
+function getSelectedFile() {
+  if (!appState.selectedFileId) return null;
+  return appState.files.find((f) => f.id === appState.selectedFileId) || null;
+}
+
+function computeScaledDimensions(origWidth, origHeight, scale) {
+  if (scale === 'original' || !SCALE_HEIGHTS[scale]) {
+    return { width: origWidth, height: origHeight };
+  }
+  const targetHeight = SCALE_HEIGHTS[scale];
+  if (targetHeight >= origHeight) return { width: origWidth, height: origHeight };
+  const ratio = targetHeight / origHeight;
+  let newWidth = Math.round(origWidth * ratio);
+  if (newWidth % 2 !== 0) newWidth += 1;
+  return { width: newWidth, height: targetHeight };
+}
+
+// ─── UI Generation ───────────────────────────────────────────────
+
+function buildMatrixContainer() {
+  const container = document.getElementById('matrix-container');
+  if (!container) return;
+
+  container.innerHTML = `
+    <div class="glass-card p-5 space-y-4">
+      <div class="flex items-center justify-between">
+        <h3 class="text-sm font-semibold themed-heading uppercase tracking-wider">Quality & Resolution</h3>
+        <div id="mode-toggle" class="flex rounded-lg overflow-hidden" style="border: 1px solid var(--card-border, rgba(255,255,255,0.1));">
+          <button class="mode-btn active" data-mode="matrix" style="padding: 4px 12px; font-size: 12px; transition: all 0.2s;">Visual Matrix</button>
+          <button class="mode-btn" data-mode="target" style="padding: 4px 12px; font-size: 12px; transition: all 0.2s;">Target Size</button>
+        </div>
+      </div>
+
+      <!-- Matrix Mode -->
+      <div id="matrix-mode" class="space-y-3">
+        <div id="matrix-grid"></div>
+        <div id="matrix-selection-label" class="text-center text-xs" style="color: var(--text-muted, #888);"></div>
+      </div>
+
+      <!-- Target Size Mode -->
+      <div id="target-mode" class="space-y-4" style="display: none;">
+        <div>
+          <label class="block text-xs mb-2" style="color: var(--text-muted, #888);">Target File Size (MB)</label>
+          <input type="number" id="target-size-input" value="100" min="1" max="50000"
+            class="themed-input w-full rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/50" />
+        </div>
+        <div class="flex flex-wrap gap-2">
+          <button class="preset-btn" data-target="50">50 MB</button>
+          <button class="preset-btn active" data-target="100">100 MB</button>
+          <button class="preset-btn" data-target="250">250 MB</button>
+          <button class="preset-btn" data-target="500">500 MB</button>
+          <button class="preset-btn" data-target="1024">1 GB</button>
+        </div>
+        <div id="target-solutions" class="space-y-2"></div>
+      </div>
+    </div>
+  `;
+
+  // Wire mode toggle
+  container.querySelectorAll('.mode-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      container.querySelectorAll('.mode-btn').forEach((b) => b.classList.remove('active'));
+      btn.classList.add('active');
+      currentMode = btn.dataset.mode;
+      document.getElementById('matrix-mode').style.display = currentMode === 'matrix' ? '' : 'none';
+      document.getElementById('target-mode').style.display = currentMode === 'target' ? '' : 'none';
+    });
+  });
+
+  // Wire target size presets
+  container.querySelectorAll('[data-target]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      container.querySelectorAll('[data-target]').forEach((b) => b.classList.remove('active'));
+      btn.classList.add('active');
+      const input = document.getElementById('target-size-input');
+      input.value = btn.dataset.target;
+      updateTargetSolutions();
+    });
+  });
+
+  const targetInput = document.getElementById('target-size-input');
+  if (targetInput) {
+    targetInput.addEventListener('input', updateTargetSolutions);
+  }
+
+  // Init matrix SVG
+  initMatrix('matrix-grid');
+
+  // Wire matrix changes
+  onMatrixChange((sel) => {
+    currentPreset = ROW_TO_PRESET[sel.row] || 'balanced';
+    currentScale = COL_TO_SCALE[sel.col] || '1080p';
+    currentCrf = sel.qualityCrf;
+    updateSelectionLabel(sel);
+    updateSummaryPanel();
+  });
+
+  // Set initial label
+  const initialSel = getMatrixSelection();
+  updateSelectionLabel(initialSel);
+}
+
+function updateSelectionLabel(sel) {
+  const label = document.getElementById('matrix-selection-label');
+  if (!label) return;
+  const file = getSelectedFile();
+  let sizeStr = '';
+  if (sel.estimatedBytes) {
+    sizeStr = ` — ~${formatBytes(sel.estimatedBytes)}`;
+  }
+  label.textContent = `${sel.quality} quality at ${sel.resolution}${sizeStr}`;
+}
+
+function updateTargetSolutions() {
+  const container = document.getElementById('target-solutions');
+  if (!container) return;
+  const input = document.getElementById('target-size-input');
+  const targetMB = parseFloat(input?.value) || 100;
+  const targetBytes = targetMB * 1024 * 1024;
+
+  const file = getSelectedFile();
+  if (!file || !file.probeData) {
+    container.innerHTML =
+      '<p class="text-xs" style="color: var(--text-muted);">Add a file to see solutions.</p>';
+    return;
+  }
+
+  const probe = file.probeData;
+  const duration = probe.duration || 0;
+  if (duration <= 0) {
+    container.innerHTML =
+      '<p class="text-xs" style="color: var(--text-muted);">Cannot calculate — unknown duration.</p>';
+    return;
+  }
+
+  const targetBitrate = (targetBytes * 8) / duration / 1000; // kbps
+  container.innerHTML = `
+    <div class="glass-card p-3 space-y-1" style="border: 1px solid var(--card-border, rgba(255,255,255,0.1));">
+      <div class="text-xs font-medium" style="color: var(--text-secondary, #ccc);">Required bitrate: ${Math.round(targetBitrate)} kbps</div>
+      <div class="text-xs" style="color: var(--text-muted, #888);">
+        ${targetBitrate > 8000 ? 'H.264 Balanced or higher recommended' : targetBitrate > 3000 ? 'H.265 Balanced recommended' : 'H.265 Compact or AV1 recommended'}
+      </div>
+    </div>
+  `;
+}
+
+function buildCompressionControls() {
+  const container = document.getElementById('compression-controls');
+  if (!container) return;
+
+  const h264HW = isHWAvailable('h264');
+  const h265HW = isHWAvailable('h265');
+  const anyHW = h264HW || h265HW || isHWAvailable('prores');
+
+  container.innerHTML = `
+    <!-- Codec -->
+    <div class="glass-card p-5 space-y-3">
+      <h3 class="text-sm font-semibold themed-heading uppercase tracking-wider">Codec</h3>
+      <div id="codec-selector" class="flex flex-wrap gap-2">
+        <button class="preset-btn" data-codec="h264">H.264${h264HW ? ' <span class="hw-indicator" title="Hardware accelerated"></span>' : ''}</button>
+        <button class="preset-btn active" data-codec="h265">H.265${h265HW ? ' <span class="hw-indicator" title="Hardware accelerated"></span>' : ''}</button>
+        <button class="preset-btn" data-codec="av1">AV1</button>
+      </div>
+
+      <!-- Encoder Toggle -->
+      ${
+        anyHW
+          ? `
+      <div class="flex items-center gap-2 mt-2">
+        <span class="text-xs" style="color: var(--text-muted, #888);">Encoder:</span>
+        <div id="encoder-toggle" class="flex rounded-lg overflow-hidden" style="border: 1px solid var(--card-border, rgba(255,255,255,0.1));">
+          <button class="preset-btn active" data-encoder="hw" style="padding: 3px 10px; font-size: 11px;">Hardware</button>
+          <button class="preset-btn" data-encoder="sw" style="padding: 3px 10px; font-size: 11px;">Software</button>
+        </div>
+      </div>
+      `
+          : ''
+      }
+    </div>
+
+    <!-- Audio (collapsible) -->
+    <div class="glass-card p-5 space-y-3">
+      <button id="audio-toggle-header" class="w-full flex items-center justify-between text-sm font-semibold themed-heading uppercase tracking-wider cursor-pointer">
+        Audio
+        <svg class="w-4 h-4 transition-transform" id="audio-chevron" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5"/>
+        </svg>
+      </button>
+      <div id="audio-body" style="display: none;" class="space-y-3">
+        <div>
+          <label class="flex items-center justify-between text-xs mb-1">
+            <span style="color: var(--text-muted, #888);">Bitrate</span>
+            <span id="audio-bitrate-label" style="color: var(--text-secondary, #ccc);">192 kbps</span>
+          </label>
+          <input type="range" id="audio-bitrate-slider" min="128" max="320" step="32" value="192" class="w-full" style="accent-color: var(--accent-green, #22c55e);" />
+        </div>
+        <div>
+          <span class="text-xs" style="color: var(--text-muted, #888);">Audio Codec</span>
+          <div id="audio-codec-selector" class="flex flex-wrap gap-2 mt-1">
+            <button class="preset-btn active" data-acodec="aac">AAC</button>
+            <button class="preset-btn" data-acodec="opus">Opus</button>
+            <button class="preset-btn" data-acodec="copy">Copy</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Summary Panel -->
+    <div class="glass-card p-5 space-y-3" id="summary-panel">
+      <h3 class="text-sm font-semibold themed-heading uppercase tracking-wider">Summary</h3>
+      <div id="est-size" class="text-lg font-bold" style="color: var(--accent-green, #22c55e);">—</div>
+      <div id="est-bar-wrap" class="w-full rounded-full overflow-hidden" style="height: 6px; background: var(--bg-secondary, #1a1a35);">
+        <div id="est-bar" class="h-full rounded-full transition-all duration-500" style="width: 50%; background: var(--accent-green, #22c55e);"></div>
+      </div>
+      <div id="est-specs" class="text-xs" style="color: var(--text-muted, #888);">Select a file to see estimates</div>
+    </div>
+
+    <!-- Advanced (collapsible) -->
+    <div class="glass-card p-5 space-y-3">
+      <button id="advanced-toggle-header" class="w-full flex items-center justify-between text-sm font-semibold themed-heading uppercase tracking-wider cursor-pointer">
+        Advanced
+        <svg class="w-4 h-4 transition-transform" id="advanced-chevron" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5"/>
+        </svg>
+      </button>
+      <div id="advanced-body" style="display: none;" class="space-y-3">
+        <!-- Format -->
+        <div>
+          <span class="text-xs" style="color: var(--text-muted, #888);">Format</span>
+          <div id="format-selector" class="flex flex-wrap gap-2 mt-1">
+            <button class="preset-btn active" data-format="mp4">MP4</button>
+            <button class="preset-btn" data-format="mov">MOV</button>
+            <button class="preset-btn" data-format="mkv">MKV</button>
+          </div>
+        </div>
+        <!-- FPS -->
+        <div>
+          <span class="text-xs" style="color: var(--text-muted, #888);">FPS</span>
+          <div id="fps-selector" class="flex flex-wrap gap-2 mt-1">
+            <button class="preset-btn active" data-fps="original">Original</button>
+            <button class="preset-btn" data-fps="60">60</button>
+            <button class="preset-btn" data-fps="30">30</button>
+            <button class="preset-btn" data-fps="24">24</button>
+          </div>
+        </div>
+        <!-- Toggles -->
+        <div class="space-y-2">
+          <label class="flex items-center justify-between cursor-pointer">
+            <span class="text-xs" style="color: var(--text-muted, #888);">2-Pass Encoding</span>
+            <input type="checkbox" id="toggle-twopass" style="accent-color: var(--accent-green, #22c55e);" />
+          </label>
+          <label class="flex items-center justify-between cursor-pointer">
+            <span class="text-xs" style="color: var(--text-muted, #888);">Preserve Metadata</span>
+            <input type="checkbox" id="toggle-metadata" checked style="accent-color: var(--accent-green, #22c55e);" />
+          </label>
+          <label class="flex items-center justify-between cursor-pointer">
+            <span class="text-xs" style="color: var(--text-muted, #888);">Fast Start (MP4)</span>
+            <input type="checkbox" id="toggle-faststart" checked style="accent-color: var(--accent-green, #22c55e);" />
+          </label>
+        </div>
+      </div>
+    </div>
+  `;
+
+  wireControls();
+}
+
+function wireControls() {
+  // Codec selector
+  wireButtonGroup('codec-selector', 'codec', (value) => {
+    currentCodec = value;
+    updateFormatButtons();
+    syncMatrixEstimates();
+    updateSummaryPanel();
+  });
+
+  // Encoder toggle
+  const encoderToggle = document.getElementById('encoder-toggle');
+  if (encoderToggle) {
+    encoderToggle.querySelectorAll('.preset-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        encoderToggle.querySelectorAll('.preset-btn').forEach((b) => b.classList.remove('active'));
+        btn.classList.add('active');
+        currentEncoder = btn.dataset.encoder;
+        syncMatrixEstimates();
+        updateSummaryPanel();
+      });
+    });
+  }
+
+  // Audio collapsible
+  const audioHeader = document.getElementById('audio-toggle-header');
+  const audioBody = document.getElementById('audio-body');
+  const audioChevron = document.getElementById('audio-chevron');
+  if (audioHeader && audioBody) {
+    audioHeader.addEventListener('click', () => {
+      const open = audioBody.style.display !== 'none';
+      audioBody.style.display = open ? 'none' : '';
+      audioChevron.style.transform = open ? '' : 'rotate(180deg)';
+    });
+  }
+
+  // Audio bitrate slider
+  const slider = document.getElementById('audio-bitrate-slider');
+  const sliderLabel = document.getElementById('audio-bitrate-label');
+  if (slider) {
+    slider.addEventListener('input', () => {
+      currentAudioBitrate = parseInt(slider.value, 10);
+      if (sliderLabel) sliderLabel.textContent = `${currentAudioBitrate} kbps`;
+    });
+  }
+
+  // Audio codec
+  wireButtonGroup('audio-codec-selector', 'acodec', (value) => {
+    currentAudioCodec = value;
+  });
+
+  // Advanced collapsible
+  const advHeader = document.getElementById('advanced-toggle-header');
+  const advBody = document.getElementById('advanced-body');
+  const advChevron = document.getElementById('advanced-chevron');
+  if (advHeader && advBody) {
+    advHeader.addEventListener('click', () => {
+      const open = advBody.style.display !== 'none';
+      advBody.style.display = open ? 'none' : '';
+      advChevron.style.transform = open ? '' : 'rotate(180deg)';
+    });
+  }
+
+  // Format selector
+  wireButtonGroup('format-selector', 'format', (value) => {
+    currentFormat = value;
+    updateSummaryPanel();
+  });
+
+  // FPS selector
+  wireButtonGroup('fps-selector', 'fps', (value) => {
+    currentFps = value;
+  });
+
+  // Toggles
+  const tp = document.getElementById('toggle-twopass');
+  if (tp)
+    tp.addEventListener('change', () => {
+      twoPass = tp.checked;
+    });
+  const tm = document.getElementById('toggle-metadata');
+  if (tm)
+    tm.addEventListener('change', () => {
+      preserveMetadata = tm.checked;
+    });
+  const tf = document.getElementById('toggle-faststart');
+  if (tf)
+    tf.addEventListener('change', () => {
+      fastStart = tf.checked;
+    });
+}
 
 function wireButtonGroup(containerId, dataAttr, onSelect) {
   const container = document.getElementById(containerId);
   if (!container) return;
-
   const buttons = container.querySelectorAll('.preset-btn');
   buttons.forEach((btn) => {
     btn.addEventListener('click', () => {
       const value = btn.dataset[dataAttr];
       if (!value || btn.classList.contains('disabled')) return;
-
       buttons.forEach((b) => b.classList.remove('active'));
       btn.classList.add('active');
       onSelect(value);
@@ -74,14 +495,11 @@ function wireButtonGroup(containerId, dataAttr, onSelect) {
 function updateFormatButtons() {
   const container = document.getElementById('format-selector');
   if (!container) return;
-
   const allowedFormats = CODEC_FORMAT_MAP[currentCodec] || ['mp4'];
   const buttons = container.querySelectorAll('.preset-btn');
-
   buttons.forEach((btn) => {
     const fmt = btn.dataset.format;
     if (!fmt) return;
-
     if (allowedFormats.includes(fmt)) {
       btn.classList.remove('disabled');
     } else {
@@ -89,17 +507,110 @@ function updateFormatButtons() {
       btn.classList.remove('active');
     }
   });
-
-  // If current format is not allowed, switch to default
   if (!allowedFormats.includes(currentFormat)) {
     currentFormat = CODEC_DEFAULT_FORMAT[currentCodec] || allowedFormats[0];
     buttons.forEach((btn) => {
-      if (btn.dataset.format === currentFormat) {
-        btn.classList.add('active');
-      }
+      if (btn.dataset.format === currentFormat) btn.classList.add('active');
     });
   }
 }
+
+function syncMatrixEstimates() {
+  const file = getSelectedFile();
+  const source = file?.probeData ? { size: file.probeData.size || file.size || 0 } : null;
+  updateMatrixEstimates(currentCodec, currentEncoder, source);
+}
+
+function updateSummaryPanel() {
+  const estSize = document.getElementById('est-size');
+  const estBar = document.getElementById('est-bar');
+  const estSpecs = document.getElementById('est-specs');
+  if (!estSize) return;
+
+  const file = getSelectedFile();
+  if (!file || !file.probeData) {
+    estSize.textContent = '—';
+    if (estBar) estBar.style.width = '50%';
+    if (estSpecs) estSpecs.textContent = 'Select a file to see estimates';
+    return;
+  }
+
+  const probe = file.probeData;
+  const originalSize = probe.size || file.size || 0;
+  const duration = probe.duration || 0;
+  if (!originalSize || !duration) {
+    estSize.textContent = '—';
+    return;
+  }
+
+  const encoder = getEncoderName(currentCodec);
+  let estimatedSize = 0;
+
+  if (HW_BITRATES[encoder] && HW_BITRATES[encoder][currentPreset]) {
+    const bitrate = HW_BITRATES[encoder][currentPreset];
+    estimatedSize = ((bitrate * 1000) / 8) * duration;
+  } else if (SW_RATIOS[encoder] && SW_RATIOS[encoder][currentPreset] !== undefined) {
+    estimatedSize = originalSize * SW_RATIOS[encoder][currentPreset];
+  } else {
+    // Fallback: CRF-based interpolation
+    let ratio;
+    if (currentCrf <= 18) ratio = 1.5 - (currentCrf / 18) * 0.7;
+    else if (currentCrf <= 28) ratio = 0.8 - ((currentCrf - 18) / 10) * 0.5;
+    else ratio = Math.max(0.03, 0.3 - ((currentCrf - 28) / 23) * 0.25);
+    if (currentCodec === 'h265') ratio *= 0.7;
+    else if (currentCodec === 'av1') ratio *= 0.55;
+    estimatedSize = originalSize * ratio;
+  }
+
+  // Adjust for resolution scaling
+  const origW = probe.width || 0;
+  const origH = probe.height || 0;
+  if (currentScale !== 'original' && origW > 0 && origH > 0) {
+    const scaled = computeScaledDimensions(origW, origH, currentScale);
+    const pixelRatio = (scaled.width * scaled.height) / (origW * origH);
+    estimatedSize *= pixelRatio;
+  }
+
+  const pctChange = ((estimatedSize - originalSize) / originalSize) * 100;
+  const pctOfOriginal = Math.max(
+    1,
+    Math.min(150, Math.round((estimatedSize / originalSize) * 100)),
+  );
+
+  estSize.textContent = `~${formatBytes(Math.round(estimatedSize))}`;
+  estSize.style.color =
+    pctChange <= -20
+      ? 'var(--accent-green, #22c55e)'
+      : pctChange <= 0
+        ? 'var(--accent-yellow, #eab308)'
+        : 'var(--accent-orange, #f97316)';
+
+  if (estBar) {
+    estBar.style.width = `${pctOfOriginal}%`;
+    estBar.style.background =
+      pctChange <= -20
+        ? 'var(--accent-green, #22c55e)'
+        : pctChange <= 0
+          ? 'var(--accent-yellow, #eab308)'
+          : 'var(--accent-orange, #f97316)';
+  }
+
+  const sign = pctChange <= 0 ? '' : '+';
+  const codecNames = { h264: 'H.264', h265: 'H.265', av1: 'AV1', prores: 'ProRes' };
+  let specsLine = `${sign}${Math.round(pctChange)}% vs original (${formatBytes(originalSize)}) — ${codecNames[currentCodec] || currentCodec} ${currentFormat.toUpperCase()} ${currentScale}`;
+
+  if (currentCodec === 'av1') specsLine += ' — AV1 is slow (~0.5x)';
+  else if (origH >= 2160 && currentScale !== '720p' && currentScale !== '480p') {
+    specsLine +=
+      currentEncoder === 'hw' && isHWAvailable(currentCodec)
+        ? ' — 4K HW (~3-5x)'
+        : ' — 4K SW (~0.5-1x)';
+  }
+
+  if (estSpecs) estSpecs.textContent = specsLine;
+}
+
+// ─── HW Badge ────────────────────────────────────────────────────
 
 function updateHWBadge() {
   const badge = document.getElementById('hw-badge');
@@ -113,14 +624,9 @@ function updateHWBadge() {
     return;
   }
 
-  const hwAccels = [];
-  if (hwInfo.videotoolbox) hwAccels.push('VideoToolbox');
-  if (hwInfo.nvenc) hwAccels.push('NVENC');
-  if (hwInfo.qsv) hwAccels.push('QSV');
-  if (hwInfo.amf) hwAccels.push('AMF');
-
-  if (hwAccels.length > 0) {
-    badgeText.textContent = `HW Accel: ${hwAccels.join(', ')}`;
+  const hasVT = hwInfo.h264_videotoolbox || hwInfo.hevc_videotoolbox || hwInfo.prores_videotoolbox;
+  if (hasVT) {
+    badgeText.textContent = 'HW Accel: VideoToolbox';
     badge.classList.add('hw-available');
     badge.classList.remove('hw-unavailable');
   } else {
@@ -130,568 +636,43 @@ function updateHWBadge() {
   }
 }
 
-function updateHWIndicators() {
-  const codecContainer = document.getElementById('codec-selector');
-  if (!codecContainer || !hwInfo) return;
-
-  const buttons = codecContainer.querySelectorAll('.preset-btn');
-  buttons.forEach((btn) => {
-    // Remove existing indicators
-    const existing = btn.querySelector('.hw-indicator');
-    if (existing) existing.remove();
-
-    const codec = btn.dataset.codec;
-    if (!codec) return;
-
-    let hasHW = false;
-    if (codec === 'h264' && (hwInfo.videotoolbox || hwInfo.nvenc || hwInfo.qsv)) hasHW = true;
-    if (codec === 'h265' && (hwInfo.videotoolbox || hwInfo.nvenc || hwInfo.qsv)) hasHW = true;
-    if (codec === 'av1' && (hwInfo.videotoolbox || hwInfo.nvenc)) hasHW = true;
-    if (codec === 'prores' && hwInfo.videotoolbox) hasHW = true;
-
-    if (hasHW) {
-      const indicator = document.createElement('span');
-      indicator.className = 'hw-indicator';
-      indicator.title = 'Hardware acceleration available';
-      btn.appendChild(indicator);
-    }
-  });
-}
-
-function updateSummary() {
-  const summaryEl = document.getElementById('compression-summary');
-  if (!summaryEl) return;
-
-  const presetNames = {
-    balanced: 'Balanced',
-    max: 'Max Quality',
-    small: 'Small File',
-    streaming: 'Streaming',
-    custom: 'Custom',
-  };
-
-  const codecNames = {
-    h264: 'H.264',
-    h265: 'H.265',
-    av1: 'AV1',
-    prores: 'ProRes',
-  };
-
-  const scaleName = currentScale === 'original' ? 'Original' : currentScale.toUpperCase();
-  let summaryText = `${presetNames[currentPreset] || currentPreset} | ${codecNames[currentCodec] || currentCodec} | ${currentFormat.toUpperCase()} | ${scaleName}`;
-  if (currentPreset === 'custom') {
-    summaryText += ` | CRF ${currentCrf} | ${currentSpeed}`;
-  }
-  summaryEl.textContent = summaryText;
-}
-
-// ─── Resolution Dropdown ──────────────────────────────────────────
-
-function createResolutionSelector() {
-  const summaryEl = document.getElementById('compression-summary');
-  if (!summaryEl) return;
-
-  // Create the resolution card, matching other settings cards
-  const card = document.createElement('div');
-  card.className = 'glass-card p-5 space-y-3';
-  card.id = 'resolution-section';
-
-  const heading = document.createElement('h3');
-  heading.className = 'text-sm font-semibold text-gray-300 uppercase tracking-wider';
-  heading.textContent = 'Resolution';
-  card.appendChild(heading);
-
-  const select = document.createElement('select');
-  select.id = 'resolution-select';
-  select.className =
-    'w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2.5 text-sm text-gray-200 focus:outline-none focus:ring-2 focus:ring-violet-500/50 transition-all appearance-none cursor-pointer';
-
-  const options = [
-    { value: 'original', label: 'Original' },
-    { value: '1080p', label: '1080p (1920x1080)' },
-    { value: '720p', label: '720p (1280x720)' },
-    { value: '480p', label: '480p (854x480)' },
-    { value: '360p', label: '360p (640x360)' },
-  ];
-
-  for (const opt of options) {
-    const optEl = document.createElement('option');
-    optEl.value = opt.value;
-    optEl.textContent = opt.label;
-    select.appendChild(optEl);
-  }
-
-  select.addEventListener('change', () => {
-    currentScale = select.value;
-    updateSummary();
-    updateEstimation();
-    updateTradeoffInfo();
-  });
-
-  card.appendChild(select);
-
-  // Insert before compression-summary
-  summaryEl.parentNode.insertBefore(card, summaryEl);
-}
-
-/** Update resolution dropdown options based on selected file's resolution */
-export function updateResolutionOptions() {
-  const select = document.getElementById('resolution-select');
-  if (!select) return;
-
-  const file = getSelectedFile();
-  const sourceHeight = file?.probeData?.height || 0;
-
-  const options = select.querySelectorAll('option');
-  options.forEach((opt) => {
-    if (opt.value === 'original') {
-      opt.disabled = false;
-      return;
-    }
-    const targetHeight = SCALE_HEIGHTS[opt.value] || 0;
-    // Disable options that would upscale
-    opt.disabled = sourceHeight > 0 && targetHeight >= sourceHeight;
-  });
-
-  // If current selection would upscale, reset to original
-  if (
-    currentScale !== 'original' &&
-    SCALE_HEIGHTS[currentScale] >= sourceHeight &&
-    sourceHeight > 0
-  ) {
-    currentScale = 'original';
-    select.value = 'original';
-    updateSummary();
-  }
-
-  updateTradeoffInfo();
-}
-
-// ─── Estimation Display ───────────────────────────────────────────
-
-function createEstimationDisplay() {
-  const summaryEl = document.getElementById('compression-summary');
-  if (!summaryEl) return;
-
-  const estimateEl = document.createElement('div');
-  estimateEl.id = 'size-estimation';
-  estimateEl.className = 'text-center text-sm text-gray-400 py-1';
-  estimateEl.textContent = '';
-
-  // Insert after compression-summary
-  summaryEl.parentNode.insertBefore(estimateEl, summaryEl.nextSibling);
-}
-
-function getSelectedFile() {
-  if (!appState.selectedFileId) return null;
-  return appState.files.find((f) => f.id === appState.selectedFileId) || null;
-}
-
-function getEncoderName(codec) {
-  const hwAvailable = isHWAvailableClient(codec);
-  switch (codec) {
-    case 'h264':
-      return hwAvailable ? 'h264_videotoolbox' : 'libx264';
-    case 'h265':
-      return hwAvailable ? 'hevc_videotoolbox' : 'libx265';
-    case 'prores':
-      return hwAvailable ? 'prores_videotoolbox' : 'prores_ks';
-    case 'av1':
-      return 'libsvtav1';
-    default:
-      return 'libx264';
-  }
-}
-
-function isHWAvailableClient(codec) {
-  if (!hwInfo) return false;
-  // hwInfo from server has keys like h264_videotoolbox, hevc_videotoolbox, prores_videotoolbox
-  switch (codec) {
-    case 'h264':
-      return !!hwInfo.h264_videotoolbox;
-    case 'h265':
-      return !!hwInfo.hevc_videotoolbox;
-    case 'prores':
-      return !!hwInfo.prores_videotoolbox;
-    case 'av1':
-      return false;
-    default:
-      return false;
-  }
-}
-
-function computeScaledDimensions(origWidth, origHeight, scale) {
-  if (scale === 'original' || !SCALE_HEIGHTS[scale]) {
-    return { width: origWidth, height: origHeight };
-  }
-  const targetHeight = SCALE_HEIGHTS[scale];
-  if (targetHeight >= origHeight) {
-    // Would upscale -- use original
-    return { width: origWidth, height: origHeight };
-  }
-  // Maintain aspect ratio (FFmpeg uses -2 for even dimensions)
-  const ratio = targetHeight / origHeight;
-  let newWidth = Math.round(origWidth * ratio);
-  // Ensure even dimension (matching FFmpeg -2 behavior)
-  if (newWidth % 2 !== 0) newWidth += 1;
-  return { width: newWidth, height: targetHeight };
-}
-
-export function updateEstimation() {
-  const estimateEl = document.getElementById('size-estimation');
-  if (!estimateEl) return;
-
-  const file = getSelectedFile();
-  if (!file || !file.probeData) {
-    estimateEl.textContent = '';
-    return;
-  }
-
-  const probe = file.probeData;
-  const originalSize = probe.size || file.size || 0;
-  const duration = probe.duration || 0;
-  const origWidth = probe.width || 0;
-  const origHeight = probe.height || 0;
-
-  if (originalSize === 0 || duration === 0) {
-    estimateEl.textContent = '';
-    return;
-  }
-
-  const encoder = getEncoderName(currentCodec);
-  let estimatedSize = 0;
-
-  if (currentPreset === 'custom') {
-    // For custom preset, interpolate ratio from CRF value
-    // CRF 0 = lossless (~1.5x), CRF 18 = ~0.8x, CRF 23 = ~0.5x, CRF 35 = ~0.2x, CRF 51 = ~0.05x
-    let ratio;
-    if (currentCrf <= 18) {
-      ratio = 1.5 - (currentCrf / 18) * 0.7; // 1.5 down to 0.8
-    } else if (currentCrf <= 28) {
-      ratio = 0.8 - ((currentCrf - 18) / 10) * 0.5; // 0.8 down to 0.3
-    } else {
-      ratio = 0.3 - ((currentCrf - 28) / 23) * 0.25; // 0.3 down to 0.05
-    }
-    ratio = Math.max(ratio, 0.03);
-    // Adjust for codec efficiency
-    if (currentCodec === 'h265') ratio *= 0.7;
-    else if (currentCodec === 'av1') ratio *= 0.55;
-    else if (currentCodec === 'prores') ratio *= 2.0;
-    estimatedSize = originalSize * ratio;
-  } else if (HW_BITRATES[encoder]) {
-    // HW encoder: estimate from target bitrate
-    const bitrate = HW_BITRATES[encoder][currentPreset];
-    if (!bitrate) {
-      estimateEl.textContent = '';
-      return;
-    }
-    estimatedSize = ((bitrate * 1000) / 8) * duration;
-  } else if (SW_RATIOS[encoder]) {
-    // SW/CRF encoder: estimate as percentage of original
-    const ratio = SW_RATIOS[encoder][currentPreset];
-    if (ratio === undefined) {
-      estimateEl.textContent = '';
-      return;
-    }
-    estimatedSize = originalSize * ratio;
-  } else {
-    estimateEl.textContent = '';
-    return;
-  }
-
-  // Adjust for resolution scaling
-  if (currentScale !== 'original' && origWidth > 0 && origHeight > 0) {
-    const scaled = computeScaledDimensions(origWidth, origHeight, currentScale);
-    const pixelRatio = (scaled.width * scaled.height) / (origWidth * origHeight);
-    estimatedSize *= pixelRatio;
-  }
-
-  // Calculate percentage change
-  const pctChange = ((estimatedSize - originalSize) / originalSize) * 100;
-  const sign = pctChange <= 0 ? '' : '+';
-  const pctStr = `${sign}${Math.round(pctChange)}%`;
-
-  estimateEl.textContent = `Estimated output: ~${formatBytes(Math.round(estimatedSize))} (${pctStr})`;
-
-  // Color based on savings
-  if (pctChange <= -20) {
-    estimateEl.style.color = '#4ade80'; // green
-  } else if (pctChange <= 0) {
-    estimateEl.style.color = '#a3a3a3'; // neutral gray
-  } else {
-    estimateEl.style.color = '#fb923c'; // orange/warning
-  }
-}
-
-// ─── Custom Panel Toggle ──────────────────────────────────────────
-
-function toggleCustomPanel() {
-  const panel = document.getElementById('custom-quality-panel');
-  if (!panel) return;
-
-  if (currentPreset === 'custom') {
-    panel.classList.remove('hidden');
-  } else {
-    panel.classList.add('hidden');
-  }
-}
-
-// ─── Tradeoff Information ─────────────────────────────────────────
-
-const CODEC_TRADEOFFS = {
-  h264: 'Universal compatibility. Plays everywhere. Moderate compression. Hardware accelerated on this Mac.',
-  h265: '~40% smaller than H.264 at same quality. Plays on most modern devices. Hardware accelerated.',
-  av1: "~50% smaller than H.264. Best compression but SLOW (software only, no HW accel). Some devices can't play it.",
-  prores:
-    'Professional editing codec. LARGER files but no quality loss. Best for editing workflows.',
-};
-
-const PRESET_TRADEOFFS = {
-  max: "Highest quality, largest file. Best when storage isn't a concern. Bitrate: ~20 Mbps (H.264) / ~12 Mbps (H.265)",
-  balanced:
-    'Good quality/size tradeoff. Suitable for most uses. Bitrate: ~8 Mbps (H.264) / ~6 Mbps (H.265)',
-  small:
-    'Prioritizes small size. Some quality loss in fast motion scenes. Bitrate: ~4 Mbps (H.264) / ~3 Mbps (H.265)',
-  streaming: 'Optimized for web streaming. Fast-start enabled for immediate playback.',
-  custom:
-    'CRF 18\u201320 = visually lossless, CRF 23 = balanced, CRF 28+ = noticeable quality loss',
-};
-
-function updateTradeoffInfo() {
-  const content = document.getElementById('tradeoff-content');
-  if (!content) return;
-
-  // Clear existing content
-  content.textContent = '';
-
-  // --- Codec info ---
-  const codecLabel = { h264: 'H.264', h265: 'H.265 (HEVC)', av1: 'AV1', prores: 'ProRes' };
-  const codecInfo = CODEC_TRADEOFFS[currentCodec];
-  if (codecInfo) {
-    const codecBox = document.createElement('div');
-    codecBox.style.cssText =
-      'padding:0.5rem;border-radius:0.5rem;background:var(--glass-bg);border:1px solid var(--glass-border);';
-    const codecTitle = document.createElement('strong');
-    codecTitle.style.color = 'var(--text-secondary)';
-    codecTitle.textContent = 'Codec: ' + (codecLabel[currentCodec] || currentCodec);
-    const codecDesc = document.createElement('p');
-    codecDesc.style.margin = '0.25rem 0 0';
-    codecDesc.textContent = codecInfo;
-    codecBox.appendChild(codecTitle);
-    codecBox.appendChild(codecDesc);
-    content.appendChild(codecBox);
-  }
-
-  // --- Preset info ---
-  const presetLabel = {
-    max: 'Max Quality',
-    balanced: 'Balanced',
-    small: 'Small File',
-    streaming: 'Streaming',
-    custom: 'Custom',
-  };
-  const presetInfo = PRESET_TRADEOFFS[currentPreset];
-  if (presetInfo) {
-    let presetDetail = presetInfo;
-    if (currentPreset === 'custom') {
-      presetDetail = 'CRF ' + currentCrf + ': ';
-      if (currentCrf <= 17)
-        presetDetail += 'Near-lossless quality. Large file sizes. Best for archival.';
-      else if (currentCrf <= 22)
-        presetDetail += 'Visually lossless for most content. Excellent quality.';
-      else if (currentCrf <= 27)
-        presetDetail += 'Balanced quality and size. Minor quality loss in complex scenes.';
-      else if (currentCrf <= 34)
-        presetDetail += 'Noticeable quality loss. Blocking in dark scenes, banding in gradients.';
-      else
-        presetDetail +=
-          'Heavy compression. Significant quality loss. Blurring and artifacts visible.';
-      presetDetail += ' Speed: ' + currentSpeed + ' \u2014 ';
-      if (currentSpeed === 'ultrafast' || currentSpeed === 'fast')
-        presetDetail += 'Faster encoding, larger file at same CRF.';
-      else if (currentSpeed === 'medium')
-        presetDetail += 'Good balance of speed and compression efficiency.';
-      else presetDetail += 'Slower encoding, better compression (smaller file at same CRF).';
-    }
-    const presetBox = document.createElement('div');
-    presetBox.style.cssText =
-      'padding:0.5rem;border-radius:0.5rem;background:var(--glass-bg);border:1px solid var(--glass-border);';
-    const presetTitle = document.createElement('strong');
-    presetTitle.style.color = 'var(--text-secondary)';
-    presetTitle.textContent = 'Preset: ' + (presetLabel[currentPreset] || currentPreset);
-    const presetDesc = document.createElement('p');
-    presetDesc.style.margin = '0.25rem 0 0';
-    presetDesc.textContent = presetDetail;
-    presetBox.appendChild(presetTitle);
-    presetBox.appendChild(presetDesc);
-    content.appendChild(presetBox);
-  }
-
-  // --- Resolution info ---
-  const file = getSelectedFile();
-  if (file && file.probeData && currentScale !== 'original') {
-    const origH = file.probeData.height || 0;
-    const origW = file.probeData.width || 0;
-    const targetH = SCALE_HEIGHTS[currentScale] || 0;
-    if (origH > 0 && targetH > 0 && targetH < origH) {
-      const origPixels = origW * origH;
-      const scaled = computeScaledDimensions(origW, origH, currentScale);
-      const newPixels = scaled.width * scaled.height;
-      const pctReduction = Math.round((1 - newPixels / origPixels) * 100);
-      const estFileSavings = Math.round(pctReduction * 0.8);
-      const resBox = document.createElement('div');
-      resBox.style.cssText =
-        'padding:0.5rem;border-radius:0.5rem;background:var(--glass-bg);border:1px solid var(--glass-border);';
-      const resTitle = document.createElement('strong');
-      resTitle.style.color = 'var(--text-secondary)';
-      resTitle.textContent = 'Resolution: ' + origH + 'p \u2192 ' + currentScale;
-      const resDesc = document.createElement('p');
-      resDesc.style.margin = '0.25rem 0 0';
-      resDesc.textContent =
-        pctReduction +
-        '% fewer pixels, estimated ~' +
-        (estFileSavings - 10) +
-        '\u2013' +
-        (estFileSavings + 10) +
-        '% smaller file';
-      resBox.appendChild(resTitle);
-      resBox.appendChild(resDesc);
-      content.appendChild(resBox);
-    }
-  }
-
-  // --- What will be lost ---
-  const losses = [];
-  if (currentScale !== 'original') {
-    losses.push('Detail in fine textures, small text readability');
-  }
-  if (currentPreset === 'small' || (currentPreset === 'custom' && currentCrf >= 28)) {
-    losses.push('Blocking in dark scenes, banding in gradients, blurring in fast motion');
-  }
-  if (currentFormat === 'mp4') losses.push('Format: MP4 \u2014 Compatible everywhere');
-  else if (currentFormat === 'mkv')
-    losses.push('Format: MKV \u2014 Subtitle support but less universal');
-  else if (currentFormat === 'mov')
-    losses.push('Format: MOV \u2014 Apple ecosystem, professional workflows');
-
-  if (losses.length > 0) {
-    const lossBox = document.createElement('div');
-    lossBox.style.cssText =
-      'padding:0.5rem;border-radius:0.5rem;background:rgba(239,68,68,0.05);border:1px solid rgba(239,68,68,0.15);';
-    const lossTitle = document.createElement('strong');
-    lossTitle.style.color = 'var(--status-error-text)';
-    lossTitle.textContent = 'What may be lost';
-    const lossList = document.createElement('ul');
-    lossList.style.cssText = 'margin:0.25rem 0 0;padding-left:1rem;list-style:disc;';
-    losses.forEach((l) => {
-      const li = document.createElement('li');
-      li.textContent = l;
-      lossList.appendChild(li);
-    });
-    lossBox.appendChild(lossTitle);
-    lossBox.appendChild(lossList);
-    content.appendChild(lossBox);
-  }
-
-  // --- What will be preserved ---
-  const preserved = [
-    'GPS, date, camera info \u2014 all metadata preserved',
-    'Audio quality maintained (AAC re-encode at high bitrate)',
-    'Color space and HDR info preserved when supported',
-  ];
-  const preserveBox = document.createElement('div');
-  preserveBox.style.cssText =
-    'padding:0.5rem;border-radius:0.5rem;background:rgba(34,197,94,0.05);border:1px solid rgba(34,197,94,0.15);';
-  const preserveTitle = document.createElement('strong');
-  preserveTitle.style.color = 'var(--status-done-text)';
-  preserveTitle.textContent = 'What will be preserved';
-  const preserveList = document.createElement('ul');
-  preserveList.style.cssText = 'margin:0.25rem 0 0;padding-left:1rem;list-style:disc;';
-  preserved.forEach((p) => {
-    const li = document.createElement('li');
-    li.textContent = p;
-    preserveList.appendChild(li);
-  });
-  preserveBox.appendChild(preserveTitle);
-  preserveBox.appendChild(preserveList);
-  content.appendChild(preserveBox);
-}
-
-// ─── Init & Export ────────────────────────────────────────────────
+// ─── Init & Exports ──────────────────────────────────────────────
 
 export function initCompression(hwData) {
   hwInfo = hwData;
-
-  // Wire quality presets
-  wireButtonGroup('quality-presets', 'preset', (value) => {
-    currentPreset = value;
-    toggleCustomPanel();
-    updateSummary();
-    updateEstimation();
-    updateTradeoffInfo();
-  });
-
-  // Wire codec selector
-  wireButtonGroup('codec-selector', 'codec', (value) => {
-    currentCodec = value;
-    updateFormatButtons();
-    updateSummary();
-    updateEstimation();
-    updateTradeoffInfo();
-  });
-
-  // Wire format selector
-  wireButtonGroup('format-selector', 'format', (value) => {
-    currentFormat = value;
-    updateSummary();
-    updateEstimation();
-    updateTradeoffInfo();
-  });
-
-  // Wire CRF slider
-  const crfSlider = document.getElementById('custom-crf');
-  const crfLabel = document.getElementById('custom-crf-value');
-  if (crfSlider && crfLabel) {
-    crfSlider.addEventListener('input', () => {
-      currentCrf = parseInt(crfSlider.value, 10);
-      crfLabel.textContent = 'CRF ' + currentCrf;
-      updateSummary();
-      updateEstimation();
-      updateTradeoffInfo();
-    });
-  }
-
-  // Wire speed selector
-  wireButtonGroup('speed-selector', 'speed', (value) => {
-    currentSpeed = value;
-    updateSummary();
-    updateTradeoffInfo();
-  });
-
-  // Create dynamic resolution selector
-  createResolutionSelector();
-
-  // Create estimation display
-  createEstimationDisplay();
-
-  // Initialize states
+  buildMatrixContainer();
+  buildCompressionControls();
   updateHWBadge();
-  updateHWIndicators();
   updateFormatButtons();
-  updateSummary();
-  updateTradeoffInfo();
+  syncMatrixEstimates();
+  updateSummaryPanel();
 }
 
 export function getCompressionSettings() {
-  const settings = {
+  return {
     preset: currentPreset,
     codec: currentCodec,
     format: currentFormat,
     scale: currentScale,
+    crf: currentCrf,
+    speed: currentSpeed,
+    audioBitrate: currentAudioBitrate,
+    audioCodec: currentAudioCodec,
+    fps: currentFps,
+    twoPass,
+    preserveMetadata,
+    fastStart,
   };
-  if (currentPreset === 'custom') {
-    settings.crf = currentCrf;
-    settings.speed = currentSpeed;
-  }
-  return settings;
+}
+
+export function updateResolutionOptions() {
+  // Matrix handles resolution; sync estimates when file changes
+  syncMatrixEstimates();
+  updateSummaryPanel();
+  updateTargetSolutions();
+}
+
+export function updateEstimation() {
+  syncMatrixEstimates();
+  updateSummaryPanel();
 }

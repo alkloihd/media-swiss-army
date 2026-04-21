@@ -5,6 +5,7 @@
  * application-controlled SVG icons. No user-generated content is injected.
  */
 
+import { initTabs } from './tabs.js';
 import { initDragDrop } from './dragdrop.js';
 import { initPlayer, loadVideo, destroyPlayer } from './player.js';
 import { initTrim, setDuration, getTrimSettings, resetTrim } from './trim.js';
@@ -15,8 +16,10 @@ import {
   updateResolutionOptions,
   updateEstimation,
 } from './compression.js';
-import { initProgress } from './progress.js';
+import { initProgress, showProgressOverlay } from './progress.js';
 import { initFileManager, renderFiles, formatBytes, formatDuration } from './filemanager.js';
+import { initMetaClean } from './metaclean.js';
+import { initStitch } from './stitch.js';
 
 // ─── Application State ───────────────────────────────────────────
 export const appState = {
@@ -243,10 +246,16 @@ export async function compressAll() {
   const compressBtn = document.getElementById('compress-btn');
   compressBtn.disabled = true;
 
+  // Set all files to queued first
   for (const file of pendingFiles) {
     file.status = 'queued';
-    renderFiles();
+  }
+  renderFiles();
 
+  // Now show overlay (files are queued so they'll appear)
+  showProgressOverlay();
+
+  for (const file of pendingFiles) {
     try {
       const body = {
         files: [{ path: file.serverPath, name: file.name }],
@@ -254,6 +263,12 @@ export async function compressAll() {
         codec: settings.codec,
         format: settings.format,
         scale: file.scale || settings.scale,
+        audioBitrate: settings.audioBitrate,
+        audioCodec: settings.audioCodec,
+        fps: settings.fps,
+        twoPass: settings.twoPass,
+        preserveMetadata: settings.preserveMetadata,
+        fastStart: settings.fastStart,
       };
 
       // Pass custom preset parameters when applicable
@@ -370,6 +385,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     appState.hwInfo = null;
   }
 
+  // Initialize tab navigation
+  initTabs();
+
   // Initialize all modules
   initDragDrop();
   initPlayer();
@@ -378,6 +396,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   initCompression(appState.hwInfo);
   initProgress();
   initFileManager();
+  initMetaClean();
+  initStitch();
 
   // Wire clear-all button
   const clearBtn = document.getElementById('clear-queue-btn');

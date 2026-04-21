@@ -1,3 +1,34 @@
+# Dependencies
 node_modules/
+node_modules
+node_modules.nosync/
+
+# System / logs
 .DS_Store
 *.log
+
+# Environment / secrets
+.env
+.env.*
+.env.nosync
+
+# Local dev artifacts (MCP, test tooling, screenshots)
+.playwright-mcp/
+.superpowers/
+screenshots/
+
+# Local Claude Code config (permissions, plans)
+# Note: .claude/settings.local.json is the standard local-only file.
+# .claude/settings.json here is also local — not tracked upstream.
+.claude/settings.json
+.claude/settings.local.json
+.claude/plans/
+
+# Agent session logs (internal, not for public repo)
+# Existing tracked files under .agents/work-sessions/ remain in history;
+# this prevents NEW session folders from being committed.
+.agents/work-sessions/
+
+# Docs working area (chat exports, drafts — may contain personal info)
+# Existing tracked Docs/*.md files remain in history; this blocks new additions.
+Docs/

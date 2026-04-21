@@ -70,6 +70,7 @@ export function initDragDrop() {
   dropZone.addEventListener('dragover', (e) => {
     e.preventDefault();
     e.stopPropagation();
+    e.dataTransfer.dropEffect = 'copy';
   });
 
   dropZone.addEventListener('dragleave', (e) => {

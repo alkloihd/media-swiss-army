@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en" class="dark" data-theme="dark">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -9,35 +9,19 @@
     <link rel="stylesheet" href="/css/styles.css" />
     <script>
       tailwind.config = {
-        darkMode: 'class',
+        darkMode: ['selector', '[data-theme="dark"]'],
         theme: {
           extend: {
             colors: {
-              surface: { 950: '#0a0a0f', 900: '#111118', 800: '#1a1a24', 700: '#24242f' },
+              surface: { 950: '#0a0a1a', 900: '#0f0f23', 800: '#1a1a35', 700: '#222244' },
             },
           },
         },
       };
     </script>
-    <!-- Inline theme application to prevent flash of wrong theme -->
+    <!-- Force dark mode -->
     <script>
-      (function () {
-        var STORAGE_KEY = 'theme';
-        var stored = null;
-        try {
-          stored = localStorage.getItem(STORAGE_KEY);
-        } catch (e) {}
-        var choice =
-          stored === 'light' || stored === 'dark' || stored === 'system' ? stored : 'system';
-        var effective;
-        if (choice === 'light') effective = 'light';
-        else if (choice === 'dark') effective = 'dark';
-        else
-          effective = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-        document.documentElement.setAttribute('data-theme', effective);
-        if (effective === 'dark') document.documentElement.classList.add('dark');
-        else document.documentElement.classList.remove('dark');
-      })();
+      document.documentElement.setAttribute('data-theme', 'dark');
     </script>
   </head>
   <body class="min-h-screen antialiased">
@@ -46,7 +30,7 @@
       <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex items-center justify-between">
         <div class="flex items-center gap-3">
           <div
-            class="w-9 h-9 rounded-lg bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center shadow-lg shadow-violet-500/20"
+            class="w-9 h-9 rounded-sm bg-gradient-to-br from-emerald-400 to-cyan-500 flex items-center justify-center"
           >
             <svg
               class="w-5 h-5 text-white"
@@ -64,63 +48,12 @@
           </div>
           <h1 class="text-xl font-bold">
             <span
-              class="bg-gradient-to-r from-violet-400 via-purple-400 to-fuchsia-400 bg-clip-text text-transparent"
+              class="bg-gradient-to-r from-emerald-400 via-green-300 to-cyan-400 bg-clip-text text-transparent"
               >Video Compressor</span
             >
           </h1>
         </div>
         <div class="flex items-center gap-3">
-          <!-- Theme Toggle -->
-          <div class="theme-toggle" role="group" aria-label="Theme selection">
-            <button
-              class="theme-toggle-btn"
-              data-theme-choice="light"
-              aria-pressed="false"
-              aria-label="Light theme"
-              title="Light"
-            >
-              <!-- Sun icon -->
-              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"
-                />
-              </svg>
-            </button>
-            <button
-              class="theme-toggle-btn"
-              data-theme-choice="system"
-              aria-pressed="false"
-              aria-label="System theme"
-              title="System"
-            >
-              <!-- Monitor icon -->
-              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  d="M9 17.25v1.007a3 3 0 01-.879 2.122L7.5 21h9l-.621-.621A3 3 0 0115 18.257V17.25m6-12V15a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 15V5.25A2.25 2.25 0 015.25 3h13.5A2.25 2.25 0 0121 5.25z"
-                />
-              </svg>
-            </button>
-            <button
-              class="theme-toggle-btn"
-              data-theme-choice="dark"
-              aria-pressed="false"
-              aria-label="Dark theme"
-              title="Dark"
-            >
-              <!-- Moon icon -->
-              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  d="M21.752 15.002A9.718 9.718 0 0118 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 003 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 009.002-5.998z"
-                />
-              </svg>
-            </button>
-          </div>
           <!-- HW Badge -->
           <div id="hw-badge" class="flex items-center gap-2 px-3 py-1.5 rounded-full text-xs">
             <span class="relative flex h-2 w-2">
@@ -135,237 +68,338 @@
       </div>
     </header>
 
+    <!-- TAB BAR -->
+    <nav class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="tab-bar">
+        <button class="tab-button active" data-tab-button="compress">Compress</button>
+        <button class="tab-button" data-tab-button="stitch">Stitch</button>
+        <button class="tab-button" data-tab-button="metaclean">MetaClean</button>
+      </div>
+    </nav>
+
     <!-- MAIN -->
     <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
-      <!-- DROP ZONE -->
-      <section
-        id="drop-zone"
-        class="drop-zone glass-card relative flex flex-col items-center justify-center py-16 px-6 cursor-pointer transition-all duration-300"
-      >
-        <input
-          type="file"
-          id="file-input"
-          class="hidden"
-          accept="video/*,.mkv,.avi,.wmv,.flv,.ts,.m4v,.mts"
-          multiple
-        />
-        <div
-          class="w-16 h-16 mb-4 rounded-2xl bg-violet-500/10 border border-violet-500/20 flex items-center justify-center"
+      <!-- COMPRESS TAB -->
+      <div data-tab-panel="compress">
+        <!-- DROP ZONE -->
+        <section
+          id="drop-zone"
+          class="drop-zone glass-card relative flex flex-col items-center justify-center py-16 px-6 cursor-pointer transition-all duration-300"
         >
-          <svg
-            class="w-8 h-8 text-violet-400"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-            stroke-width="1.5"
+          <input
+            type="file"
+            id="file-input"
+            class="hidden"
+            accept="video/*,.mkv,.avi,.wmv,.flv,.ts,.m4v,.mts"
+            multiple
+          />
+          <div
+            class="w-16 h-16 mb-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center"
           >
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"
-            />
-          </svg>
-        </div>
-        <p class="text-lg font-medium themed-drop-primary mb-1">
-          Drop video files here or click to browse
-        </p>
-        <p class="text-sm themed-drop-secondary">
-          Supports MP4, MKV, AVI, MOV, WebM, WMV, FLV, TS, M4V and more
-        </p>
-        <div id="path-input-area" class="mt-4 w-full max-w-xl" onclick="event.stopPropagation()">
-          <div class="flex gap-2">
-            <input
-              type="text"
-              id="path-input"
-              placeholder="Or paste file path(s) here..."
-              class="themed-input flex-1 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/50"
-            />
-            <button
-              id="path-submit"
-              class="px-4 py-2 bg-violet-600/20 border border-violet-500/30 rounded-lg text-sm text-violet-300 hover:bg-violet-600/30 transition-colors"
+            <svg
+              class="w-8 h-8 text-emerald-400"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+              stroke-width="1.5"
             >
-              Add
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"
+              />
+            </svg>
+          </div>
+          <p class="text-lg font-medium themed-drop-primary mb-1">Drop video files here</p>
+          <label
+            for="file-input"
+            class="mt-2 mb-2 inline-flex items-center gap-2 px-6 py-3 rounded-full cursor-pointer text-sm font-semibold transition-all duration-200"
+            style="
+              background: var(--accent-green, #22c55e);
+              color: #000;
+              box-shadow: 0 0 20px rgba(34, 197, 94, 0.3);
+            "
+            onclick="event.stopPropagation()"
+          >
+            <svg
+              class="w-4 h-4"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+              stroke-width="2"
+            >
+              <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+            </svg>
+            Browse Files
+          </label>
+          <p class="text-sm themed-drop-secondary">
+            Supports MP4, MKV, AVI, MOV, WebM, WMV, FLV, TS, M4V and more
+          </p>
+          <div id="path-input-area" class="mt-4 w-full max-w-xl" onclick="event.stopPropagation()">
+            <div class="flex gap-2">
+              <input
+                type="text"
+                id="path-input"
+                placeholder="Or paste file path(s) here..."
+                class="themed-input flex-1 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
+              />
+              <button
+                id="path-submit"
+                class="px-4 py-2 bg-emerald-600/20 border border-emerald-500/30 rounded-lg text-sm text-emerald-300 hover:bg-emerald-600/30 transition-colors"
+              >
+                Add
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <!-- FILE QUEUE -->
+        <section id="file-queue" class="space-y-3">
+          <div id="file-queue-header" class="flex items-center justify-between hidden">
+            <h2 class="text-sm font-semibold themed-heading uppercase tracking-wider">
+              File Queue <span id="file-count" class="ml-2 text-emerald-400">(0)</span>
+            </h2>
+            <button
+              id="clear-queue-btn"
+              class="text-xs themed-text-muted hover:text-red-400 transition-colors"
+            >
+              Clear All
             </button>
           </div>
-        </div>
-      </section>
-
-      <!-- FILE QUEUE -->
-      <section id="file-queue" class="space-y-3">
-        <div id="file-queue-header" class="flex items-center justify-between hidden">
-          <h2 class="text-sm font-semibold themed-heading uppercase tracking-wider">
-            File Queue <span id="file-count" class="ml-2 text-violet-400">(0)</span>
-          </h2>
-          <button
-            id="clear-queue-btn"
-            class="text-xs themed-text-muted hover:text-red-400 transition-colors"
-          >
-            Clear All
-          </button>
-        </div>
-        <div
-          id="file-cards-container"
-          class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3"
-        ></div>
-        <div id="file-queue-empty" class="text-center py-8 themed-queue-empty text-sm">
-          No files added yet. Drop or browse to get started.
-        </div>
-      </section>
-
-      <!-- SETTINGS + PREVIEW -->
-      <div class="grid grid-cols-1 lg:grid-cols-5 gap-6">
-        <!-- SETTINGS PANEL -->
-        <div id="settings-panel" class="lg:col-span-2 space-y-5">
-          <!-- Quality Preset -->
-          <div class="glass-card p-5 space-y-3">
-            <h3 class="text-sm font-semibold themed-heading uppercase tracking-wider">
-              Quality Preset
-            </h3>
-            <div class="grid grid-cols-2 gap-2" id="quality-presets">
-              <button class="preset-btn active" data-preset="balanced">
-                <span class="block text-sm font-medium">Balanced</span
-                ><span class="block text-xs themed-text-muted">Good quality & size</span>
-              </button>
-              <button class="preset-btn" data-preset="max">
-                <span class="block text-sm font-medium">Max Quality</span
-                ><span class="block text-xs themed-text-muted">Visually lossless</span>
-              </button>
-              <button class="preset-btn" data-preset="small">
-                <span class="block text-sm font-medium">Small File</span
-                ><span class="block text-xs themed-text-muted">Maximum compression</span>
-              </button>
-              <button class="preset-btn" data-preset="streaming">
-                <span class="block text-sm font-medium">Streaming</span
-                ><span class="block text-xs themed-text-muted">Optimized for web</span>
-              </button>
-              <button class="preset-btn" data-preset="custom">
-                <span class="block text-sm font-medium">Custom</span
-                ><span class="block text-xs themed-text-muted">Full control</span>
-              </button>
-            </div>
-
-            <!-- Custom Quality Panel (visible when Custom preset selected) -->
-            <div id="custom-quality-panel" class="hidden mt-3 space-y-3">
-              <!-- CRF/Bitrate Slider -->
-              <div>
-                <label class="text-xs themed-text-muted">Quality (CRF / Bitrate)</label>
-                <input
-                  type="range"
-                  id="custom-crf"
-                  min="0"
-                  max="51"
-                  value="23"
-                  class="w-full mt-1"
-                  style="accent-color: var(--accent)"
-                />
-                <div class="flex justify-between text-xs themed-text-muted">
-                  <span>Best Quality (larger)</span>
-                  <span id="custom-crf-value">CRF 23</span>
-                  <span>Smallest (lower quality)</span>
-                </div>
-              </div>
-
-              <!-- Encoding Speed -->
-              <div>
-                <label class="text-xs themed-text-muted">Encoding Speed</label>
-                <div id="speed-selector" class="flex flex-wrap gap-1.5 mt-1">
-                  <button class="preset-btn text-xs py-1 px-2" data-speed="ultrafast">
-                    Ultrafast
-                  </button>
-                  <button class="preset-btn text-xs py-1 px-2" data-speed="fast">Fast</button>
-                  <button class="preset-btn text-xs py-1 px-2 active" data-speed="medium">
-                    Medium
-                  </button>
-                  <button class="preset-btn text-xs py-1 px-2" data-speed="slow">Slow</button>
-                  <button class="preset-btn text-xs py-1 px-2" data-speed="veryslow">
-                    Veryslow
-                  </button>
-                </div>
-              </div>
-            </div>
+          <div
+            id="file-cards-container"
+            class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3"
+          ></div>
+          <div id="file-queue-empty" class="text-center py-8 themed-queue-empty text-sm">
+            No files added yet. Drop or browse to get started.
           </div>
+        </section>
 
-          <!-- Codec -->
-          <div class="glass-card p-5 space-y-3">
-            <h3 class="text-sm font-semibold themed-heading uppercase tracking-wider">Codec</h3>
-            <div class="flex flex-wrap gap-2" id="codec-selector">
-              <button class="preset-btn" data-codec="h264">H.264</button>
-              <button class="preset-btn active" data-codec="h265">H.265 (HEVC)</button>
-              <button class="preset-btn" data-codec="av1">AV1</button>
-              <button class="preset-btn" data-codec="prores">ProRes</button>
-            </div>
-          </div>
+        <!-- SETTINGS + PREVIEW -->
+        <div class="grid grid-cols-1 lg:grid-cols-5 gap-6">
+          <!-- SETTINGS PANEL (dynamically populated by compression.js) -->
+          <div id="settings-panel" class="lg:col-span-2 space-y-5">
+            <!-- Matrix + controls rendered here by compression.js -->
+            <div id="matrix-container"></div>
+            <div id="compression-controls"></div>
 
-          <!-- Format -->
-          <div class="glass-card p-5 space-y-3">
-            <h3 class="text-sm font-semibold themed-heading uppercase tracking-wider">Format</h3>
-            <div class="flex flex-wrap gap-2" id="format-selector">
-              <button class="preset-btn active" data-format="mp4">MP4</button>
-              <button class="preset-btn" data-format="mov">MOV</button>
-              <button class="preset-btn" data-format="mkv">MKV</button>
-            </div>
-          </div>
-
-          <!-- Trim -->
-          <div id="trim-section" class="glass-card p-5 space-y-3">
-            <h3 class="text-sm font-semibold themed-heading uppercase tracking-wider">Trim</h3>
-            <div class="flex items-center gap-3">
-              <div class="flex-1">
-                <label class="block text-xs themed-text-muted mb-1">Start Time</label>
-                <input
-                  type="text"
-                  id="trim-start"
-                  placeholder="00:00:00"
-                  class="themed-input w-full rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/50 transition-all"
-                />
-              </div>
-              <div class="flex items-center pt-5">
-                <svg
-                  class="w-5 h-5 themed-text-faint"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                  stroke-width="2"
-                >
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3"
+            <!-- Trim -->
+            <div id="trim-section" class="glass-card p-5 space-y-3">
+              <h3 class="text-sm font-semibold themed-heading uppercase tracking-wider">Trim</h3>
+              <div class="flex items-center gap-3">
+                <div class="flex-1">
+                  <label class="block text-xs themed-text-muted mb-1">Start Time</label>
+                  <input
+                    type="text"
+                    id="trim-start"
+                    placeholder="00:00:00"
+                    class="themed-input w-full rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/50 transition-all"
                   />
-                </svg>
+                </div>
+                <div class="flex items-center pt-5">
+                  <svg
+                    class="w-5 h-5 themed-text-faint"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                    stroke-width="2"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3"
+                    />
+                  </svg>
+                </div>
+                <div class="flex-1">
+                  <label class="block text-xs themed-text-muted mb-1">End Time</label>
+                  <input
+                    type="text"
+                    id="trim-end"
+                    placeholder="00:00:00"
+                    class="themed-input w-full rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/50 transition-all"
+                  />
+                </div>
               </div>
-              <div class="flex-1">
-                <label class="block text-xs themed-text-muted mb-1">End Time</label>
-                <input
-                  type="text"
-                  id="trim-end"
-                  placeholder="00:00:00"
-                  class="themed-input w-full rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/50 transition-all"
+            </div>
+
+            <!-- Crop -->
+            <div id="crop-section" class="glass-card p-5 space-y-3">
+              <h3 class="text-sm font-semibold themed-heading uppercase tracking-wider">Crop</h3>
+              <div class="flex flex-wrap gap-2" id="crop-presets">
+                <button class="preset-btn active" data-crop="none">None</button>
+                <button class="preset-btn" data-crop="16:9">16:9</button>
+                <button class="preset-btn" data-crop="4:3">4:3</button>
+                <button class="preset-btn" data-crop="1:1">1:1</button>
+                <button class="preset-btn" data-crop="9:16">9:16</button>
+              </div>
+              <p id="crop-info" class="text-xs themed-text-muted mt-2 hidden"></p>
+            </div>
+
+            <div id="compression-summary" class="text-center text-sm themed-summary py-1"></div>
+
+            <!-- Compress Button -->
+            <button
+              id="compress-btn"
+              class="compress-btn w-full py-4 font-semibold text-base tracking-wide transition-all duration-300 flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
+              disabled
+            >
+              <svg
+                class="w-5 h-5"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+                stroke-width="2"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  d="M3 4.5h14.25M3 9h9.75M3 13.5h9.75m4.5-4.5v12m0 0l-3.75-3.75M17.25 21l3.75-3.75"
                 />
+              </svg>
+              Compress All
+            </button>
+          </div>
+
+          <!-- VIDEO PREVIEW -->
+          <div id="preview-section" class="lg:col-span-3 space-y-4 hidden">
+            <div class="glass-card p-5 space-y-4">
+              <h3 class="text-sm font-semibold themed-heading uppercase tracking-wider">Preview</h3>
+              <div
+                class="rounded-xl overflow-hidden themed-preview-bg aspect-video"
+                id="preview-wrapper"
+              >
+                <video id="preview-player" playsinline controls crossorigin></video>
+              </div>
+              <div id="video-info" class="grid grid-cols-2 sm:grid-cols-4 gap-3 hidden">
+                <div class="themed-info-box rounded-lg p-3 text-center">
+                  <p class="text-xs themed-text-muted mb-0.5">Duration</p>
+                  <p class="text-sm font-medium themed-text-secondary" id="info-duration">--:--</p>
+                </div>
+                <div class="themed-info-box rounded-lg p-3 text-center">
+                  <p class="text-xs themed-text-muted mb-0.5">Resolution</p>
+                  <p class="text-sm font-medium themed-text-secondary" id="info-resolution">----</p>
+                </div>
+                <div class="themed-info-box rounded-lg p-3 text-center">
+                  <p class="text-xs themed-text-muted mb-0.5">Codec</p>
+                  <p class="text-sm font-medium themed-text-secondary" id="info-codec">----</p>
+                </div>
+                <div class="themed-info-box rounded-lg p-3 text-center">
+                  <p class="text-xs themed-text-muted mb-0.5">Size</p>
+                  <p class="text-sm font-medium themed-text-secondary" id="info-size">----</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- JOBS -->
+        <section id="jobs-section" class="space-y-3 hidden">
+          <h2 class="text-sm font-semibold themed-heading uppercase tracking-wider">Jobs</h2>
+          <div id="jobs-container" class="space-y-3"></div>
+        </section>
+      </div>
+
+      <!-- STITCH TAB -->
+      <div data-tab-panel="stitch" style="display: none">
+        <div class="space-y-6">
+          <!-- Stitch Drop Zone -->
+          <section
+            id="stitch-drop"
+            class="drop-zone glass-card relative flex flex-col items-center justify-center py-12 px-6 cursor-pointer transition-all duration-300"
+          >
+            <input
+              type="file"
+              id="stitch-file-input"
+              class="hidden"
+              accept="video/*,.mkv,.avi,.wmv,.flv,.ts,.m4v,.mts"
+              multiple
+            />
+            <div
+              class="w-12 h-12 mb-3 flex items-center justify-center"
+              style="
+                background: var(--accent-bg-10);
+                border: 2px solid var(--accent-border-25);
+                border-radius: 4px;
+              "
+            >
+              <svg
+                class="w-6 h-6"
+                style="color: var(--accent)"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+                stroke-width="1.5"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  d="M13.19 8.688a4.5 4.5 0 011.242 7.244l-4.5 4.5a4.5 4.5 0 01-6.364-6.364l1.757-1.757m9.86-2.54a4.5 4.5 0 00-6.364-6.364L4.5 8.688"
+                />
+              </svg>
+            </div>
+            <p class="text-base font-medium themed-drop-primary mb-1">
+              Drop video clips here to stitch
+            </p>
+            <p class="text-sm themed-drop-secondary">
+              Add 2+ clips, reorder by dragging, then stitch
+            </p>
+          </section>
+
+          <!-- Clip List -->
+          <div id="stitch-clips" class="space-y-2"></div>
+          <p id="stitch-empty" class="text-center py-4 text-sm themed-text-muted">
+            No clips added yet.
+          </p>
+
+          <!-- Compress Options -->
+          <div class="glass-card p-5 space-y-3">
+            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer">
+              <input
+                type="checkbox"
+                id="stitch-compress-toggle"
+                style="accent-color: var(--accent)"
+              />
+              <span
+                class="text-sm font-semibold themed-heading"
+                style="text-transform: uppercase; letter-spacing: 0.05em"
+                >Compress output</span
+              >
+            </label>
+            <div id="stitch-compress-options" style="display: none" class="space-y-3 mt-2">
+              <div>
+                <span class="text-xs themed-text-muted">Preset</span>
+                <div class="flex flex-wrap gap-2 mt-1">
+                  <button class="preset-btn active" data-stitch-preset="balanced">Balanced</button>
+                  <button class="preset-btn" data-stitch-preset="max">Max</button>
+                  <button class="preset-btn" data-stitch-preset="small">Small</button>
+                </div>
+              </div>
+              <div>
+                <span class="text-xs themed-text-muted">Codec</span>
+                <div class="flex flex-wrap gap-2 mt-1">
+                  <button class="preset-btn" data-stitch-codec="h264">H.264</button>
+                  <button class="preset-btn active" data-stitch-codec="h265">H.265</button>
+                  <button class="preset-btn" data-stitch-codec="av1">AV1</button>
+                </div>
+              </div>
+              <div>
+                <span class="text-xs themed-text-muted">Format</span>
+                <div class="flex flex-wrap gap-2 mt-1">
+                  <button class="preset-btn active" data-stitch-format="mp4">MP4</button>
+                  <button class="preset-btn" data-stitch-format="mov">MOV</button>
+                  <button class="preset-btn" data-stitch-format="mkv">MKV</button>
+                </div>
               </div>
             </div>
           </div>
 
-          <!-- Crop -->
-          <div id="crop-section" class="glass-card p-5 space-y-3">
-            <h3 class="text-sm font-semibold themed-heading uppercase tracking-wider">Crop</h3>
-            <div class="flex flex-wrap gap-2" id="crop-presets">
-              <button class="preset-btn active" data-crop="none">None</button>
-              <button class="preset-btn" data-crop="16:9">16:9</button>
-              <button class="preset-btn" data-crop="4:3">4:3</button>
-              <button class="preset-btn" data-crop="1:1">1:1</button>
-              <button class="preset-btn" data-crop="9:16">9:16</button>
-            </div>
-            <p id="crop-info" class="text-xs themed-text-muted mt-2 hidden"></p>
-          </div>
-
-          <div id="compression-summary" class="text-center text-sm themed-summary py-1"></div>
-
-          <!-- Compress Button -->
+          <!-- Stitch Button -->
           <button
-            id="compress-btn"
-            class="compress-btn w-full py-4 rounded-2xl font-semibold text-base tracking-wide transition-all duration-300 flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
+            id="stitch-btn"
+            class="compress-btn w-full py-4 font-semibold text-base tracking-wide transition-all duration-300 flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
             disabled
+            style="border-radius: 4px"
           >
             <svg
               class="w-5 h-5"
@@ -377,60 +411,133 @@
               <path
                 stroke-linecap="round"
                 stroke-linejoin="round"
-                d="M3 4.5h14.25M3 9h9.75M3 13.5h9.75m4.5-4.5v12m0 0l-3.75-3.75M17.25 21l3.75-3.75"
+                d="M13.19 8.688a4.5 4.5 0 011.242 7.244l-4.5 4.5a4.5 4.5 0 01-6.364-6.364l1.757-1.757m9.86-2.54a4.5 4.5 0 00-6.364-6.364L4.5 8.688"
               />
             </svg>
-            Compress All
+            Stitch Clips
           </button>
 
-          <!-- Tradeoff Information -->
-          <details id="tradeoff-info" class="mt-4">
-            <summary class="text-xs themed-text-muted cursor-pointer hover:opacity-80">
-              What will change? (quality vs size tradeoffs)
-            </summary>
-            <div id="tradeoff-content" class="mt-2 text-xs space-y-2 themed-text-muted">
-              <!-- Dynamically populated by compression.js -->
-            </div>
-          </details>
-        </div>
-
-        <!-- VIDEO PREVIEW -->
-        <div id="preview-section" class="lg:col-span-3 space-y-4 hidden">
-          <div class="glass-card p-5 space-y-4">
-            <h3 class="text-sm font-semibold themed-heading uppercase tracking-wider">Preview</h3>
-            <div
-              class="rounded-xl overflow-hidden themed-preview-bg aspect-video"
-              id="preview-wrapper"
-            >
-              <video id="preview-player" playsinline controls crossorigin></video>
-            </div>
-            <div id="video-info" class="grid grid-cols-2 sm:grid-cols-4 gap-3 hidden">
-              <div class="themed-info-box rounded-lg p-3 text-center">
-                <p class="text-xs themed-text-muted mb-0.5">Duration</p>
-                <p class="text-sm font-medium themed-text-secondary" id="info-duration">--:--</p>
-              </div>
-              <div class="themed-info-box rounded-lg p-3 text-center">
-                <p class="text-xs themed-text-muted mb-0.5">Resolution</p>
-                <p class="text-sm font-medium themed-text-secondary" id="info-resolution">----</p>
-              </div>
-              <div class="themed-info-box rounded-lg p-3 text-center">
-                <p class="text-xs themed-text-muted mb-0.5">Codec</p>
-                <p class="text-sm font-medium themed-text-secondary" id="info-codec">----</p>
-              </div>
-              <div class="themed-info-box rounded-lg p-3 text-center">
-                <p class="text-xs themed-text-muted mb-0.5">Size</p>
-                <p class="text-sm font-medium themed-text-secondary" id="info-size">----</p>
-              </div>
-            </div>
-          </div>
+          <!-- Progress Area -->
+          <div id="stitch-progress" style="display: none"></div>
         </div>
       </div>
 
-      <!-- JOBS -->
-      <section id="jobs-section" class="space-y-3 hidden">
-        <h2 class="text-sm font-semibold themed-heading uppercase tracking-wider">Jobs</h2>
-        <div id="jobs-container" class="space-y-3"></div>
-      </section>
+      <!-- METACLEAN TAB -->
+      <div data-tab-panel="metaclean" style="display: none">
+        <div class="space-y-6">
+          <!-- ExifTool Status -->
+          <div class="flex items-center justify-between">
+            <h2
+              class="text-sm font-semibold themed-heading"
+              style="
+                text-transform: uppercase;
+                letter-spacing: 0.1em;
+                font-family: 'SF Mono', monospace;
+              "
+            >
+              MetaClean — Strip Metadata
+            </h2>
+            <span
+              id="exiftool-status"
+              class="status-badge"
+              style="
+                background: var(--status-pending-bg);
+                color: var(--status-pending-text);
+                border: 1px solid var(--status-pending-border);
+              "
+              >Checking ExifTool...</span
+            >
+          </div>
+
+          <!-- Mode Toggle -->
+          <div class="glass-card p-5 space-y-3">
+            <h3
+              class="text-sm font-semibold themed-heading"
+              style="text-transform: uppercase; letter-spacing: 0.05em"
+            >
+              Cleaning Mode
+            </h3>
+            <div class="flex gap-2">
+              <button class="preset-btn active" data-metaclean-mode="attribution">
+                <span class="block text-sm font-medium">Attribution Only</span>
+                <span class="block text-xs themed-text-muted">Remove Meta/Ray-Ban branding</span>
+              </button>
+              <button class="preset-btn" data-metaclean-mode="privacy">
+                <span class="block text-sm font-medium">Privacy Mode</span>
+                <span class="block text-xs themed-text-muted">+ UUIDs, serials, descriptions</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Drop Zone -->
+          <section
+            id="metaclean-drop"
+            class="drop-zone glass-card relative flex flex-col items-center justify-center py-12 px-6 cursor-pointer transition-all duration-300"
+          >
+            <input
+              type="file"
+              id="metaclean-file-input"
+              class="hidden"
+              accept="image/*,video/*,.heic,.heif,.mov,.mp4,.jpg,.jpeg,.png"
+              multiple
+            />
+            <div
+              class="w-12 h-12 mb-3 flex items-center justify-center"
+              style="
+                background: var(--accent-bg-10);
+                border: 2px solid var(--accent-border-25);
+                border-radius: 4px;
+              "
+            >
+              <svg
+                class="w-6 h-6"
+                style="color: var(--accent)"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+                stroke-width="1.5"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  d="M9.75 9.75l4.5 4.5m0-4.5l-4.5 4.5M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                />
+              </svg>
+            </div>
+            <p class="text-base font-medium themed-drop-primary mb-1">Drop photos or videos here</p>
+            <p class="text-sm themed-drop-secondary">Supports HEIC, MOV, MP4, JPG, PNG and more</p>
+          </section>
+
+          <!-- File List -->
+          <div id="metaclean-files" class="space-y-2"></div>
+          <p id="metaclean-empty" class="text-center py-4 text-sm themed-text-muted">
+            No files added yet.
+          </p>
+
+          <!-- Clean Button -->
+          <button
+            id="metaclean-btn"
+            class="compress-btn w-full py-4 font-semibold text-base tracking-wide transition-all duration-300 flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
+            disabled
+            style="border-radius: 4px"
+          >
+            <svg
+              class="w-5 h-5"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+              stroke-width="2"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                d="M9.75 9.75l4.5 4.5m0-4.5l-4.5 4.5M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+              />
+            </svg>
+            Clean Files
+          </button>
+        </div>
+      </div>
     </main>
 
     <footer class="themed-border border-t mt-12">
@@ -443,11 +550,8 @@
 
     <div id="notifications" class="fixed top-4 right-4 z-50 space-y-2 pointer-events-none"></div>
 
+    <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.6/Sortable.min.js"></script>
     <script src="https://cdn.plyr.io/3.7.8/plyr.polyfilled.js"></script>
-    <script type="module">
-      import { initTheme } from '/js/theme.js';
-      initTheme();
-    </script>
     <script type="module" src="/js/app.js"></script>
   </body>
 </html>
