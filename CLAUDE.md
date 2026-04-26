@@ -113,7 +113,7 @@ VIDEO COMPRESSOR/
 | HTTP Framework | Express 4.21 | JSON body parser, static file serving |
 | WebSocket | ws 8.18 | Real-time progress, auto-reconnect on client |
 | File Upload | multer 1.4.5 | Multipart form data, 50GB limit, temp dir |
-| Job Queue | p-queue 8.0 | Concurrency: 4 (M2 Max dual encode engines) |
+| Job Queue | p-queue 8.0 | Two lanes: HW queue concurrency 2 (M2 Max has 2 VideoToolbox encode engines), SW queue concurrency 3 |
 | Unique IDs | uuid 10.0 | UUIDv4 for job identifiers |
 | Video Engine | FFmpeg 7.1.1 | System-installed at `/opt/homebrew/bin/ffmpeg` |
 | Frontend CSS | Tailwind CSS (CDN) | No build step, utility classes |
