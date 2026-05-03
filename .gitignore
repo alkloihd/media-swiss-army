@@ -33,6 +33,12 @@ screenshots/
 # decision history and need to be reachable from phone via github.com.
 .agents/work-sessions/**/session-activity.log
 
-# Docs working area (chat exports, drafts — may contain personal info)
-# Existing tracked Docs/*.md files remain in history; this blocks new additions.
+# `Docs/` (capital-D) was an ad-hoc chat-export dump and is gitignored.
+# `docs/` (lowercase) is the structured project documentation folder
+# (superpowers plans, design notes) and IS tracked. macOS's
+# case-insensitive filesystem means a bare `Docs/` rule blocks both, so
+# we negate `docs/` explicitly. Order matters: ignore Docs/ first, then
+# unignore docs/.
 Docs/
+!docs/
+!docs/**
