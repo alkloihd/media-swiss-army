@@ -42,7 +42,16 @@ struct ClipBlockView: View {
 
     @ViewBuilder
     private var thumbnailStrip: some View {
-        if thumbnails.isEmpty {
+        if let _ = thumbnailLoadError {
+            // Show a neutral placeholder with a warning glyph so the user
+            // knows thumbnails couldn't be generated for this clip but the
+            // import itself is valid (closes review {E-0503-1050} MED-3).
+            ZStack {
+                Rectangle().fill(.quaternary)
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.secondary)
+            }
+        } else if thumbnails.isEmpty {
             Rectangle().fill(.quaternary)
         } else {
             HStack(spacing: 1) {

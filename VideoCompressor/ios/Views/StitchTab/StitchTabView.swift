@@ -149,12 +149,21 @@ struct StitchTabView: View {
                     continue
                 }
 
-                // Natural size via video track — fall back to .zero on failure.
+                // Natural size via video track — required. A zero size would
+                // cause CropEditorView's normalized math to divide by zero.
                 let naturalSize: CGSize
-                if let track = try? await asset.loadTracks(withMediaType: .video).first {
-                    naturalSize = (try? await track.load(.naturalSize)) ?? .zero
+                if let track = try? await asset.loadTracks(withMediaType: .video).first,
+                   let size = try? await track.load(.naturalSize),
+                   size.width > 0, size.height > 0 {
+                    naturalSize = size
                 } else {
-                    naturalSize = .zero
+                    try? FileManager.default.removeItem(at: stableURL)
+                    await MainActor.run {
+                        project.lastImportError = .fileSystem(
+                            message: "Could not read video dimensions for \(stableURL.lastPathComponent). The file may be corrupt or use an unsupported codec."
+                        )
+                    }
+                    continue
                 }
 
                 let displayName = transferable.suggestedName
@@ -181,7 +190,12 @@ struct StitchTabView: View {
         }
     }
 
-    /// Copies (or moves) the picker-staged temp file into `StitchInputs/`.
+    /// Moves the picker-staged temp file into `StitchInputs/`. If a file
+    /// with the same name already exists (because an earlier-imported clip
+    /// is still in the project and references that path), append a UUID
+    /// suffix instead of overwriting — overwriting would leave the prior
+    /// in-memory `StitchClip` with a dangling URL (closes review
+    /// {E-0503-1050} HIGH-1).
     private func stageToStitchInputs(
         source: URL,
         suggestedName: String?,
@@ -190,10 +204,13 @@ struct StitchTabView: View {
         let ext = source.pathExtension.isEmpty ? "mov" : source.pathExtension
         let base = (suggestedName ?? "clip-\(UUID().uuidString.prefix(8))")
             .replacingOccurrences(of: "/", with: "_")
-        let target = dir.appendingPathComponent("\(base).\(ext)")
+            .deletingSuffix(".\(ext)")
+        var target = dir.appendingPathComponent("\(base).\(ext)")
 
-        // Remove stale duplicate if re-importing the same name.
-        try? FileManager.default.removeItem(at: target)
+        if FileManager.default.fileExists(atPath: target.path) {
+            let suffix = UUID().uuidString.prefix(6)
+            target = dir.appendingPathComponent("\(base)-\(suffix).\(ext)")
+        }
         try FileManager.default.moveItem(at: source, to: target)
 
         // Clean up the Picks-* wrapper directory left by VideoTransferable.
@@ -202,6 +219,15 @@ struct StitchTabView: View {
             try? FileManager.default.removeItem(at: parent)
         }
         return target
+    }
+}
+
+private extension String {
+    /// Removes a trailing `suffix` if present. Used so we don't end up with
+    /// `clip.mov.mov` when the picker hands us a name that already includes
+    /// the extension.
+    func deletingSuffix(_ suffix: String) -> String {
+        hasSuffix(suffix) ? String(dropLast(suffix.count)) : self
     }
 }
 
