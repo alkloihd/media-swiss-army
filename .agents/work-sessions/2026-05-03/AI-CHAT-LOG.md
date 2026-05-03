@@ -1203,3 +1203,16 @@ let renderSize = clips.reduce(CGSize.zero) { acc, _ in acc /* recompute via asyn
   Files: Services/CacheSweeper.swift (new), Views/SettingsTabView.swift (merged Storage section in), VideoCompressorApp.swift (init + sweepOnLaunch hook), Services/VideoLibrary.swift (saveOutputToPhotos opportunistic delete + markDirectoriesAsNonBackup extended — already in HEAD via commit 4b95025)
   Build: ✅ clean build (after clean to bust FileSystemSynchronizedRootGroup cache). 4 tabs in tab bar including Settings with Storage section.
   Status: Complete — pending commit
+
+---
+
+[2026-05-03 20:35 IST] [solo/sonnet] [FEATURE] Phase 3 Commit 6: iMovie-style drag-anywhere reorder + live trim preview
+  Actions:
+    - StitchTimelineView: replaced vertical List + .onMove with horizontal ScrollView + HStack; each clip is .draggable(ClipID) and .dropDestination(for: ClipID.self); ClipID is a typed UUID wrapper struct conforming to Transferable (avoids retroactive UUID conformance); .contextMenu for delete (swipeActions incompatible with HStack); 0.4 opacity on dragged clip
+    - TrimEditorView: replaced dual-Slider with VideoPlayer (top, 16:9, 240pt max height) + custom DualThumbSlider; DragGesture captures dragOrigin at gesture-start so cumulative translation is applied correctly (prevents thumb drift); auto-play on start-thumb release (seek + play); auto-play on end-thumb release (seek to end-2s, play 2s, pause via @MainActor Task); Reset Trim button; clean onDisappear pause + task cancel
+    - ClipEditorSheet: removed @State draftEdits snapshot pattern; now binds directly to project.updateEdits for live edits; initialSnapshot taken on appear for Cancel revert; Done just dismisses
+    - Fixed pre-existing build blockers: staged 6 untracked files (DeviceCapabilities, PhotoCompressionService, PhotoMetadataLoader, PhotoMetadataService, PhotoMedia, DeviceCapabilitiesTests); fixed SettingsTabView Section("Performance") invalid initializer → Section { } header: { } footer: { }; added kCGImagePropertyXMPData CFString constant (not in iOS ImageIO SDK)
+  Files: Views/StitchTab/StitchTimelineView.swift (rewritten), Views/StitchTab/TrimEditorView.swift (rewritten), Views/StitchTab/ClipEditorSheet.swift (rewritten), Views/SettingsTabView.swift (Section fix), Services/PhotoMetadataService.swift (XMP fix + staged), + 5 other newly staged files
+  Build: ✅ clean (2× builds — after clean + after final edits). Simulator launches; Stitch tab empty-state verified.
+  Commit: 496e57f on feature/phase-3-stitch-ux-and-photos
+  Status: Complete
