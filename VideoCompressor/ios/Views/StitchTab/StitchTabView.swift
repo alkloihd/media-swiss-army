@@ -19,6 +19,10 @@ struct StitchTabView: View {
     @StateObject private var project = StitchProject()
     @State private var pickerItems: [PhotosPickerItem] = []
     @State private var showExportSheet = false
+    /// Drives the inline ClipEditorInlinePanel below the timeline. nil when
+    /// no clip is being edited. Tapping a timeline tile sets it; tapping
+    /// the same tile again or the panel's X button clears it.
+    @State private var selectedClipID: StitchClip.ID?
 
     var body: some View {
         NavigationStack {
@@ -48,8 +52,21 @@ struct StitchTabView: View {
                             .padding(.horizontal)
                             .padding(.top, 8)
                             .padding(.bottom, 4)
-                        StitchTimelineView(project: project)
+                        StitchTimelineView(
+                            project: project,
+                            selectedClipID: $selectedClipID
+                        )
+                        if let id = selectedClipID {
+                            ClipEditorInlinePanel(
+                                project: project,
+                                clipID: id,
+                                onClose: { selectedClipID = nil }
+                            )
+                            .transition(.move(edge: .bottom).combined(with: .opacity))
+                        }
+                        Spacer(minLength: 0)
                     }
+                    .animation(.easeInOut(duration: 0.22), value: selectedClipID)
                 }
             }
             .navigationTitle("Stitch")

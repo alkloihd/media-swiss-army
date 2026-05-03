@@ -23,6 +23,9 @@ final class StitchProject: ObservableObject {
     /// orientation; explicit modes pin a 9:16 / 16:9 / 1:1 canvas. Mismatched
     /// clips render with black bars rather than being cropped.
     @Published var aspectMode: StitchAspectMode = .auto
+    /// Per-clip undo/redo history for the inline editor. Keyed by clip ID.
+    /// Lookup returns a fresh empty history if the clip is new.
+    @Published private(set) var histories: [UUID: EditHistory] = [:]
 
     private let inputsDir: URL
     private let outputsDir: URL
@@ -90,6 +93,227 @@ final class StitchProject: ObservableObject {
     func updateEdits(for id: StitchClip.ID, _ apply: (inout ClipEdits) -> Void) {
         guard let index = clips.firstIndex(where: { $0.id == id }) else { return }
         apply(&clips[index].edits)
+    }
+
+    // MARK: - Undo / Redo
+
+    /// Snapshot the clip's current edits onto its undo stack. Call this
+    /// AT THE START of a user-initiated edit interaction (e.g. drag began)
+    /// or when a discrete action is committed (e.g. drag ended on a value
+    /// different from the start). Idempotent if the snapshot equals the
+    /// last entry already on the stack.
+    func commitHistory(for id: StitchClip.ID) {
+        guard let clip = clips.first(where: { $0.id == id }) else { return }
+        var history = histories[id] ?? EditHistory()
+        history.commit(previous: clip.edits)
+        histories[id] = history
+    }
+
+    /// Push an explicit pre-edit snapshot onto the clip's undo stack. Use
+    /// this when the caller has captured the edits BEFORE the user mutated
+    /// them (e.g. snapshot at drag start, commit at drag end with the
+    /// snapshot). Idempotent for equal snapshots — won't bloat the stack
+    /// with no-op drags.
+    func commitHistorySnapshot(for id: StitchClip.ID, previous: ClipEdits) {
+        var history = histories[id] ?? EditHistory()
+        history.commit(previous: previous)
+        histories[id] = history
+    }
+
+    /// Pop one entry from the clip's undo stack and apply it. The current
+    /// edits are pushed to the redo stack so a subsequent Redo round-trips.
+    /// No-op if there is nothing to undo.
+    func undo(for id: StitchClip.ID) {
+        guard let index = clips.firstIndex(where: { $0.id == id }) else { return }
+        var history = histories[id] ?? EditHistory()
+        guard let previous = history.popUndo() else { return }
+        let current = clips[index].edits
+        history.pushRedo(current: current)
+        clips[index].edits = previous
+        histories[id] = history
+    }
+
+    /// Mirror of `undo`. Pops a redo entry and pushes the current to the
+    /// undo stack.
+    func redo(for id: StitchClip.ID) {
+        guard let index = clips.firstIndex(where: { $0.id == id }) else { return }
+        var history = histories[id] ?? EditHistory()
+        guard let next = history.popRedo() else { return }
+        let current = clips[index].edits
+        history.pushUndo(current: current)
+        clips[index].edits = next
+        histories[id] = history
+    }
+
+    /// Resets a clip's edits to `.identity` and clears history. The pre-reset
+    /// state is committed to the undo stack first so the user can recover
+    /// via Cmd+Z (or our Undo button).
+    func resetEdits(for id: StitchClip.ID) {
+        guard let index = clips.firstIndex(where: { $0.id == id }) else { return }
+        var history = histories[id] ?? EditHistory()
+        history.commit(previous: clips[index].edits)
+        clips[index].edits = .identity
+        histories[id] = history
+    }
+
+    func canUndo(for id: StitchClip.ID) -> Bool {
+        histories[id]?.canUndo ?? false
+    }
+
+    func canRedo(for id: StitchClip.ID) -> Bool {
+        histories[id]?.canRedo ?? false
+    }
+
+    // MARK: - Split & remove (structural edits)
+
+    /// Splits a clip into two clips at `seconds` (source-clip seconds, NOT
+    /// composition seconds). The first half retains the original `id`; the
+    /// second half gets a fresh UUID and inherits the source / metadata /
+    /// preferredTransform. The trim ranges are partitioned so the visible
+    /// content is preserved exactly.
+    ///
+    /// Clamping rules:
+    /// - `seconds` is clamped to `(currentTrimStart, currentTrimEnd)`. Splitting
+    ///   exactly at a trim boundary is a no-op (returns false) — there's no
+    ///   meaningful split there.
+    /// - Splitting where the resulting halves would be < 0.1s also no-ops to
+    ///   avoid producing useless slivers.
+    ///
+    /// Returns true when a split occurred.
+    @discardableResult
+    func split(clipID: StitchClip.ID, atSeconds seconds: Double) -> Bool {
+        guard let index = clips.firstIndex(where: { $0.id == clipID }) else { return false }
+        let clip = clips[index]
+        let natural = CMTimeGetSeconds(clip.naturalDuration)
+        let currentStart = clip.edits.trimStartSeconds ?? 0
+        let currentEnd = clip.edits.trimEndSeconds ?? natural
+
+        // Must fall strictly inside the trimmed window with margin on both sides.
+        let minSliverSeconds = 0.1
+        guard seconds > currentStart + minSliverSeconds,
+              seconds < currentEnd - minSliverSeconds else { return false }
+
+        // First half — original ID, trim end becomes split point.
+        var firstEdits = clip.edits
+        firstEdits.trimEndSeconds = seconds
+
+        // Second half — fresh ID, trim start becomes split point, end is
+        // whatever the original end was.
+        var secondEdits = clip.edits
+        secondEdits.trimStartSeconds = seconds
+        secondEdits.trimEndSeconds = currentEnd
+
+        let firstHalf = StitchClip(
+            id: clip.id,
+            sourceURL: clip.sourceURL,
+            displayName: clip.displayName,
+            naturalDuration: clip.naturalDuration,
+            naturalSize: clip.naturalSize,
+            kind: clip.kind,
+            preferredTransform: clip.preferredTransform,
+            edits: firstEdits
+        )
+        let secondHalf = StitchClip(
+            id: UUID(),
+            sourceURL: clip.sourceURL,
+            displayName: clip.displayName + " (2)",
+            naturalDuration: clip.naturalDuration,
+            naturalSize: clip.naturalSize,
+            kind: clip.kind,
+            preferredTransform: clip.preferredTransform,
+            edits: secondEdits
+        )
+
+        clips.remove(at: index)
+        clips.insert(contentsOf: [firstHalf, secondHalf], at: index)
+        // Both halves get fresh empty histories — splits aren't undoable
+        // through the per-clip stack (they're a project-level structural
+        // change). Future enhancement: project-level structural undo.
+        histories[clip.id] = EditHistory()
+        histories[secondHalf.id] = EditHistory()
+        return true
+    }
+
+    /// Remove the time range [from..to] (source-clip seconds) from `clipID`.
+    /// Implemented as: split at `from`, split the resulting second half at
+    /// `to`, then drop the middle clip. Result: the clip is replaced by two
+    /// clips representing the surviving parts.
+    ///
+    /// Clamping mirrors `split`. Returns true when a removal occurred.
+    @discardableResult
+    func removeRange(
+        clipID: StitchClip.ID,
+        fromSeconds: Double,
+        toSeconds: Double
+    ) -> Bool {
+        guard let original = clips.first(where: { $0.id == clipID }) else { return false }
+        guard fromSeconds < toSeconds else { return false }
+
+        // Split at `fromSeconds`. After this, originalID is the FIRST half.
+        guard split(clipID: clipID, atSeconds: fromSeconds) else { return false }
+
+        // The second half is at index originalIndex+1. Split it at `toSeconds`.
+        guard let secondHalfIndex = clips.firstIndex(where: { $0.id == clipID }).map({ $0 + 1 }),
+              secondHalfIndex < clips.count else { return false }
+        let secondHalfID = clips[secondHalfIndex].id
+        guard split(clipID: secondHalfID, atSeconds: toSeconds) else {
+            // Couldn't make the second cut (range too narrow at end). Roll
+            // back the first split by re-merging is not trivial; instead,
+            // accept the partial state — user just has a single split now.
+            // Return false to signal "remove didn't fully happen".
+            // Note: Original clip was already split. Caller may want to
+            // present an error toast.
+            // For correctness, we restore the merged-back state by removing
+            // the new second half and extending the first.
+            _ = restoreFromPartialSplit(clipID: clipID)
+            return false
+        }
+
+        // Now there are 3 clips: [first | middle | last]. Drop the middle.
+        guard let middleIndex = clips.firstIndex(where: { $0.id == secondHalfID }) else {
+            return false
+        }
+        let middleClip = clips[middleIndex]
+        clips.remove(at: middleIndex)
+        histories.removeValue(forKey: middleClip.id)
+        return true
+    }
+
+    /// Internal helper: undoes the most-recent split for `clipID` if the
+    /// next clip after it shares the same sourceURL + naturalDuration AND
+    /// has trimStart equal to the original's trimEnd (the split-point
+    /// invariant). Best-effort — if the timeline has been mutated since
+    /// the split, this returns false and leaves clips alone.
+    @discardableResult
+    private func restoreFromPartialSplit(clipID: StitchClip.ID) -> Bool {
+        guard let firstIdx = clips.firstIndex(where: { $0.id == clipID }) else { return false }
+        let firstHalfIdx = firstIdx
+        let secondHalfIdx = firstIdx + 1
+        guard secondHalfIdx < clips.count else { return false }
+        let firstHalf = clips[firstHalfIdx]
+        let secondHalf = clips[secondHalfIdx]
+        guard firstHalf.sourceURL == secondHalf.sourceURL,
+              firstHalf.naturalDuration == secondHalf.naturalDuration,
+              let splitPoint = firstHalf.edits.trimEndSeconds,
+              abs(splitPoint - (secondHalf.edits.trimStartSeconds ?? 0)) < 0.01
+        else { return false }
+
+        var mergedEdits = firstHalf.edits
+        mergedEdits.trimEndSeconds = secondHalf.edits.trimEndSeconds
+        let merged = StitchClip(
+            id: firstHalf.id,
+            sourceURL: firstHalf.sourceURL,
+            displayName: firstHalf.displayName,
+            naturalDuration: firstHalf.naturalDuration,
+            naturalSize: firstHalf.naturalSize,
+            kind: firstHalf.kind,
+            preferredTransform: firstHalf.preferredTransform,
+            edits: mergedEdits
+        )
+        clips.remove(at: secondHalfIdx)
+        clips[firstHalfIdx] = merged
+        histories.removeValue(forKey: secondHalf.id)
+        return true
     }
 
     // MARK: - Export
