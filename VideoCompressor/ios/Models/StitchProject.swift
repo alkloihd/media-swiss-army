@@ -109,6 +109,16 @@ final class StitchProject: ObservableObject {
         clips.move(fromOffsets: src, toOffset: dst)
     }
 
+    /// Inserts a clip immediately after the given index. Used by the
+    /// "Duplicate" context-menu action so the duplicate sits next to its
+    /// source in the timeline. The duplicate's `sourceURL` typically
+    /// matches an existing clip's URL — `remove(at:)` reference-counts
+    /// before deleting on-disk files so duplicates are safe to delete.
+    func insert(_ clip: StitchClip, after index: Int) {
+        let safeIdx = max(0, min(index + 1, clips.count))
+        clips.insert(clip, at: safeIdx)
+    }
+
     /// Mutates `ClipEdits` for the clip with the given id in place, triggering
     /// `objectWillChange` via the `@Published clips` array write.
     func updateEdits(for id: StitchClip.ID, _ apply: (inout ClipEdits) -> Void) {
@@ -391,6 +401,16 @@ final class StitchProject: ObservableObject {
                 transition: transition
             )
             try Task.checkCancellation()
+
+            // Clean up baked-still temp .movs after the export finishes (or
+            // throws). Without this, NSTemporaryDirectory accumulates orphaned
+            // bakes — iOS does NOT reliably reap that dir on its own.
+            let bakedURLs = plan.bakedStillURLs
+            defer {
+                for url in bakedURLs {
+                    try? FileManager.default.removeItem(at: url)
+                }
+            }
 
             let url = try await exporter.export(
                 plan: plan,

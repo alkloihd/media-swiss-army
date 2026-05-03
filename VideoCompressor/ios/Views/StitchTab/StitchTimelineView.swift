@@ -10,6 +10,10 @@
 //
 
 import SwiftUI
+import AVKit
+import AVFoundation
+import ImageIO
+import UIKit
 import UniformTypeIdentifiers
 
 // ---------------------------------------------------------------------------
@@ -41,13 +45,24 @@ struct StitchTimelineView: View {
     /// deselect. nil = no clip currently being edited.
     @Binding var selectedClipID: StitchClip.ID?
     @State private var draggedID: StitchClip.ID?
+    /// User-controlled pinch-to-zoom on the timeline strip. 1.0 = default
+    /// 200pt clip width; clamped to [0.5, 2.5] so clips never get unusably
+    /// small or absurdly large. Persisted across re-renders only — not
+    /// across launches (intentional; users typically want default zoom).
+    @State private var zoom: CGFloat = 1.0
+    @State private var pinchAnchor: CGFloat? = nil
+
+    private let baseClipWidth: CGFloat = 200
+    private let baseClipHeight: CGFloat = 140
+    private let minZoom: CGFloat = 0.5
+    private let maxZoom: CGFloat = 2.5
 
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
                 ForEach(project.clips) { clip in
                     ClipBlockView(clip: clip)
-                        .frame(width: 200, height: 140)
+                        .frame(width: baseClipWidth * zoom, height: baseClipHeight * zoom)
                         .opacity(draggedID == clip.id ? 0.4 : 1.0)
                         .overlay(
                             // Selection ring — visible when this clip is the
@@ -59,8 +74,8 @@ struct StitchTimelineView: View {
                                 )
                         )
                         .onTapGesture {
-                            // Tapping the active clip closes the editor;
-                            // tapping a different clip switches to it.
+                            // Confirmation tick when picking a clip to edit.
+                            Haptics.tapLight()
                             if selectedClipID == clip.id {
                                 selectedClipID = nil
                             } else {
@@ -70,9 +85,12 @@ struct StitchTimelineView: View {
                         .draggable(ClipID(value: clip.id)) {
                             // Drag preview — semi-transparent thumbnail
                             ClipBlockView(clip: clip)
-                                .frame(width: 160, height: 110)
+                                .frame(width: 160 * zoom, height: 110 * zoom)
                                 .opacity(0.85)
-                                .onAppear { draggedID = clip.id }
+                                .onAppear {
+                                    draggedID = clip.id
+                                    Haptics.tapMedium()
+                                }
                         }
                         .dropDestination(for: ClipID.self) { items, _ in
                             guard
@@ -88,26 +106,193 @@ struct StitchTimelineView: View {
                                 project.move(from: IndexSet(integer: from), to: dst)
                             }
                             draggedID = nil
+                            Haptics.tapMedium()
                             return true
                         } isTargeted: { _ in
                             // Visual feedback could be added here in a future pass
                         }
-                        .contextMenu {
-                            Button(role: .destructive) {
-                                if let i = project.clips.firstIndex(where: { $0.id == clip.id }) {
-                                    if selectedClipID == clip.id {
-                                        selectedClipID = nil
-                                    }
-                                    project.remove(at: IndexSet(integer: i))
-                                }
-                            } label: {
-                                Label("Delete", systemImage: "trash")
-                            }
-                        }
+                        // iOS-native long-press lift + haptic + larger preview
+                        // pane that auto-plays the clip (or shows the still).
+                        // The standard `.contextMenu(menuItems:preview:)` API
+                        // (iOS 16+) supplies the lift haptic for free, so we
+                        // don't add an extra `Haptics` call here.
+                        .contextMenu(menuItems: {
+                            clipContextMenu(for: clip)
+                        }, preview: {
+                            ClipLongPressPreview(clip: clip)
+                                .frame(width: 360, height: 220)
+                        })
                 }
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
+        }
+        // Pinch-to-zoom — multiplicative on a per-gesture-cycle basis. We
+        // capture the zoom value when the gesture begins (`pinchAnchor`)
+        // so subsequent magnification deltas are applied relative to that
+        // baseline and the timeline doesn't fly off-scale.
+        .gesture(
+            MagnificationGesture()
+                .onChanged { magnitude in
+                    let anchor = pinchAnchor ?? zoom
+                    if pinchAnchor == nil { pinchAnchor = anchor }
+                    let proposed = anchor * magnitude
+                    zoom = min(maxZoom, max(minZoom, proposed))
+                }
+                .onEnded { _ in
+                    pinchAnchor = nil
+                    Haptics.tapRigid()
+                }
+        )
+    }
+
+    // MARK: - Context menu
+
+    @ViewBuilder
+    private func clipContextMenu(for clip: StitchClip) -> some View {
+        Button {
+            duplicate(clip: clip)
+        } label: {
+            Label("Duplicate", systemImage: "plus.square.on.square")
+        }
+        Button {
+            moveToStart(clip: clip)
+        } label: {
+            Label("Move to Start", systemImage: "arrow.left.to.line")
+        }
+        Button {
+            moveToEnd(clip: clip)
+        } label: {
+            Label("Move to End", systemImage: "arrow.right.to.line")
+        }
+        Divider()
+        Button(role: .destructive) {
+            deleteClip(clip)
+        } label: {
+            Label("Delete", systemImage: "trash")
+        }
+    }
+
+    private func duplicate(clip: StitchClip) {
+        guard let idx = project.clips.firstIndex(where: { $0.id == clip.id }) else { return }
+        let copy = StitchClip(
+            id: UUID(),
+            sourceURL: clip.sourceURL,
+            displayName: clip.displayName + " (copy)",
+            naturalDuration: clip.naturalDuration,
+            naturalSize: clip.naturalSize,
+            kind: clip.kind,
+            preferredTransform: clip.preferredTransform,
+            edits: clip.edits
+        )
+        // Insert immediately after the original. Note: source file is now
+        // referenced by both clips — `remove(at:)` ref-counts deletions
+        // (split file-safety fix from PR #6 covers this case).
+        project.insert(copy, after: idx)
+        Haptics.tapMedium()
+    }
+
+    private func moveToStart(clip: StitchClip) {
+        guard let idx = project.clips.firstIndex(where: { $0.id == clip.id }), idx > 0 else { return }
+        withAnimation(.easeInOut(duration: 0.25)) {
+            project.move(from: IndexSet(integer: idx), to: 0)
+        }
+        Haptics.tapMedium()
+    }
+
+    private func moveToEnd(clip: StitchClip) {
+        guard let idx = project.clips.firstIndex(where: { $0.id == clip.id }),
+              idx < project.clips.count - 1 else { return }
+        withAnimation(.easeInOut(duration: 0.25)) {
+            project.move(from: IndexSet(integer: idx), to: project.clips.count)
+        }
+        Haptics.tapMedium()
+    }
+
+    private func deleteClip(_ clip: StitchClip) {
+        guard let i = project.clips.firstIndex(where: { $0.id == clip.id }) else { return }
+        if selectedClipID == clip.id {
+            selectedClipID = nil
+        }
+        project.remove(at: IndexSet(integer: i))
+        Haptics.notifyWarning()
+    }
+}
+
+// MARK: - Long-press preview
+
+/// The lift-preview pane shown when the user long-presses a clip tile in
+/// the timeline. iOS 16+ `.contextMenu(menuItems:preview:)` renders this
+/// view scaled up + behind-blurred behind the menu options. For videos
+/// we auto-play (muted) so the user gets a quick scrubbable preview
+/// without leaving the timeline; for stills we show the image.
+private struct ClipLongPressPreview: View {
+    let clip: StitchClip
+    @State private var player: AVPlayer?
+    @State private var stillImage: UIImage?
+
+    var body: some View {
+        ZStack {
+            Color.black
+            switch clip.kind {
+            case .video:
+                if let player = player {
+                    VideoPlayer(player: player)
+                } else {
+                    ProgressView().tint(.white)
+                }
+            case .still:
+                if let img = stillImage {
+                    Image(uiImage: img)
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                } else {
+                    ProgressView().tint(.white)
+                }
+            }
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .task(id: clip.id) { await load() }
+        .onDisappear {
+            player?.pause()
+            player = nil
+        }
+    }
+
+    private func load() async {
+        switch clip.kind {
+        case .video:
+            let p = AVPlayer(url: clip.sourceURL)
+            p.isMuted = true  // quiet preview — long-press is exploratory
+            // Loop the trimmed range so the preview keeps showing motion
+            // for as long as the user holds the press.
+            NotificationCenter.default.addObserver(
+                forName: .AVPlayerItemDidPlayToEndTime,
+                object: p.currentItem,
+                queue: .main
+            ) { _ in
+                p.seek(to: .zero)
+                p.play()
+            }
+            await MainActor.run { player = p }
+            p.play()
+        case .still:
+            let img = await Task.detached(priority: .userInitiated) { () -> UIImage? in
+                guard let src = CGImageSourceCreateWithURL(clip.sourceURL as CFURL, nil),
+                      CGImageSourceGetCount(src) > 0 else {
+                    return nil
+                }
+                let opts: [CFString: Any] = [
+                    kCGImageSourceCreateThumbnailFromImageAlways: true,
+                    kCGImageSourceCreateThumbnailWithTransform: true,
+                    kCGImageSourceShouldCacheImmediately: true,
+                    kCGImageSourceThumbnailMaxPixelSize: 1024,
+                ]
+                guard let cg = CGImageSourceCreateThumbnailAtIndex(src, 0, opts as CFDictionary)
+                else { return nil }
+                return UIImage(cgImage: cg)
+            }.value
+            await MainActor.run { stillImage = img }
         }
     }
 }

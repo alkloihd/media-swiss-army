@@ -53,6 +53,11 @@ actor StitchExporter {
         let audioMix: AVMutableAudioMix?
         let renderSize: CGSize
         let canPassthrough: Bool
+        /// Temp .mov files baked from still images during buildPlan. The
+        /// caller (StitchProject.runExport) is expected to delete these
+        /// after export completes — they live in NSTemporaryDirectory
+        /// which iOS doesn't reliably reap on its own.
+        let bakedStillURLs: [URL]
     }
 
     /// Builds the composition. Any failure (missing video track, codec
@@ -72,16 +77,42 @@ actor StitchExporter {
         guard !clips.isEmpty else {
             throw CompressionError.exportFailed("Stitch export requires at least one clip.")
         }
-        // Phase 3 commit 5: stills can be added to the timeline but cannot
-        // yet be exported. Composition rendering for stills (single-frame
-        // video segment via AVAssetWriterInputPixelBufferAdaptor) lands in
-        // commit 6. Fail gracefully here rather than producing a confusing
-        // AVFoundation error.
-        if clips.contains(where: { $0.kind == .still }) {
-            throw CompressionError.exportFailed(
-                "Photo clips can be added to the timeline but stitch export with photos is coming soon. Remove photo clips and re-export."
-            )
+        // Bake any still-image clips to temp .mov files so the rest of the
+        // composition pipeline can treat them uniformly.
+        let baker = StillVideoBaker()
+        var bakedClips: [StitchClip] = []
+        var bakedStillURLs: [URL] = []
+        for clip in clips {
+            // Honour cancellation between bakes — a 10-still bake otherwise
+            // wastes seconds of work after the user taps Cancel.
+            try Task.checkCancellation()
+            if clip.kind == .still {
+                let stillDuration = clip.edits.stillDuration ?? 3.0
+                let clamped = min(10.0, max(1.0, stillDuration))
+                let bakedURL = try await baker.bake(
+                    still: clip.sourceURL,
+                    duration: clamped
+                )
+                bakedStillURLs.append(bakedURL)
+                var bakedEdits = clip.edits
+                bakedEdits.trimStartSeconds = 0
+                bakedEdits.trimEndSeconds = clamped
+                let baked = StitchClip(
+                    id: clip.id,
+                    sourceURL: bakedURL,
+                    displayName: clip.displayName,
+                    naturalDuration: CMTime(seconds: clamped, preferredTimescale: 600),
+                    naturalSize: clip.naturalSize,
+                    kind: .video,
+                    preferredTransform: .identity,
+                    edits: bakedEdits
+                )
+                bakedClips.append(baked)
+            } else {
+                bakedClips.append(clip)
+            }
         }
+        let clips = bakedClips
 
         let composition = AVMutableComposition()
         guard let videoTrackA = composition.addMutableTrack(
@@ -290,7 +321,8 @@ actor StitchExporter {
             videoComposition: videoComposition,
             audioMix: audioMix,
             renderSize: renderSize,
-            canPassthrough: canPassthrough
+            canPassthrough: canPassthrough,
+            bakedStillURLs: bakedStillURLs
         )
     }
 
