@@ -2,17 +2,11 @@
 //  Item.swift
 //  VideoCompressor
 //
-//  Created by Rishaal on 2026-05-03.
+//  Legacy SwiftData boilerplate stripped — kept as a no-op so the Xcode
+//  synchronized-folder build does not lose a referenced filename. Real models
+//  live under Models/.
 //
 
 import Foundation
-import SwiftData
 
-@Model
-final class Item {
-    var timestamp: Date
-    
-    init(timestamp: Date) {
-        self.timestamp = timestamp
-    }
-}
+// Intentionally empty.
