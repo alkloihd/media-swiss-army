@@ -13,6 +13,11 @@ struct VideoListView: View {
     @EnvironmentObject private var library: VideoLibrary
     @State private var pickerItems: [PhotosPickerItem] = []
     @State private var presetSheet = false
+    @State private var saveToastVisible = false
+    @State private var saveToastMessage = ""
+    @State private var saveToastIsError = false
+    /// Track last-seen saved ID to detect new saves without re-firing.
+    @State private var lastNotifiedSaveID: UUID?
 
     var body: some View {
         NavigationStack {
@@ -99,6 +104,55 @@ struct VideoListView: View {
         }
         .listStyle(.insetGrouped)
         .accessibilityIdentifier("videoList")
+        .overlay(alignment: .bottom) {
+            if saveToastVisible {
+                saveToast
+                    .padding(.bottom, 8)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+        }
+        .animation(.easeInOut(duration: 0.3), value: saveToastVisible)
+        .onChange(of: library.videos) { _, newVideos in
+            for video in newVideos {
+                // Fire toast when a row transitions to .saved (de-duped by ID).
+                if case .saved = video.saveStatus, video.id != lastNotifiedSaveID {
+                    lastNotifiedSaveID = video.id
+                    saveToastMessage = "Saved to Photos"
+                    saveToastIsError = false
+                    showToast()
+                }
+                // Fire toast on failure too.
+                if case .saveFailed(let reason) = video.saveStatus, video.id != lastNotifiedSaveID {
+                    lastNotifiedSaveID = video.id
+                    saveToastMessage = reason
+                    saveToastIsError = true
+                    showToast()
+                }
+            }
+        }
+    }
+
+    private var saveToast: some View {
+        HStack(spacing: 8) {
+            Image(systemName: saveToastIsError ? "exclamationmark.triangle.fill" : "checkmark.circle.fill")
+                .foregroundStyle(saveToastIsError ? .red : .green)
+            Text(saveToastMessage)
+                .font(.subheadline.weight(.medium))
+                .lineLimit(2)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
+        .shadow(color: .black.opacity(0.15), radius: 8, y: 4)
+        .accessibilityIdentifier("saveToast")
+    }
+
+    private func showToast() {
+        saveToastVisible = true
+        Task {
+            try? await Task.sleep(for: .seconds(2))
+            saveToastVisible = false
+        }
     }
 
     private var actionBar: some View {

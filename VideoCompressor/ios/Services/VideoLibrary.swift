@@ -44,7 +44,11 @@ final class VideoLibrary: ObservableObject {
 
     private static func markDirectoriesAsNonBackup() {
         let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-        for sub in ["Inputs", "Outputs"] {
+        // All 6 working dirs are transient; exclude from iCloud/iTunes backup.
+        // Was ["Inputs", "Outputs"] in v1.x — extended to all 6 dirs per
+        // Phase 3 audit (closes iCloud-backup gap for StitchInputs/Outputs +
+        // CleanInputs/Cleaned).
+        for sub in CacheSweeper.allDirs {
             let dir = docs.appendingPathComponent(sub, isDirectory: true)
             try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
             var values = URLResourceValues()
@@ -171,10 +175,12 @@ final class VideoLibrary: ObservableObject {
         let bgTaskID = UIApplication.shared.beginBackgroundTask(
             withName: "VideoCompressor.compress.\(id.uuidString.prefix(8))"
         )
+        AudioBackgroundKeeper.shared.begin()
         defer {
             if bgTaskID != .invalid {
                 UIApplication.shared.endBackgroundTask(bgTaskID)
             }
+            AudioBackgroundKeeper.shared.end()
         }
 
         do {
@@ -277,9 +283,29 @@ final class VideoLibrary: ObservableObject {
     func saveOutputToPhotos(for id: UUID) async {
         guard let video = videos.first(where: { $0.id == id }),
               let url = video.output?.url else { return }
+        if let i = videos.firstIndex(where: { $0.id == id }) {
+            videos[i].saveStatus = .saving
+        }
         do {
             try await PhotosSaver.saveVideo(at: url)
+            if let i = videos.firstIndex(where: { $0.id == id }) {
+                videos[i].saveStatus = .saved
+            }
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
+
+            // Opportunistic delete: the compressed output is now safely in the
+            // Photos library. Delete our sandbox copy of the source from
+            // Inputs/ — it's a redundant copy of what the user already has in
+            // Photos. The Photos library original is never touched.
+            let sourceURL = video.sourceURL
+            Task.detached(priority: .utility) {
+                await CacheSweeper.shared.deleteIfInWorkingDir(sourceURL)
+            }
         } catch {
+            if let i = videos.firstIndex(where: { $0.id == id }) {
+                videos[i].saveStatus = .saveFailed(reason: error.localizedDescription)
+            }
+            UINotificationFeedbackGenerator().notificationOccurred(.error)
             lastError = .photos(asPhotosError(error))
         }
     }

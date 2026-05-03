@@ -10,6 +10,14 @@
 import Foundation
 import AVFoundation
 
+/// Tracks whether this video's output has been saved to Photos.
+enum SaveStatus: Hashable, Sendable {
+    case unsaved
+    case saving
+    case saved
+    case saveFailed(reason: String)
+}
+
 struct VideoFile: Identifiable, Hashable, Sendable {
     let id: UUID
     /// On-disk URL inside the app's tmp/import directory. PhotosPicker hands
@@ -24,6 +32,8 @@ struct VideoFile: Identifiable, Hashable, Sendable {
     /// Cohesive output payload — set together when compression finishes.
     /// Replaces the former `outputURL: URL?` + `outputBytes: Int64?` pair.
     var output: CompressedOutput?
+    /// Per-row Photos save state — drives the save icon in VideoRowView.
+    var saveStatus: SaveStatus = .unsaved
 
     init(
         id: UUID = UUID(),
@@ -32,7 +42,8 @@ struct VideoFile: Identifiable, Hashable, Sendable {
         importedAt: Date = Date(),
         metadata: VideoMetadata? = nil,
         jobState: CompressionJobState = .idle,
-        output: CompressedOutput? = nil
+        output: CompressedOutput? = nil,
+        saveStatus: SaveStatus = .unsaved
     ) {
         self.id = id
         self.sourceURL = sourceURL
@@ -41,6 +52,7 @@ struct VideoFile: Identifiable, Hashable, Sendable {
         self.metadata = metadata
         self.jobState = jobState
         self.output = output
+        self.saveStatus = saveStatus
     }
 }
 
