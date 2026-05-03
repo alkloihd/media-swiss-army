@@ -26,6 +26,23 @@ final class VideoLibrary: ObservableObject {
     @Published var lastErrorMessage: String?
 
     private var activeTask: Task<Void, Never>?
+    private let service = CompressionService()
+
+    init() {
+        Self.markDirectoriesAsNonBackup()
+    }
+
+    private static func markDirectoriesAsNonBackup() {
+        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        for sub in ["Inputs", "Outputs"] {
+            let dir = docs.appendingPathComponent(sub, isDirectory: true)
+            try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            var values = URLResourceValues()
+            values.isExcludedFromBackup = true
+            var url = dir
+            try? url.setResourceValues(values)
+        }
+    }
 
     static func preview() -> VideoLibrary {
         let lib = VideoLibrary()
@@ -67,7 +84,13 @@ final class VideoLibrary: ObservableObject {
         // If the destination already exists (re-imported same picker item),
         // remove it so the copy doesn't fail.
         try? FileManager.default.removeItem(at: target)
-        try FileManager.default.copyItem(at: source, to: target)
+        try FileManager.default.moveItem(at: source, to: target)
+
+        // Clean up the picker tmp wrapper if it's our Picks-* dir.
+        let parent = source.deletingLastPathComponent()
+        if parent.lastPathComponent.hasPrefix("Picks-") {
+            try? FileManager.default.removeItem(at: parent)
+        }
         return target
     }
 
@@ -102,7 +125,9 @@ final class VideoLibrary: ObservableObject {
         // Cancel any in-flight task before starting a new run.
         activeTask?.cancel()
         let preset = selectedPreset
-        let pendingIDs = videos.filter { !$0.jobState.isTerminal && $0.jobState != .running(progress: 0) }.map(\.id)
+        let pendingIDs = videos
+            .filter { !$0.jobState.isTerminal && !$0.jobState.isActive }
+            .map(\.id)
 
         activeTask = Task { [weak self] in
             for id in pendingIDs {
@@ -113,8 +138,9 @@ final class VideoLibrary: ObservableObject {
     }
 
     func compress(_ id: UUID) {
+        activeTask?.cancel()
         let preset = selectedPreset
-        Task { [weak self] in
+        activeTask = Task { [weak self] in
             await self?.runJob(for: id, preset: preset)
         }
     }
@@ -124,7 +150,6 @@ final class VideoLibrary: ObservableObject {
         videos[idx].jobState = .running(progress: 0)
         let inputURL = videos[idx].sourceURL
 
-        let service = CompressionService()
         do {
             let outputURL = try await service.compress(
                 input: inputURL,
@@ -136,16 +161,31 @@ final class VideoLibrary: ObservableObject {
                 }
             }
 
-            let bytes: Int64 = {
-                let attrs = try? FileManager.default.attributesOfItem(atPath: outputURL.path)
-                return (attrs?[.size] as? NSNumber)?.int64Value ?? 0
-            }()
-
-            if let i = videos.firstIndex(where: { $0.id == id }) {
-                videos[i].jobState = .finished
-                videos[i].outputURL = outputURL
-                videos[i].outputBytes = bytes
+            let bytes: Int64
+            do {
+                let attrs = try FileManager.default.attributesOfItem(atPath: outputURL.path)
+                bytes = (attrs[.size] as? NSNumber)?.int64Value ?? 0
+            } catch {
+                if let i = videos.firstIndex(where: { $0.id == id }) {
+                    videos[i].jobState = .failed(message: "Output written but unreadable: \(error.localizedDescription)")
+                }
+                return
             }
+            guard bytes > 0 else {
+                if let i = videos.firstIndex(where: { $0.id == id }) {
+                    videos[i].jobState = .failed(message: "Compressor produced an empty file. Try a different preset.")
+                }
+                try? FileManager.default.removeItem(at: outputURL)
+                return
+            }
+            guard let i = videos.firstIndex(where: { $0.id == id }) else {
+                // User removed the row mid-flight; clean up orphan.
+                try? FileManager.default.removeItem(at: outputURL)
+                return
+            }
+            videos[i].jobState = .finished
+            videos[i].outputURL = outputURL
+            videos[i].outputBytes = bytes
         } catch is CancellationError {
             if let i = videos.firstIndex(where: { $0.id == id }) {
                 videos[i].jobState = .cancelled

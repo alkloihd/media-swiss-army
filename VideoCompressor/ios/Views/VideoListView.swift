@@ -56,14 +56,16 @@ struct VideoListView: View {
             }
             .alert(
                 "Something went wrong",
-                isPresented: .constant(library.lastErrorMessage != nil),
-                actions: {
-                    Button("OK") { library.lastErrorMessage = nil }
-                },
-                message: {
-                    Text(library.lastErrorMessage ?? "")
-                }
-            )
+                isPresented: Binding(
+                    get: { library.lastErrorMessage != nil },
+                    set: { if !$0 { library.lastErrorMessage = nil } }
+                ),
+                presenting: library.lastErrorMessage
+            ) { _ in
+                Button("OK", role: .cancel) {}
+            } message: { msg in
+                Text(msg)
+            }
         }
         .onChange(of: pickerItems) { _, newItems in
             guard !newItems.isEmpty else { return }

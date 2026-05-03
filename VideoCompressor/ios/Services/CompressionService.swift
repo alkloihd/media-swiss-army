@@ -38,7 +38,7 @@ actor CompressionService {
     func compress(
         input inputURL: URL,
         preset: CompressionPreset,
-        onProgress: @MainActor @escaping (Double) -> Void
+        onProgress: @MainActor @Sendable @escaping (Double) -> Void
     ) async throws -> URL {
 
         let asset = AVURLAsset(url: inputURL, options: [
@@ -67,26 +67,33 @@ actor CompressionService {
         exporter.outputFileType = preset.fileType
         exporter.shouldOptimizeForNetworkUse = (preset == .streaming)
 
-        // Spawn a polling task that publishes progress at 10 Hz. We cancel
-        // it as soon as the export completes.
-        let progressTask = Task { @MainActor in
+        // Spawn a polling task that publishes progress at 10 Hz.
+        let progressTask = Task { @MainActor [weak exporter] in
             while !Task.isCancelled {
+                guard let exporter else { return }
                 onProgress(Double(exporter.progress))
-                try? await Task.sleep(nanoseconds: 100_000_000) // 100 ms
+                do { try await Task.sleep(nanoseconds: 100_000_000) }
+                catch { return }
             }
         }
 
         defer { progressTask.cancel() }
 
-        // Run the export. `export()` is now async on iOS 18 but we keep the
-        // older callback-based wait pattern so iOS 17 stays supported.
-        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-            exporter.exportAsynchronously {
-                continuation.resume()
+        // Run the export. We use withTaskCancellationHandler so a cooperative
+        // Task.cancel() actually stops the underlying AVAssetExportSession.
+        await withTaskCancellationHandler {
+            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                exporter.exportAsynchronously {
+                    continuation.resume()
+                }
             }
+        } onCancel: {
+            exporter.cancelExport()
         }
 
-        // Surface a final 1.0 in case the poller missed the last tick.
+        // Stop the poller BEFORE we emit the final 1.0 — otherwise the poller
+        // can race in and overwrite with the latest exporter.progress (~0.99).
+        progressTask.cancel()
         await MainActor.run { onProgress(1.0) }
 
         switch exporter.status {
@@ -95,9 +102,14 @@ actor CompressionService {
         case .cancelled:
             throw CompressionError.cancelled
         case .failed:
-            throw CompressionError.exportFailed(exporter.error?.localizedDescription ?? "Unknown export error")
-        default:
-            throw CompressionError.exportFailed("Unexpected exporter status: \(exporter.status.rawValue)")
+            let nsErr = exporter.error as NSError?
+            let detail = nsErr.map { "[\($0.domain) \($0.code)] \($0.localizedDescription)" } ?? "Unknown export error"
+            let underlying = (nsErr?.userInfo[NSUnderlyingErrorKey] as? NSError)
+                .map { " (underlying: \($0.domain) \($0.code))" } ?? ""
+            throw CompressionError.exportFailed(detail + underlying)
+        @unknown default:
+            let detail = (exporter.error as NSError?).map { "[\($0.domain) \($0.code)] \($0.localizedDescription)" } ?? "no error attached"
+            throw CompressionError.exportFailed("Exporter reached non-terminal state \(exporter.status.rawValue) — \(detail)")
         }
     }
 
