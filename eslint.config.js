@@ -1,6 +1,6 @@
 export default [
   {
-    ignores: ['node_modules/**', 'node_modules.nosync/**'],
+    ignores: ['node_modules/**', 'node_modules.nosync/**', '.claude/worktrees/**'],
   },
   {
     files: ['**/*.js'],

@@ -23,6 +23,7 @@ screenshots/
 .claude/settings.json
 .claude/settings.local.json
 .claude/plans/
+.claude/worktrees/
 
 # Agent session logs (internal, not for public repo)
 # Existing tracked files under .agents/work-sessions/ remain in history;
