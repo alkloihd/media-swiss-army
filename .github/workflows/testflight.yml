@@ -12,7 +12,7 @@ concurrency:
 jobs:
   testflight:
     name: Archive + upload to TestFlight
-    runs-on: macos-latest
+    runs-on: macos-26
     timeout-minutes: 60
 
     env:
@@ -29,7 +29,7 @@ jobs:
 
       - name: Show Xcode version
         run: |
-          sudo xcode-select -s /Applications/Xcode_26.app/Contents/Developer 2>/dev/null || sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+          ls -1 /Applications/ | grep -i Xcode || true
           xcodebuild -version
           xcrun --show-sdk-path --sdk iphoneos
 
