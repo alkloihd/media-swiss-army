@@ -25,10 +25,11 @@ screenshots/
 .claude/plans/
 .claude/worktrees/
 
-# Agent session logs (internal, not for public repo)
-# Existing tracked files under .agents/work-sessions/ remain in history;
-# this prevents NEW session folders from being committed.
-.agents/work-sessions/
+# Agent session activity logs (raw shell-history per session) only.
+# All planning docs, AI-CHAT-LOG.md, HANDOFF.md, PLAN-*, AUDIT-*, BACKLOG-*
+# under .agents/work-sessions/ ARE tracked — they're the project's
+# decision history and need to be reachable from phone via github.com.
+.agents/work-sessions/**/session-activity.log
 
 # Docs working area (chat exports, drafts — may contain personal info)
 # Existing tracked Docs/*.md files remain in history; this blocks new additions.
