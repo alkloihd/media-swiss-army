@@ -1,0 +1,167 @@
+name: TestFlight
+
+# Triggers:
+# - push to `main`        → automatic build + upload to TestFlight
+# - workflow_dispatch     → manual run (use for testing on feature branches)
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: testflight-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  testflight:
+    name: Archive + upload to TestFlight
+    runs-on: macos-15
+    timeout-minutes: 60
+
+    env:
+      PROJECT_PATH: VideoCompressor/VideoCompressor_iOS.xcodeproj
+      SCHEME: VideoCompressor_iOS
+      ARCHIVE_PATH: ${{ github.workspace }}/build/VideoCompressor.xcarchive
+      EXPORT_PATH: ${{ github.workspace }}/build/export
+      EXPORT_OPTIONS_PATH: ${{ github.workspace }}/build/ExportOptions.plist
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Show Xcode version
+        run: |
+          xcodebuild -version
+          xcrun --show-sdk-path --sdk iphoneos
+
+      - name: Cache DerivedData
+        uses: actions/cache@v4
+        with:
+          path: ~/Library/Developer/Xcode/DerivedData
+          key: ${{ runner.os }}-derived-${{ hashFiles('VideoCompressor/**/*.swift', 'VideoCompressor/**/*.pbxproj') }}
+          restore-keys: |
+            ${{ runner.os }}-derived-
+
+      - name: Bump build number
+        env:
+          RUN_NUMBER: ${{ github.run_number }}
+        run: |
+          cd VideoCompressor
+          xcrun agvtool new-version -all "$RUN_NUMBER"
+
+      - name: Write App Store Connect API key
+        env:
+          API_KEY_CONTENT: ${{ secrets.APP_STORE_CONNECT_API_KEY }}
+          API_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+        run: |
+          if [ -z "$API_KEY_CONTENT" ] || [ -z "$API_KEY_ID" ]; then
+            echo "::error::Missing APP_STORE_CONNECT_API_KEY or APP_STORE_CONNECT_API_KEY_ID secret"
+            exit 1
+          fi
+          mkdir -p "$HOME/.appstoreconnect/private_keys"
+          KEY_PATH="$HOME/.appstoreconnect/private_keys/AuthKey_${API_KEY_ID}.p8"
+          printf '%s' "$API_KEY_CONTENT" > "$KEY_PATH"
+          chmod 600 "$KEY_PATH"
+
+      - name: Archive (Release, generic iOS device)
+        env:
+          API_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+          ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+        run: |
+          set -o pipefail
+          mkdir -p "$(dirname "$ARCHIVE_PATH")"
+          xcodebuild archive \
+            -project "$PROJECT_PATH" \
+            -scheme "$SCHEME" \
+            -configuration Release \
+            -destination "generic/platform=iOS" \
+            -archivePath "$ARCHIVE_PATH" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$HOME/.appstoreconnect/private_keys/AuthKey_${API_KEY_ID}.p8" \
+            -authenticationKeyID "$API_KEY_ID" \
+            -authenticationKeyIssuerID "$ISSUER_ID" \
+            CODE_SIGN_STYLE=Automatic \
+            DEVELOPMENT_TEAM=9577LMA4J5
+
+      - name: Write ExportOptions.plist
+        run: |
+          mkdir -p "$(dirname "$EXPORT_OPTIONS_PATH")"
+          cat > "$EXPORT_OPTIONS_PATH" <<'PLIST'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>method</key>
+              <string>app-store-connect</string>
+              <key>signingStyle</key>
+              <string>automatic</string>
+              <key>teamID</key>
+              <string>9577LMA4J5</string>
+              <key>uploadBitcode</key>
+              <false/>
+              <key>uploadSymbols</key>
+              <true/>
+              <key>destination</key>
+              <string>upload</string>
+          </dict>
+          </plist>
+          PLIST
+
+      - name: Export IPA
+        env:
+          API_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+          ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+        run: |
+          xcodebuild -exportArchive \
+            -archivePath "$ARCHIVE_PATH" \
+            -exportPath "$EXPORT_PATH" \
+            -exportOptionsPlist "$EXPORT_OPTIONS_PATH" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$HOME/.appstoreconnect/private_keys/AuthKey_${API_KEY_ID}.p8" \
+            -authenticationKeyID "$API_KEY_ID" \
+            -authenticationKeyIssuerID "$ISSUER_ID"
+
+      - name: Locate IPA
+        id: ipa
+        run: |
+          IPA="$(find "$EXPORT_PATH" -name '*.ipa' -print -quit)"
+          if [ -z "$IPA" ]; then
+            echo "::error::No IPA produced under $EXPORT_PATH"
+            ls -la "$EXPORT_PATH" || true
+            exit 1
+          fi
+          echo "ipa_path=$IPA" >> "$GITHUB_OUTPUT"
+          echo "Built IPA: $IPA ($(du -h "$IPA" | cut -f1))"
+
+      - name: Upload to TestFlight
+        env:
+          API_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+          ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          IPA_PATH: ${{ steps.ipa.outputs.ipa_path }}
+        run: |
+          xcrun altool --upload-app \
+            --type ios \
+            --file "$IPA_PATH" \
+            --apiKey "$API_KEY_ID" \
+            --apiIssuer "$ISSUER_ID" \
+            --output-format normal
+
+      - name: Summarize
+        if: always()
+        env:
+          BRANCH: ${{ github.ref_name }}
+          COMMIT: ${{ github.sha }}
+          STATUS: ${{ job.status }}
+          RUN_NUMBER: ${{ github.run_number }}
+        run: |
+          {
+            echo "## TestFlight build $RUN_NUMBER"
+            echo ""
+            echo "- Branch: \`$BRANCH\`"
+            echo "- Commit: \`$COMMIT\`"
+            echo "- Status: $STATUS"
+            echo "- Build number on archive: $RUN_NUMBER"
+            echo ""
+            echo "Apple takes ~5–10 min to process the upload before it shows in TestFlight."
+            echo "Internal testers (you) get an email when the build is ready to install."
+          } >> "$GITHUB_STEP_SUMMARY"
