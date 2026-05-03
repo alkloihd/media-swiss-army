@@ -1,8 +1,5 @@
 name: TestFlight
 
-# Triggers:
-# - push to `main`        → automatic build + upload to TestFlight
-# - workflow_dispatch     → manual run (use for testing on feature branches)
 on:
   push:
     branches: [main]
@@ -24,6 +21,7 @@ jobs:
       ARCHIVE_PATH: ${{ github.workspace }}/build/VideoCompressor.xcarchive
       EXPORT_PATH: ${{ github.workspace }}/build/export
       EXPORT_OPTIONS_PATH: ${{ github.workspace }}/build/ExportOptions.plist
+      TEAM_ID: 9577LMA4J5
 
     steps:
       - name: Checkout
@@ -63,10 +61,14 @@ jobs:
           printf '%s' "$API_KEY_CONTENT" > "$KEY_PATH"
           chmod 600 "$KEY_PATH"
 
-      - name: Archive (Release, generic iOS device)
-        env:
-          API_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
-          ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+      - name: Archive (Release, no signing)
+        # Archive WITHOUT code-signing to avoid Apple's auto-signing
+        # trying to provision a Development profile (which needs at
+        # least one registered device on the team — we have zero).
+        # Signing happens during exportArchive below using
+        # -allowProvisioningUpdates + the API key, which provisions ONLY
+        # an App Store Distribution profile (no device registration
+        # required).
         run: |
           set -o pipefail
           mkdir -p "$(dirname "$ARCHIVE_PATH")"
@@ -76,17 +78,15 @@ jobs:
             -configuration Release \
             -destination "generic/platform=iOS" \
             -archivePath "$ARCHIVE_PATH" \
-            -allowProvisioningUpdates \
-            -authenticationKeyPath "$HOME/.appstoreconnect/private_keys/AuthKey_${API_KEY_ID}.p8" \
-            -authenticationKeyID "$API_KEY_ID" \
-            -authenticationKeyIssuerID "$ISSUER_ID" \
-            CODE_SIGN_STYLE=Automatic \
-            DEVELOPMENT_TEAM=9577LMA4J5
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGN_ENTITLEMENTS=""
 
       - name: Write ExportOptions.plist
         run: |
           mkdir -p "$(dirname "$EXPORT_OPTIONS_PATH")"
-          cat > "$EXPORT_OPTIONS_PATH" <<'PLIST'
+          cat > "$EXPORT_OPTIONS_PATH" <<PLIST
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
           <plist version="1.0">
@@ -96,18 +96,20 @@ jobs:
               <key>signingStyle</key>
               <string>automatic</string>
               <key>teamID</key>
-              <string>9577LMA4J5</string>
+              <string>${TEAM_ID}</string>
               <key>uploadBitcode</key>
               <false/>
               <key>uploadSymbols</key>
               <true/>
               <key>destination</key>
               <string>upload</string>
+              <key>stripSwiftSymbols</key>
+              <true/>
           </dict>
           </plist>
           PLIST
 
-      - name: Export IPA
+      - name: Export IPA (signs with App Store Distribution profile)
         env:
           API_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
           ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
@@ -160,8 +162,5 @@ jobs:
             echo "- Branch: \`$BRANCH\`"
             echo "- Commit: \`$COMMIT\`"
             echo "- Status: $STATUS"
-            echo "- Build number on archive: $RUN_NUMBER"
-            echo ""
-            echo "Apple takes ~5–10 min to process the upload before it shows in TestFlight."
-            echo "Internal testers (you) get an email when the build is ready to install."
+            echo "- Build number: $RUN_NUMBER"
           } >> "$GITHUB_STEP_SUMMARY"
