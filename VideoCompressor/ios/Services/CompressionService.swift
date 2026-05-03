@@ -349,6 +349,14 @@ actor CompressionService {
         let pumpsSnapshot = pumps
         let cancelSnapshot = pumps
 
+        // Cancel/registration coordination — see CancelCoordinator below for
+        // the full race analysis. In short: onCancel can fire synchronously
+        // before the body runs OR concurrently while we're mid-registration.
+        // Either path tries to call `markAsFinished()` on inputs that the
+        // body would then re-touch via `requestMediaDataWhenReady`, which
+        // throws NSInternalInconsistencyException.
+        let coordinator = CancelCoordinator()
+
         await withTaskCancellationHandler {
             await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
                 let bridge = ContinuationBridge(continuation: cont)
@@ -359,56 +367,67 @@ actor CompressionService {
                     return
                 }
 
-                // Race-guard: `withTaskCancellationHandler` invokes `onCancel`
-                // synchronously when the surrounding Task was already cancelled
-                // BEFORE we entered the body. In that case the inputs already
-                // had `markAsFinished()` called on them via onCancel, and
-                // `requestMediaDataWhenReady` will throw
-                // `NSInternalInconsistencyException` ("Cannot call method when
-                // status is 2"). Detect that state and resume immediately.
-                if Task.isCancelled {
-                    for _ in pumpsSnapshot { pumpState.finishOnePump() }
-                    return
-                }
-
-                for pair in pumpsSnapshot {
-                    let queue = DispatchQueue(label: "compress.pump.\(pair.label)")
-                    let input = pair.input
-                    let output = pair.output
-                    let state = pumpState
-                    let isVideo = pair.label == "video"
-                    input.requestMediaDataWhenReady(on: queue) {
-                        while input.isReadyForMoreMediaData {
-                            if Task.isCancelled {
-                                input.markAsFinished()
-                                state.finishOnePump()
-                                return
-                            }
-                            if let sample = output.copyNextSampleBuffer() {
-                                if !input.append(sample) {
+                // Atomically: if not yet cancelled, register all pumps under
+                // the lock so onCancel will see registration is complete and
+                // mark the inputs finished. If already cancelled, finish each
+                // pump's bookkeeping without ever touching the inputs.
+                let didRegister = coordinator.tryRegister {
+                    for pair in pumpsSnapshot {
+                        let queue = DispatchQueue(label: "compress.pump.\(pair.label)")
+                        let input = pair.input
+                        let output = pair.output
+                        let state = pumpState
+                        let isVideo = pair.label == "video"
+                        input.requestMediaDataWhenReady(on: queue) {
+                            while input.isReadyForMoreMediaData {
+                                if Task.isCancelled {
                                     input.markAsFinished()
                                     state.finishOnePump()
                                     return
                                 }
-                                if isVideo {
-                                    let pts = CMSampleBufferGetPresentationTimeStamp(sample)
-                                    let ptsSec = CMTimeGetSeconds(pts)
-                                    if ptsSec.isFinite {
-                                        state.recordPTS(ptsSec)
+                                if let sample = output.copyNextSampleBuffer() {
+                                    if !input.append(sample) {
+                                        input.markAsFinished()
+                                        state.finishOnePump()
+                                        return
                                     }
+                                    if isVideo {
+                                        let pts = CMSampleBufferGetPresentationTimeStamp(sample)
+                                        let ptsSec = CMTimeGetSeconds(pts)
+                                        if ptsSec.isFinite {
+                                            state.recordPTS(ptsSec)
+                                        }
+                                    }
+                                } else {
+                                    input.markAsFinished()
+                                    state.finishOnePump()
+                                    return
                                 }
-                            } else {
-                                input.markAsFinished()
-                                state.finishOnePump()
-                                return
                             }
                         }
                     }
                 }
+
+                if !didRegister {
+                    // Cancelled before/during the registration window. The
+                    // continuation must still resume — finishOnePump per
+                    // pump tells pumpState to stop waiting for samples.
+                    for _ in pumpsSnapshot { pumpState.finishOnePump() }
+                }
             }
         } onCancel: {
-            reader.cancelReading()
-            for pair in cancelSnapshot { pair.input.markAsFinished() }
+            // Atomically observe whether registration completed. If yes,
+            // it's safe to mark inputs finished (race with the dispatch
+            // pumps still exists, but the pumps' own Task.isCancelled
+            // check + idempotent markAsFinished handles that). If no,
+            // do NOT touch the inputs — the body's `didRegister == false`
+            // branch will tear down via pumpState.
+            if coordinator.cancelAfterRegistration() {
+                reader.cancelReading()
+                for pair in cancelSnapshot { pair.input.markAsFinished() }
+            } else {
+                reader.cancelReading()
+            }
         }
 
         progressTask.cancel()
@@ -519,6 +538,61 @@ enum CompressionError: Error, LocalizedError, Hashable, Sendable {
 // the 10 Hz progress poller. Lock-protected to keep Swift 6 strict
 // concurrency happy without `nonisolated(unsafe)` on captured vars.
 // Mirrors the proven pattern in `MetadataService.strip`.
+
+/// Coordinates the race between the encoder body's `requestMediaDataWhenReady`
+/// registration loop and `withTaskCancellationHandler.onCancel`. Two windows
+/// of trouble exist:
+///
+/// 1. **Pre-registration cancel** — `withTaskCancellationHandler` invokes
+///    onCancel synchronously when the surrounding Task was already cancelled
+///    BEFORE the body ran. If onCancel calls `markAsFinished()` on the
+///    inputs in that state, the body then trying to call
+///    `requestMediaDataWhenReady` on those finished inputs raises
+///    `NSInternalInconsistencyException` (status 2).
+///
+/// 2. **Mid-registration cancel** — the body is mid-loop (registered the
+///    video pump, about to register the audio pump). Cancellation fires.
+///    onCancel runs concurrently, marks both inputs finished. The body
+///    then tries to register the audio pump on a now-finished input and
+///    crashes the same way.
+///
+/// Solution: the body's whole registration block runs under a lock, with a
+/// `registrationComplete` flag. onCancel checks the flag — if registration
+/// finished, it's safe to mark inputs finished (the dispatch pumps' own
+/// `Task.isCancelled` checks + idempotent `markAsFinished` keep things
+/// clean). If registration didn't finish, onCancel only cancels the reader
+/// and the body's `tryRegister` returns false so it can clean up
+/// gracefully without ever touching the inputs.
+private final class CancelCoordinator: @unchecked Sendable {
+    private let lock = NSLock()
+    private var registrationComplete = false
+    private var cancelled = false
+
+    /// Run `body` (the registration loop) inside the lock IF cancellation
+    /// hasn't already fired. Returns true if the body ran. False means the
+    /// caller must clean up without registering.
+    func tryRegister(_ body: () -> Void) -> Bool {
+        lock.lock()
+        if cancelled {
+            lock.unlock()
+            return false
+        }
+        body()
+        registrationComplete = true
+        lock.unlock()
+        return true
+    }
+
+    /// Mark cancellation. Returns true if registration had already
+    /// completed (so it's safe to call `markAsFinished` on the inputs);
+    /// false if registration never ran (in which case the inputs were
+    /// never touched and don't need finishing).
+    func cancelAfterRegistration() -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        cancelled = true
+        return registrationComplete
+    }
+}
 
 private final class PumpState: @unchecked Sendable {
     private let lock = NSLock()
