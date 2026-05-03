@@ -6,7 +6,7 @@
 //  toggle (with recoverable-window note), live progress, and a final
 //  summary on completion. Fires MetaCleanQueue.clean then PhotosSaver.
 //
-//  See `.agents/work-sessions/2026-05-03/PLAN-stitch-metaclean.md` task M4.
+//  See `.agents/work-sessions/2026-05-03/plans/PLAN-stitch-metaclean.md` task M4.
 //
 
 import SwiftUI

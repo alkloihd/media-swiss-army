@@ -5,7 +5,7 @@
 **Order of operations** (read top-to-bottom):
 
 1. Read `AGENTS.md` Part 16 (Codex Onboarding) at the repo root for environment setup.
-2. Read `.agents/work-sessions/2026-05-03/PUBLISHING-AND-MONETIZATION.md` Part 7 for the v1.0 launch roadmap.
+2. Read `.agents/work-sessions/2026-05-03/reference/PUBLISHING-AND-MONETIZATION.md` Part 7 for the v1.0 launch roadmap.
 3. Read each `TASK-*.md` in this folder, in priority order (numeric prefix = priority).
 4. Pick a task, branch off `main`, ship it, open a PR.
 
@@ -73,9 +73,9 @@
 
 Read these before starting — they list known issues with file:line references:
 
-- `RED-TEAM-PRE-SHIP.md` — pre-ship review of the Phase 3 PR
-- `RED-TEAM-HOTFIX-2.md` — stills-in-stitch hotfix audit
-- `RED-TEAM-CHRONO-SORT.md` — sort feature audit
-- `AUDIT-01-concurrency.md` through `AUDIT-08-feature-gaps.md` — comprehensive 8-agent audit launched 2026-05-03 (in progress)
+- `../audits/RED-TEAM-PRE-SHIP.md` — pre-ship review of the Phase 3 PR
+- `../audits/RED-TEAM-HOTFIX-2.md` — stills-in-stitch hotfix audit
+- `../audits/RED-TEAM-CHRONO-SORT.md` — sort feature audit
+- `../audits/AUDIT-01-concurrency.md` through `../audits/AUDIT-08-feature-gaps.md` — comprehensive 8-agent audit launched 2026-05-03 (in progress)
 
 Synthesised audit findings will be appended to each task file as they complete.

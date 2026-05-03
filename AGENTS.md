@@ -22,26 +22,37 @@ These are non-negotiable for this repo.
 
 ---
 
-## Part 2: Running Bucket
+## Part 2: Documentation layout — where everything lives
 
-Session memory lives in `.agents/work-sessions/`.
-
-Root files:
-
-- `.agents/work-sessions/RUNNING-LIST.md` tracks `DONE`, `IN PROGRESS`, `QUEUED`, and `BACKBURNER`.
-- `.agents/work-sessions/DREAMS.jsonl` is an append-only idea log for larger future work.
-- `.agents/work-sessions/PROTOCOL.md` is the quick-reference session protocol.
-
-Per-day folders:
+The repo has TWO documentation roots that serve distinct purposes. Always know which one you're in.
 
 ```text
-.agents/work-sessions/YYYY-MM-DD/
-  ai-chat-log.md or AI-CHAT-LOG.md
-  STATUS.md
-  TASK-MANIFEST.md
-  CHANGELOG.md
-  handoffs/
+docs/                         — durable, reference-grade documentation
+  superpowers/
+    plans/                    — TDD implementation plans (writing-plans skill)
+      YYYY-MM-DD-<slug>.md
+  (other reference docs)
+
+.agents/work-sessions/        — chronological session memory
+  RUNNING-LIST.md             — DONE / IN PROGRESS / QUEUED / BACKBURNER
+  DREAMS.jsonl                — append-only future-idea log
+  PROTOCOL.md                 — quick-reference session protocol
+  YYYY-MM-DD/                 — one folder per session day
+    AI-CHAT-LOG.md            — timestamped session log
+    STATUS.md                 — current-state snapshot
+    CHANGELOG.md              — what shipped today
+    handoffs/                 — between-session handoff docs
+    backlog/                  — task index + audit synthesis
+    audits/                   — read-only audit reports
+    plans/                    — session-specific plan docs (or → docs/superpowers/plans)
 ```
+
+**Rule of thumb:**
+- Things that REMAIN useful weeks/months later → `docs/`.
+- Things tied to one work day or one decision → `.agents/work-sessions/<date>/`.
+- Implementation plans (TDD, agent-executable) → `docs/superpowers/plans/` (durable; survives the day).
+
+When you create a new plan file, link it from the current day's session folder via `.agents/work-sessions/<date>/PLANS-INDEX.md` (one-liner pointers, not duplicated content).
 
 When Rishaal mentions something new:
 
@@ -816,7 +827,7 @@ Until then, use `mcp__xcodebuildmcp__build_run_device` with the iPhone tethered.
 
 Read these in order:
 1. `AGENTS.md` Part 4 (current app truth) + Part 15 (deployment pipeline)
-2. `.agents/work-sessions/2026-05-03/PUBLISHING-AND-MONETIZATION.md` (where this is heading)
+2. `.agents/work-sessions/2026-05-03/reference/PUBLISHING-AND-MONETIZATION.md` (where this is heading)
 3. `.agents/work-sessions/2026-05-03/backlog/AUDIT-CONSOLIDATED-FINDINGS.md` (what's known broken)
 4. `git log --oneline -20` (recent direction)
 

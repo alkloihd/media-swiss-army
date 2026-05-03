@@ -20,7 +20,7 @@ Specifically:
 
 ## Audit reference
 
-Read `.agents/work-sessions/2026-05-03/AUDIT-09-cache-cleanup-on-cancel-and-export.md` for the full file:line breakdown of every cleanup gap (agent ran 2026-05-03).
+Read `.agents/work-sessions/2026-05-03/audits/AUDIT-09-cache-cleanup-on-cancel-and-export.md` for the full file:line breakdown of every cleanup gap (agent ran 2026-05-03).
 
 ## Goals
 

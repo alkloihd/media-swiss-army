@@ -4,7 +4,7 @@
 **Reviewer:** opus (audit-08, read-only)
 **Scope:** the iOS app as a $4.99 paid utility 5 minutes after install. What's missing, what's over-built, where's the moat.
 
-Grounding: `PUBLISHING-AND-MONETIZATION.md`, `BACKLOG-share-extension.md`, `AGENTS.md` Part 15, `VideoCompressor/ios/`. Code services are mature; the SHELL (first-launch, settings explainer, marker registry) is what still feels developer-y.
+Grounding: `../reference/PUBLISHING-AND-MONETIZATION.md`, `../backlog-archive/BACKLOG-share-extension.md`, `AGENTS.md` Part 15, `VideoCompressor/ios/`. Code services are mature; the SHELL (first-launch, settings explainer, marker registry) is what still feels developer-y.
 
 ---
 

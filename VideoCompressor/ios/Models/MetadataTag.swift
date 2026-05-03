@@ -6,7 +6,7 @@
 //  output but classifies tags into a small fixed set of categories so the
 //  UI can colour-code red (will be stripped) vs green (will be kept).
 //
-//  See `.agents/work-sessions/2026-05-03/PLAN-stitch-metaclean.md` task M1.
+//  See `.agents/work-sessions/2026-05-03/plans/PLAN-stitch-metaclean.md` task M1.
 //
 
 import Foundation

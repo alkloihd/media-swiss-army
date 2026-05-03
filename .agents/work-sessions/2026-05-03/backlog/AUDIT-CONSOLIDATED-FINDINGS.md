@@ -2,15 +2,15 @@
 
 Nine read-only Opus agents audited the codebase across orthogonal dimensions. Their full reports live in this folder:
 
-- `AUDIT-01-concurrency.md` (2C / 4H / 5M / 2L)
-- `AUDIT-02-memory-leaks.md` (2C / 4H / 4M / 2L)
-- `AUDIT-03-privacy-security.md` (0C / 2H / 5M / 4L)
-- `AUDIT-04-performance.md` (1C / 2H / 3M / 3L)
-- `AUDIT-05-ux.md` (2C / 5H / 5M / 3L)
-- `AUDIT-06-codecs.md` (2C / 5H / 5M / 3L)
-- `AUDIT-07-edge-cases.md` (4C / 7H / 7M / 3L)
-- `AUDIT-08-feature-gaps.md` (design doc, no severity)
-- `AUDIT-09-cache-cleanup-on-cancel-and-export.md` (2C / 6H / 3M / 2L)
+- `../audits/AUDIT-01-concurrency.md` (2C / 4H / 5M / 2L)
+- `../audits/AUDIT-02-memory-leaks.md` (2C / 4H / 4M / 2L)
+- `../audits/AUDIT-03-privacy-security.md` (0C / 2H / 5M / 4L)
+- `../audits/AUDIT-04-performance.md` (1C / 2H / 3M / 3L)
+- `../audits/AUDIT-05-ux.md` (2C / 5H / 5M / 3L)
+- `../audits/AUDIT-06-codecs.md` (2C / 5H / 5M / 3L)
+- `../audits/AUDIT-07-edge-cases.md` (4C / 7H / 7M / 3L)
+- `../audits/AUDIT-08-feature-gaps.md` (design doc, no severity)
+- `../audits/AUDIT-09-cache-cleanup-on-cancel-and-export.md` (2C / 6H / 3M / 2L)
 
 Total CRITICAL findings: **15** (some duplicates across audits — e.g. StillVideoBaker single-frame bug surfaced from 3 angles).
 

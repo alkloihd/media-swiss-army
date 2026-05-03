@@ -16,8 +16,8 @@ Branch: feature/phase-3-stitch-ux-and-photos (already pushed to GitHub)
 Latest TestFlight build (Build 12) is live on main with core 3-tab functionality.
 
 Read these in order before doing anything:
-1. .agents/work-sessions/2026-05-03/HANDOFF-v2.md  (full context + 7-commit phase-3 plan)
-2. .agents/work-sessions/2026-05-03/BACKLOG-stitch-photos-and-share-extension.md  (6 backlog items with user spec)
+1. .agents/work-sessions/2026-05-03/handoffs/HANDOFF-v2.md  (full context + 7-commit phase-3 plan)
+2. .agents/work-sessions/2026-05-03/backlog-archive/BACKLOG-stitch-photos-and-share-extension.md  (6 backlog items with user spec)
 3. AGENTS.md §9 (XcodeBuildMCP integration)
 
 After reading, verify state:
