@@ -124,31 +124,6 @@ jobs:
             -authenticationKeyID "$API_KEY_ID" \
             -authenticationKeyIssuerID "$ISSUER_ID"
 
-      - name: Locate IPA
-        id: ipa
-        run: |
-          IPA="$(find "$EXPORT_PATH" -name '*.ipa' -print -quit)"
-          if [ -z "$IPA" ]; then
-            echo "::error::No IPA produced under $EXPORT_PATH"
-            ls -la "$EXPORT_PATH" || true
-            exit 1
-          fi
-          echo "ipa_path=$IPA" >> "$GITHUB_OUTPUT"
-          echo "Built IPA: $IPA ($(du -h "$IPA" | cut -f1))"
-
-      - name: Upload to TestFlight
-        env:
-          API_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
-          ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
-          IPA_PATH: ${{ steps.ipa.outputs.ipa_path }}
-        run: |
-          xcrun altool --upload-app \
-            --type ios \
-            --file "$IPA_PATH" \
-            --apiKey "$API_KEY_ID" \
-            --apiIssuer "$ISSUER_ID" \
-            --output-format normal
-
       - name: Summarize
         if: always()
         env:
