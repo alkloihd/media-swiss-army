@@ -79,12 +79,18 @@ enum CompressionJobState: Hashable, Sendable {
     case queued
     case running(progress: BoundedProgress)
     case finished
+    /// Output was not meaningfully smaller than source — we discarded
+    /// the result and kept the original. Source is already efficiently
+    /// encoded (e.g. iPhone HEVC) and Apple's curated AVAssetExportSession
+    /// presets are fixed-bitrate (no smart cap). Phase 3 AVAssetWriter
+    /// migration enables true smart-cap output to fix this surgically.
+    case skipped(reason: String)
     case failed(error: LibraryError)
     case cancelled
 
     var isTerminal: Bool {
         switch self {
-        case .finished, .failed, .cancelled: return true
+        case .finished, .skipped, .failed, .cancelled: return true
         default: return false
         }
     }
