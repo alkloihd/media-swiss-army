@@ -1,126 +1,118 @@
-# Paste-ready prompt for Claude in Terminal
+# Kickstarter prompts for Claude in Terminal
 
-Open Claude Code in your terminal in the repo root (`/Users/rishaal/CODING/CODED TOOLS/VIDEO COMPRESSOR/`). Paste the prompt below as your first message. Claude will read the handoff docs, ask you a focused set of decision questions, then invoke `/ultraplan` for you.
+Two paste-ready prompts. Open `claude` in this repo root. Paste **Prompt 1** first, wait for "I've read everything", then fill in your answers in **Prompt 2** and paste it.
 
 ---
 
-## STAGE 1 — Onboard prompt (paste this first)
+## Prompt 1 — Orient + read
+
+Paste this verbatim. Claude reads, confirms, doesn't do anything else.
 
 ```text
-You're picking up an iOS app project called "Media Swiss Army" (App Store name will be "MetaClean: AI Glasses Data"). The previous session — Claude Opus running in Claude Code on this Mac — left a comprehensive handoff. Before doing anything else:
+You're picking up an iOS app project called "Media Swiss Army" (App Store name will be "MetaClean: AI Glasses Data"). The previous session left a comprehensive handoff. Your ONLY job in this turn is to read the following files in order — no questions, no plans, no code. Read each one fully, then reply with a single sentence: "I've read everything; ready for the ultraplan invocation."
 
-1. Read these files in order:
-   - HANDOFF-TO-CLAUDE-TERMINAL.md (root) — full session story, what's tested, what's not, what's left
-   - AGENTS.md Part 16 — your full onboarding (signing IDs, MCP setup, working contract)
-   - .agents/work-sessions/2026-05-03/backlog/MASTER-PLAN.md — phased roadmap to App Store
-   - .agents/work-sessions/2026-05-03/backlog/AUDIT-CONSOLIDATED-FINDINGS.md — what's known broken vs fixed
-   - docs/superpowers/plans/2026-05-03-CODEX-KICKSTARTER.md — day-1 prompt template
-   - .agents/work-sessions/2026-05-03/reference/PUBLISHING-AND-MONETIZATION.md — launch + ASO strategy
-   - .agents/work-sessions/2026-05-03/audits/ — 9 audit reports + 3 red-team reports
+Read these in this order:
 
-2. Verify your XcodeBuildMCP setup is working. Run `mcp__xcodebuildmcp__session_show_defaults` and confirm projectPath ends in `VideoCompressor/VideoCompressor_iOS.xcodeproj`. If your Codex/Claude doesn't have xcodebuildmcp installed, follow AGENTS.md Part 16 §16.3.
+1. HANDOFF-TO-CLAUDE-TERMINAL.md (repo root) — full session story
+2. AGENTS.md — Parts 1, 2, 4, 15, 16 in particular
+3. docs/superpowers/plans/2026-05-03-CODEX-KICKSTARTER.md — onboarding template
+4. docs/superpowers/plans/2026-05-03-still-bake-constant-time.md — example of a complete writing-plans plan
+5. .agents/work-sessions/2026-05-03/backlog/MASTER-PLAN.md — phased roadmap to App Store
+6. .agents/work-sessions/2026-05-03/backlog/AUDIT-CONSOLIDATED-FINDINGS.md — known broken vs fixed
+7. .agents/work-sessions/2026-05-03/reference/PUBLISHING-AND-MONETIZATION.md — launch + ASO strategy
+8. All 9 audit reports under .agents/work-sessions/2026-05-03/audits/AUDIT-0*.md (skim — focus on the headline findings)
+9. The 3 red-team reports under .agents/work-sessions/2026-05-03/audits/RED-TEAM-*.md (skim)
+10. The 3 active TASK files: .agents/work-sessions/2026-05-03/backlog/TASK-01-still-bake-constant-time.md, TASK-02-adaptive-meta-marker-registry.md, TASK-99-cache-cleanup-on-cancel-and-save.md
 
-3. Once you've finished reading, ask me ALL THIRTEEN questions from "Open questions for the user" in HANDOFF-TO-CLAUDE-TERMINAL.md. Don't paraphrase — keep the exact numbering 1-13. Ask them as a numbered list and let me answer them in one batch.
+After reading, also confirm your XcodeBuildMCP setup is working — run mcp__xcodebuildmcp__session_show_defaults and confirm projectPath ends in "VideoCompressor/VideoCompressor_iOS.xcodeproj". If MCP is missing, follow AGENTS.md Part 16 §16.3 to install.
 
-4. After I answer, summarise my answers back to me in one short paragraph so I can confirm you understood. Wait for my "yes, plan it" before invoking ultraplan.
+Don't ask questions. Don't write code. Don't open PRs. Just read, verify MCP, and reply with the confirmation sentence.
 
-5. Once I confirm, run /ultraplan with a prompt that synthesizes:
-   - The MASTER-PLAN.md phase breakdown
-   - My answers to the 13 questions  
-   - Any decisions about scope cuts (some things in MASTER-PLAN may get deferred based on my answers)
-
-   The ultraplan invocation should ask the cloud session to produce TDD-format implementation plans for Phases 1, 2, and 3 of MASTER-PLAN.md, with one plan file per task following the template at docs/superpowers/plans/2026-05-03-still-bake-constant-time.md. Save the plans to docs/superpowers/plans/ with a date-prefixed slug per file.
-
-Don't write any code yet. Don't open any PRs. The goal of this conversation is to UNDERSTAND the project and PRODUCE plans. Code-execution comes later via subagent-driven-development.
-
-Working directory: /Users/rishaal/CODING/CODED TOOLS/VIDEO COMPRESSOR/
-GitHub repo: https://github.com/alkloihd/video-compressor-FUCKMETA
+Repo: /Users/rishaal/CODING/CODED TOOLS/VIDEO COMPRESSOR/
 Default branch: main
-Latest merged PR: #9 (will be 10+ if I've merged the docs follow-up before you read this)
-
-Now read the docs and ask me the 13 questions.
+Latest merged PR is #9 (the day's audit-criticals + Codex handoff).
 ```
 
 ---
 
-## STAGE 2 — `/ultraplan` invocation (Claude builds this for you)
+## Prompt 2 — `/ultraplan` invocation
 
-After you've answered the 13 questions and Claude has summarised your answers back to you, Claude will invoke `/ultraplan` with a prompt similar to the template below. You don't paste this yourself — Claude will compose it from your answers and run it.
+Once Claude confirms "I've read everything; ready for the ultraplan invocation," fill in YOUR answers below (replace each `<your answer>`), then paste the whole thing.
 
 ```text
-/ultraplan Produce TDD implementation plans for Phases 1, 2, and 3 of the MASTER-PLAN.md at .agents/work-sessions/2026-05-03/backlog/MASTER-PLAN.md.
+/ultraplan Produce TDD implementation plans for Phases 1, 2, and 3 of MASTER-PLAN.md (.agents/work-sessions/2026-05-03/backlog/MASTER-PLAN.md). Each plan follows the writing-plans skill format — bite-sized TDD steps, exact file paths, complete code, expected commands and outputs, no placeholders. Use docs/superpowers/plans/2026-05-03-still-bake-constant-time.md as the canonical template.
 
-Each plan should follow the template at docs/superpowers/plans/2026-05-03-still-bake-constant-time.md (writing-plans skill format — bite-sized TDD steps, exact file paths, complete code, expected commands and outputs, no placeholders).
+Save plans to docs/superpowers/plans/ with filename pattern <YYYY-MM-DD>-phase<N>.<task>-<slug>.md.
 
-User decisions from the kickoff conversation:
-- App Store name: <user's answer>
-- Pricing: <user's answer>  
-- Small Business Program: <user's answer>
-- Long-press preview placement: <user's answer>
-- Compress presets to hide behind Advanced: <user's answer>
-- CropEditor sliders: <user's answer>
-- Adaptive Meta-marker registry priority: <user's answer>
-- Share Extension scope: <user's answer>
-- Pro tier IAP candidates: <user's answer>
-- Local-device iteration setup priority: <user's answer>
-- TestFlight cadence target: <user's answer>
-- Real-device testing workflow: <user's answer>
-- iPhone tethered? <user's answer>
+My decisions on the 13 open questions from HANDOFF-TO-CLAUDE-TERMINAL.md:
 
-Constraints:
-- Each plan = one PR = one TestFlight cycle
-- Total TestFlight cycles ≤ <user's cadence answer> across Phases 1-3
+1. App Store name: <your answer — e.g. "MetaClean: AI Glasses Data" or alternative>
+2. Pricing: <e.g. "$4.99 one-time" or "$2.99" or "freemium with $9.99 Pro IAP">
+3. Apple Small Business Program: <"already enrolled" or "will enrol now" or "skip for now">
+4. Long-press preview placement: <"keep contextMenu overlay (default)" or "move to bottom inline editor area">
+5. Compress presets to hide behind Advanced: <e.g. "show only Balanced + Small by default" or "show all">
+6. CropEditor sliders: <"hide entirely (use aspect-ratio presets only)" or "move to Advanced" or "keep visible">
+7. Adaptive Meta-marker registry priority: <"Phase 1.7 — before App Store" or "Phase 6 — post-launch">
+8. iOS Share Extension: <"Phase 6 (post-launch)" or "Phase 3 (pre-launch)" or "skip for v1.0">
+9. Pro tier IAP candidates for v1.1: <e.g. "batch >50 + custom marker rules" or "Mac Catalyst Universal Purchase only" or "skip Pro tier for now">
+10. Local-device iteration setup priority: <"Phase 0 — before any other work, save build minutes" or "Phase 5 (when MASTER-PLAN says)" or "skip">
+11. TestFlight cadence target: <e.g. "≤ 5 cycles total" or "≤ 3 per phase" or "no limit">
+12. Real-device testing workflow: <"USB-tethered after dev-iterate.sh lands" or "TestFlight per-PR" or "real device only at Phase 0 confirmation">
+13. iPhone tethered now: <"yes, currently plugged in" or "no, will plug in for Phase 5">
+
+Constraints (NON-NEGOTIABLE):
+- Each plan = one PR = one TestFlight cycle (when merged to main)
+- Total TestFlight cycles ≤ my answer to question 11 above
 - All plans must respect AGENTS.md Part 14 non-negotiables and Part 16 working contract
 - 138 unit tests must continue to pass after each plan executes
 - The 7 already-fixed audit CRITICALs (in PR #9) must NOT regress
 - Privacy-first: no network calls, no analytics, no third-party SDKs
+- iOS 17.0 minimum
+- Bundle: com.alkloihd.videocompressor; Team: 9577LMA4J5
 
-Output format:
-- One plan file per task in MASTER-PLAN.md Phases 1-3
-- Filename pattern: docs/superpowers/plans/2026-05-XX-<phase>.<task>-<slug>.md  
-- Each plan includes the standard writing-plans header, file structure table, and bite-sized tasks with TDD test-first ordering
-- Include rough effort estimates per task (in hours)
+Output requirements:
+- One plan file per task across MASTER-PLAN.md Phases 1, 2, 3
+- File naming: docs/superpowers/plans/<YYYY-MM-DD>-phase<N>.<task-num>-<short-slug>.md (e.g. 2026-05-04-phase1.2-aggressive-cache-cleanup.md)
+- Each plan includes: writing-plans header, file structure table, bite-sized steps with TDD test-first ordering, expected MCP tool commands + outputs, hourly effort estimate
+- A consolidated PHASES-1-3-INDEX.md at the same path that links every plan in execution order, with effort estimates summed per phase
+- Group commits per logical unit; don't split into more than ~10 commits per plan
 
-Audit reports for context (cloud session should read these):
-.agents/work-sessions/2026-05-03/audits/AUDIT-01-concurrency.md
-.agents/work-sessions/2026-05-03/audits/AUDIT-02-memory-leaks.md
-.agents/work-sessions/2026-05-03/audits/AUDIT-03-privacy-security.md
-.agents/work-sessions/2026-05-03/audits/AUDIT-04-performance.md
-.agents/work-sessions/2026-05-03/audits/AUDIT-05-ux.md
-.agents/work-sessions/2026-05-03/audits/AUDIT-06-codecs.md
-.agents/work-sessions/2026-05-03/audits/AUDIT-07-edge-cases.md
-.agents/work-sessions/2026-05-03/audits/AUDIT-08-feature-gaps.md
-.agents/work-sessions/2026-05-03/audits/AUDIT-09-cache-cleanup-on-cancel-and-export.md
+Audit reports (cloud session should fetch these from the GitHub repo):
+- .agents/work-sessions/2026-05-03/audits/AUDIT-01..09 + RED-TEAM-*
 
-Existing TASK files (cloud session should reference):
-.agents/work-sessions/2026-05-03/backlog/TASK-01-still-bake-constant-time.md
-.agents/work-sessions/2026-05-03/backlog/TASK-02-adaptive-meta-marker-registry.md
-.agents/work-sessions/2026-05-03/backlog/TASK-99-cache-cleanup-on-cancel-and-save.md
-
-Existing complete plan to use as template:
-docs/superpowers/plans/2026-05-03-still-bake-constant-time.md
+Ask me clarifying questions ONLY if my answers above contradict each other or contradict MASTER-PLAN.md. Otherwise produce the plans.
 ```
 
 ---
 
-## What you do next
+## What happens after Prompt 2
 
-1. Open Claude Code in your terminal at this repo root (or run `claude` from anywhere if it's globally installed; navigate it to this dir if needed).
-2. Paste **Stage 1** (the prompt above) as your first message.
-3. Wait for Claude to finish reading + ask the 13 questions.
-4. Answer the 13 questions in one message.
-5. Confirm Claude's summary by saying "yes, plan it."
-6. Claude invokes `/ultraplan`.
-7. The plan opens in your browser. Review, comment, iterate.
-8. Approve the plan.
-9. Choose execution destination: cloud (it codes in the browser session), local terminal (teleport back to your terminal — best for the iOS work where you need MCP + sim access), or save-to-file.
+Claude in terminal hands the planning task to Claude Code on the web (a cloud session running in plan mode). It opens in your browser. You can:
 
-For this app's iOS work, **execute locally**. The cloud sessions can't drive XcodeBuildMCP for sim builds or device installs.
+1. Comment + iterate on the plans inline (browser UI)
+2. When happy, choose execution destination:
+   - **Local terminal (RECOMMENDED for this app)** — teleports back to your machine. Required for iOS work since the cloud session can't drive XcodeBuildMCP / sim / tethered iPhone.
+   - **Cloud (Claude codes in browser)** — only for non-iOS portions if any (none here)
+   - **Cancel** — saves plans to disk only, you execute manually later
+
+3. After teleport, terminal Claude reads the approved plans and uses superpowers:subagent-driven-development to walk through them.
+
+---
+
+## If Prompt 2 fails
+
+If `/ultraplan` doesn't appear in your terminal Claude (e.g. you're not on Claude Code on the web tier, or the GitHub repo isn't connected), fall back to local plan generation:
+
+```text
+Use the superpowers:writing-plans skill to produce TDD plans for MASTER-PLAN.md Phase 1 (six tasks). Save each plan to docs/superpowers/plans/. Use docs/superpowers/plans/2026-05-03-still-bake-constant-time.md as the template. My answers to the 13 questions from HANDOFF-TO-CLAUDE-TERMINAL.md are: [paste your filled-in answers from Prompt 2 above].
+```
+
+This produces the same plans without the cloud round-trip. Slower but works on any tier.
 
 ---
 
 ## Sources
 
 - [Plan in the cloud with ultraplan — Claude Code Docs](https://code.claude.com/docs/en/ultraplan)
-- [GitHub: 6missedcalls/ultraplan — Deep multi-phase implementation planning skill for Claude Code](https://github.com/6missedcalls/ultraplan)
+- [GitHub: 6missedcalls/ultraplan](https://github.com/6missedcalls/ultraplan)
 - [Claude Code Ultraplan: Cloud Planning to Free Your Terminal — claudefa.st](https://claudefa.st/blog/guide/mechanics/ultraplan)
