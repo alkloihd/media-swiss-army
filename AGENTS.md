@@ -332,6 +332,27 @@ Requirements from upstream docs:
 - Node.js 18+ for npm installation
 
 This repo currently has Xcode 16.0 installed at `/Applications/Xcode.app/Contents/Developer`.
+AXE 1.6.0 installed at `/opt/homebrew/bin/axe` for simulator UI automation.
+
+#### Project skills (mandatory read before tool use)
+
+Before calling any `xcodebuildmcp` tool — `mcp__xcodebuildmcp__*` (Claude Code) or shelling out via `xcodebuildmcp <workflow> <tool>` (Codex) — read the matching skill file:
+
+- **Claude Code (MCP tools path)**: `.agents/skills/xcodebuildmcp-mcp/SKILL.md`
+- **Codex (CLI path)**: `.agents/skills/xcodebuildmcp-cli/SKILL.md`
+
+Codex does not auto-load skill files; agents must `cat` the relevant SKILL.md before the first XcodeBuildMCP call in a session. Symlinks at `.claude/skills/xcodebuildmcp-{mcp,cli}` are for Claude Code skill discovery only.
+
+#### Workflow groups
+
+Configured in `.xcodebuildmcp/config.yaml` at the repo root. Default profile enables: `simulator, simulator-management, ui-automation, debugging, logging, device, project-discovery, project-scaffolding, coverage, utilities`. Edit the YAML to add/remove. CLI usage (`xcodebuildmcp <workflow> ...`) ignores the gate — all workflows are reachable from the binary regardless.
+
+#### Session start protocol
+
+1. Call `mcp__xcodebuildmcp__session_show_defaults` (or `xcodebuildmcp setup`) once per session to confirm project/scheme/simulator.
+2. Use `discover_projs` only if step 1 reports missing context.
+3. Prefer combined commands (`build_run_sim`) over chained separate calls.
+4. For physical-device work, the user must complete one-time signing via Xcode "Signing & Capabilities → Automatically manage signing → Team". After that, all device builds are MCP-driven.
 
 ---
 
