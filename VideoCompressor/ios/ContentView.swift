@@ -33,6 +33,12 @@ struct ContentView: View {
                     Label("MetaClean", systemImage: AppTab.metaClean.symbolName)
                 }
                 .tag(AppTab.metaClean)
+
+            SettingsTabView()
+                .tabItem {
+                    Label("Settings", systemImage: AppTab.settings.symbolName)
+                }
+                .tag(AppTab.settings)
         }
     }
 }
@@ -41,12 +47,14 @@ enum AppTab: Hashable {
     case compress
     case stitch
     case metaClean
+    case settings
 
     var title: String {
         switch self {
         case .compress:  return "Compress"
         case .stitch:    return "Stitch"
         case .metaClean: return "MetaClean"
+        case .settings:  return "Settings"
         }
     }
 
@@ -55,6 +63,7 @@ enum AppTab: Hashable {
         case .compress:  return "wand.and.stars"
         case .stitch:    return "square.stack.3d.up"
         case .metaClean: return "eye.slash"
+        case .settings:  return "gearshape"
         }
     }
 }

@@ -1166,3 +1166,16 @@ let renderSize = clips.reduce(CGSize.zero) { acc, _ in acc /* recompute via asyn
   Findings: 2 blockers (missing AppIcon PNG, missing ITSAppUsesNonExemptEncryption=NO), 2 pre-launch (permission-string name mismatch, display-name truncation), polish items. Network access is zero (clean on-device claim). No third-party SDKs. Deployment target is iOS 18.0 (not 17.0).
   Files: .agents/work-sessions/2026-05-03/AUDIT-app-store-readiness.md (new)
   Status: Complete. Verdict: ship to TestFlight after 2 ~30-min fixes.
+
+[2026-05-03 19:10 IST] [subagent/sonnet] [FEATURE] Phase 3 Commit 3: save-to-Photos confirmation feedback
+  Actions: Added SaveStatus enum to VideoFile; updated VideoLibrary.saveOutputToPhotos with .saving→.saved/.saveFailed transitions + UINotificationFeedbackGenerator haptics; replaced static save icon in VideoRowView with SaveStatus-aware @ViewBuilder (spinner, bounce checkmark, red triangle retry); added transient "Saved to Photos" toast to VideoListView via .overlay(alignment: .bottom); mirrored pattern in StitchExportSheet.finishedView and MetaCleanExportSheet.progressFooter/run()
+  Files: VideoFile.swift (SaveStatus enum + saveStatus property), VideoLibrary.swift (saveOutputToPhotos), VideoRowView.swift (saveButton @ViewBuilder), VideoListView.swift (toast overlay), StitchExportSheet.swift (saveStatus state + finishedView), MetaCleanExportSheet.swift (saveStatus state + progressFooter + run)
+  Build: ✅ clean build. 35/37 unit tests pass; 2 failures pre-existing (unrelated metadata + cancellation tests)
+  Commit: 4b95025 on feature/phase-3-stitch-ux-and-photos (pushed)
+  Status: Complete
+
+[2026-05-03 20:15 IST] [subagent/sonnet] [FEATURE] Phase 3 Commit 4: cache management + auto-sweep
+  Actions: Created CacheSweeper actor (6 working dirs; sweepOnLaunch 7d, clearAll, deleteIfInWorkingDir, totalCacheBytes, breakdown); hooked Task.detached sweepOnLaunch in VideoCompressorApp.init; added opportunistic delete in VideoLibrary.saveOutputToPhotos after successful Photos save; extended markDirectoriesAsNonBackup from 2 dirs ["Inputs","Outputs"] to all 6 CacheSweeper.allDirs (closes iCloud-backup gap); merged Storage section into existing SettingsTabView.swift created by parallel Audio BG agent (live total + per-folder breakdown + Clear cache destructive button with confirmationDialog)
+  Files: Services/CacheSweeper.swift (new), Views/SettingsTabView.swift (merged Storage section in), VideoCompressorApp.swift (init + sweepOnLaunch hook), Services/VideoLibrary.swift (saveOutputToPhotos opportunistic delete + markDirectoriesAsNonBackup extended — already in HEAD via commit 4b95025)
+  Build: ✅ clean build (after clean to bust FileSystemSynchronizedRootGroup cache). 4 tabs in tab bar including Settings with Storage section.
+  Status: Complete — pending commit
