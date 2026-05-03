@@ -36,7 +36,10 @@ struct ClipID: Transferable, Hashable, Sendable {
 
 struct StitchTimelineView: View {
     @ObservedObject var project: StitchProject
-    @State private var editingClipID: StitchClip.ID?
+    /// Lifted up to `StitchTabView` so the parent can render the inline
+    /// editor below the timeline. Tap a clip to select; tap again to
+    /// deselect. nil = no clip currently being edited.
+    @Binding var selectedClipID: StitchClip.ID?
     @State private var draggedID: StitchClip.ID?
 
     var body: some View {
@@ -46,7 +49,24 @@ struct StitchTimelineView: View {
                     ClipBlockView(clip: clip)
                         .frame(width: 200, height: 140)
                         .opacity(draggedID == clip.id ? 0.4 : 1.0)
-                        .onTapGesture { editingClipID = clip.id }
+                        .overlay(
+                            // Selection ring — visible when this clip is the
+                            // one being edited inline.
+                            RoundedRectangle(cornerRadius: 8)
+                                .stroke(
+                                    selectedClipID == clip.id ? Color.accentColor : Color.clear,
+                                    lineWidth: 3
+                                )
+                        )
+                        .onTapGesture {
+                            // Tapping the active clip closes the editor;
+                            // tapping a different clip switches to it.
+                            if selectedClipID == clip.id {
+                                selectedClipID = nil
+                            } else {
+                                selectedClipID = clip.id
+                            }
+                        }
                         .draggable(ClipID(value: clip.id)) {
                             // Drag preview — semi-transparent thumbnail
                             ClipBlockView(clip: clip)
@@ -75,6 +95,9 @@ struct StitchTimelineView: View {
                         .contextMenu {
                             Button(role: .destructive) {
                                 if let i = project.clips.firstIndex(where: { $0.id == clip.id }) {
+                                    if selectedClipID == clip.id {
+                                        selectedClipID = nil
+                                    }
                                     project.remove(at: IndexSet(integer: i))
                                 }
                             } label: {
@@ -85,12 +108,6 @@ struct StitchTimelineView: View {
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
-        }
-        .sheet(item: Binding(
-            get: { project.clips.first(where: { $0.id == editingClipID }) },
-            set: { newValue in editingClipID = newValue?.id }
-        )) { clip in
-            ClipEditorSheet(project: project, clipID: clip.id)
         }
     }
 }

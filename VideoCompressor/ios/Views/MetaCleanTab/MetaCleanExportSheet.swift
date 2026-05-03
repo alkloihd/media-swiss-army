@@ -65,7 +65,11 @@ struct MetaCleanExportSheet: View {
 
     private var outputFilename: String {
         let stem = item.sourceURL.deletingPathExtension().lastPathComponent
-        return "\(stem)_CLEAN.mp4"
+        let ext = item.sourceURL.pathExtension
+        // Preserve source extension — an image cleaned shouldn't display
+        // as `.mp4`, a `.mov` shouldn't display as `.mp4`, etc.
+        let suffix = ext.isEmpty ? "" : ".\(ext)"
+        return "\(stem)_CLEAN\(suffix)"
     }
 
     private var isWorking: Bool {
