@@ -678,6 +678,152 @@ If a new agent picks up this repo cold:
 
 ---
 
+## Part 16: Codex / next-agent onboarding
+
+If you are Codex (or any new agent) picking this repo up cold, this is your runway.
+
+### 16.1 First five minutes
+
+```bash
+cd "/Users/rishaal/CODING/CODED TOOLS/VIDEO COMPRESSOR"
+git fetch origin && git status
+ls .agents/work-sessions/2026-05-03/backlog/
+cat .agents/work-sessions/2026-05-03/backlog/README.md
+cat .agents/work-sessions/2026-05-03/backlog/AUDIT-CONSOLIDATED-FINDINGS.md
+```
+
+The backlog folder is your task list. `AUDIT-CONSOLIDATED-FINDINGS.md` is the synthesis of nine simultaneous audits and tells you what's already fixed vs deferred.
+
+### 16.2 Identifiers + signing
+
+| Field | Value |
+|---|---|
+| Apple Team ID | `9577LMA4J5` |
+| Bundle ID | `com.alkloihd.videocompressor` |
+| Home-screen name | `Media Swiss Army` |
+| App Store name (planned) | `MetaClean: AI Glasses Data` |
+| GitHub repo | `alkloihd/video-compressor-FUCKMETA` |
+| Default branch | `main` |
+| Min iOS | 17.0 |
+| Xcode project | `VideoCompressor/VideoCompressor_iOS.xcodeproj` |
+| Scheme | `VideoCompressor_iOS` |
+| Test target | `VideoCompressorTests` (138 tests as of 2026-05-03) |
+| Source folder (auto-synced) | `VideoCompressor/ios/` (`PBXFileSystemSynchronizedRootGroup`) |
+
+Physical-device signing is already wired (Automatic) under the user's Apple ID. Re-using that team ID will pick up the same provisioning profile.
+
+### 16.3 XcodeBuildMCP (REQUIRED)
+
+The lead has been driving builds + tests through the XcodeBuildMCP server. To get the same toolset:
+
+```bash
+# 1. Install
+npm install -g xcodebuildmcp@latest
+
+# 2. Verify
+xcodebuildmcp --help
+xcodebuildmcp tools
+
+# 3. Wire into Codex
+# In ~/.codex/config.toml:
+[mcp_servers.XcodeBuildMCP]
+command = "xcodebuildmcp"
+args    = ["mcp"]
+
+# 4. Restart Codex so the MCP tools are loaded
+```
+
+Once attached, the tools you'll use most:
+
+- `mcp__xcodebuildmcp__session_show_defaults` — confirm project/scheme/sim are set (call once per session before first build)
+- `mcp__xcodebuildmcp__build_sim` — compile-only build for the iPhone 16 Pro sim
+- `mcp__xcodebuildmcp__test_sim` — run the 138-test target on the sim
+- `mcp__xcodebuildmcp__build_run_sim` — build + install + launch in sim
+- `mcp__xcodebuildmcp__build_run_device` — **wireless install on a USB-tethered iPhone, no Apple build minutes consumed**
+- `mcp__xcodebuildmcp__screenshot` — capture sim screenshots for visual review
+
+**IMPORTANT — never call `session_set_defaults`** unless you know the lead isn't running in parallel. Multiple agents touching session defaults swap each other's project paths and break their builds. The current defaults are correct.
+
+### 16.4 Simulator hygiene
+
+If the user reports "iPhone clones popping up", every run accumulates a sim instance. Reset:
+
+```bash
+xcrun simctl shutdown all
+killall Simulator
+```
+
+Always quit the sim when handing off / pausing.
+
+### 16.5 GitHub CLI
+
+```bash
+# Authenticated already as the user. If gh status fails:
+gh auth status
+gh auth login --web
+
+# Day-to-day:
+gh pr create --base main --head <branch> --title "..." --body-file /tmp/pr_body.md
+gh pr checks <num> --watch   # poll CI
+gh pr merge <num> --merge    # standard merge commit
+gh pr view <num> --json state,mergeCommit
+gh run list --workflow testflight.yml --limit 5
+gh run view <run-id>
+```
+
+Each merge to `main` triggers `.github/workflows/testflight.yml` which builds + uploads to App Store Connect. Build cycle ≈ 60–90s, costs Apple build minutes.
+
+### 16.6 CI guards (already on every PR)
+
+- ESLint
+- Prettier
+- Security Audit (`npm audit`)
+- Syntax Check
+
+These run on Node files (the legacy web compressor under `lib/`, `server.js`). They do NOT yet run iOS unit tests in cloud. Backlog: `TASK-18-apple-ci-checks.md` would add `xcodebuild test` on `macos-26`.
+
+### 16.7 Working contract
+
+1. Always branch off `main`. Never push to `main` directly. Use `gh pr merge` to produce the merge commit.
+2. Every code-touching PR must pass `mcp__xcodebuildmcp__test_sim` locally before push (pre-push hook coming via `TASK-17-dev-iterate-script.md`).
+3. PR descriptions end with the agent attribution line: `🤖 Generated with [Codex](URL)` or similar.
+4. Append a 1-line summary to `.agents/work-sessions/<date>/AI-CHAT-LOG.md` after each merge.
+5. Don't run more than 2 background agents in parallel — sim resource contention causes intermittent test failures.
+6. Don't introduce CoreHaptics for tick feedback; UISelectionFeedbackGenerator already covers it (see `Haptics.swift`).
+7. Don't introduce a custom `AVVideoCompositing` class without sign-off; built-in opacity/crop ramps cover today's transitions.
+
+### 16.8 Wireless device push (when set up)
+
+Once `TASK-17-dev-iterate-script.md` lands, the iteration loop will be:
+
+```bash
+# From any branch:
+./scripts/dev-iterate.sh
+# = lint + xcodebuild test + build_run_device → ~60s, no Apple build minutes
+```
+
+Until then, use `mcp__xcodebuildmcp__build_run_device` with the iPhone tethered.
+
+### 16.9 What NOT to touch without confirmation
+
+- `.git/` config
+- `.github/workflows/testflight.yml` (App Store Connect API key wiring)
+- `.claude/`, `.codex/`, `~/.codex/config.toml`
+- The Apple Developer portal (signing certs, provisioning profiles)
+- `App Store Connect` (the app entry, pricing, privacy details — handled via the user's browser, not via code)
+
+### 16.10 Quick "is this app what they say it is" sanity check
+
+Read these in order:
+1. `AGENTS.md` Part 4 (current app truth) + Part 15 (deployment pipeline)
+2. `.agents/work-sessions/2026-05-03/PUBLISHING-AND-MONETIZATION.md` (where this is heading)
+3. `.agents/work-sessions/2026-05-03/backlog/AUDIT-CONSOLIDATED-FINDINGS.md` (what's known broken)
+4. `git log --oneline -20` (recent direction)
+
+That's enough context to start picking tasks.
+
+---
+
 ## Part 14: Non-Negotiables
 
 1. Local-first and privacy-first unless the user explicitly chooses cloud features.

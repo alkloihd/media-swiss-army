@@ -229,6 +229,15 @@ actor MetadataService {
         // Pump samples per track. Each track owns a dispatch queue.
         // Completion fires when all per-track pumps have signalled
         // `finishOnePump()` on the shared state.
+        //
+        // Cancel/registration coordination — same pattern CompressionService
+        // uses to defeat the `requestMediaDataWhenReady → markAsFinished`
+        // race that surfaces NSInternalInconsistencyException ("Cannot call
+        // method when status is 2") on mid-strip cancels (Audit-1-C2,
+        // 2026-05-03). Without this, tapping Cancel during MetaClean
+        // strip crashes the app.
+        let coordinator = MetaCleanCancelCoordinator()
+
         await withTaskCancellationHandler {
             await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
                 let bridge = ContinuationBridge(continuation: cont)
@@ -239,42 +248,51 @@ actor MetadataService {
                     return
                 }
 
-                for pair in pumpInputs {
-                    let queue = DispatchQueue(label: "metaclean.pump.\(pair.input.mediaType.rawValue)")
-                    let input = pair.input
-                    let output = pair.output
-                    let state = pumpState
-                    input.requestMediaDataWhenReady(on: queue) {
-                        while input.isReadyForMoreMediaData {
-                            if Task.isCancelled {
-                                input.markAsFinished()
-                                state.finishOnePump()
-                                return
-                            }
-                            if let sample = output.copyNextSampleBuffer() {
-                                if !input.append(sample) {
+                let didRegister = coordinator.tryRegister {
+                    for pair in pumpInputs {
+                        let queue = DispatchQueue(label: "metaclean.pump.\(pair.input.mediaType.rawValue)")
+                        let input = pair.input
+                        let output = pair.output
+                        let state = pumpState
+                        input.requestMediaDataWhenReady(on: queue) {
+                            while input.isReadyForMoreMediaData {
+                                if Task.isCancelled {
                                     input.markAsFinished()
                                     state.finishOnePump()
                                     return
                                 }
-                                let pts = CMSampleBufferGetPresentationTimeStamp(sample)
-                                let ptsSec = CMTimeGetSeconds(pts)
-                                if ptsSec.isFinite {
-                                    state.recordPTS(ptsSec)
+                                if let sample = output.copyNextSampleBuffer() {
+                                    if !input.append(sample) {
+                                        input.markAsFinished()
+                                        state.finishOnePump()
+                                        return
+                                    }
+                                    let pts = CMSampleBufferGetPresentationTimeStamp(sample)
+                                    let ptsSec = CMTimeGetSeconds(pts)
+                                    if ptsSec.isFinite {
+                                        state.recordPTS(ptsSec)
+                                    }
+                                } else {
+                                    input.markAsFinished()
+                                    state.finishOnePump()
+                                    return
                                 }
-                            } else {
-                                // EOF for this track.
-                                input.markAsFinished()
-                                state.finishOnePump()
-                                return
                             }
                         }
                     }
                 }
+
+                if !didRegister {
+                    for _ in pumpInputs { pumpState.finishOnePump() }
+                }
             }
         } onCancel: {
-            reader.cancelReading()
-            for pair in cancelInputs { pair.input.markAsFinished() }
+            if coordinator.cancelAfterRegistration() {
+                reader.cancelReading()
+                for pair in cancelInputs { pair.input.markAsFinished() }
+            } else {
+                reader.cancelReading()
+            }
         }
 
         // Stop the poller before emitting the final 1.0 — same reason
@@ -582,5 +600,36 @@ private final class ContinuationBridge: @unchecked Sendable {
         continuation = nil
         lock.unlock()
         c?.resume()
+    }
+}
+
+/// Mirror of `CompressionService.CancelCoordinator`. Wraps the
+/// requestMediaDataWhenReady-registration vs onCancel race so a mid-strip
+/// cancel can't hit `markAsFinished()` on inputs the body is still
+/// registering. See CompressionService.swift's coordinator for the full
+/// race analysis. Duplicated here rather than hoisted so MetadataService
+/// stays self-contained; if a third service grows the same need, hoist
+/// to a shared file.
+private final class MetaCleanCancelCoordinator: @unchecked Sendable {
+    private let lock = NSLock()
+    private var registrationComplete = false
+    private var cancelled = false
+
+    func tryRegister(_ body: () -> Void) -> Bool {
+        lock.lock()
+        if cancelled {
+            lock.unlock()
+            return false
+        }
+        body()
+        registrationComplete = true
+        lock.unlock()
+        return true
+    }
+
+    func cancelAfterRegistration() -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        cancelled = true
+        return registrationComplete
     }
 }

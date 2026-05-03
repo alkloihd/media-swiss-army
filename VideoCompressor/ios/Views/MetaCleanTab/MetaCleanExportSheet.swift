@@ -133,6 +133,15 @@ struct MetaCleanExportSheet: View {
                         )
                         self.saveStatus = .saved
                         UINotificationFeedbackGenerator().notificationOccurred(.success)
+                        // Audit-9-F3 fix: cleaned output is now in Photos.
+                        // Delete our sandbox copies in Documents/Cleaned/
+                        // and Documents/CleanInputs/ to free space.
+                        let outputURL = metaResult.cleanedURL
+                        let inputURL = item.sourceURL
+                        Task.detached(priority: .utility) {
+                            await CacheSweeper.shared.deleteIfInWorkingDir(outputURL)
+                            await CacheSweeper.shared.deleteIfInWorkingDir(inputURL)
+                        }
                         self.onDone()
                         self.dismiss()
                     } catch {

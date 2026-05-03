@@ -266,6 +266,10 @@ private struct ClipLongPressPreview: View {
     let clip: StitchClip
     @State private var player: AVPlayer?
     @State private var stillImage: UIImage?
+    /// NotificationCenter token for the loop-on-end observer. Without
+    /// storing + removing this, every long-press leaks an AVPlayer +
+    /// closure for the lifetime of the process (Audit-2-F1, 2026-05-03).
+    @State private var loopObserver: NSObjectProtocol?
 
     var body: some View {
         ZStack {
@@ -292,6 +296,14 @@ private struct ClipLongPressPreview: View {
         .onDisappear {
             player?.pause()
             player = nil
+            // Remove the loop observer so the AVPlayer + its retained
+            // closure can deallocate. Block-form addObserver returns a
+            // token that MUST be passed to removeObserver to break the
+            // strong reference (Audit-2-F1).
+            if let token = loopObserver {
+                NotificationCenter.default.removeObserver(token)
+                loopObserver = nil
+            }
         }
     }
 
@@ -301,16 +313,22 @@ private struct ClipLongPressPreview: View {
             let p = AVPlayer(url: clip.sourceURL)
             p.isMuted = true  // quiet preview — long-press is exploratory
             // Loop the trimmed range so the preview keeps showing motion
-            // for as long as the user holds the press.
-            NotificationCenter.default.addObserver(
+            // for as long as the user holds the press. We weakly capture
+            // the player to break the retain cycle (observer → closure →
+            // player → observer's owner).
+            let token = NotificationCenter.default.addObserver(
                 forName: .AVPlayerItemDidPlayToEndTime,
                 object: p.currentItem,
                 queue: .main
-            ) { _ in
+            ) { [weak p] _ in
+                guard let p = p else { return }
                 p.seek(to: .zero)
                 p.play()
             }
-            await MainActor.run { player = p }
+            await MainActor.run {
+                loopObserver = token
+                player = p
+            }
             p.play()
         case .still:
             let img = await Task.detached(priority: .userInitiated) { () -> UIImage? in
