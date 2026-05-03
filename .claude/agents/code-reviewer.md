@@ -13,6 +13,7 @@ Reviews Video Compressor code for quality, security, and compliance.
 ## Review Checklist
 
 ### 1. Security
+
 - [ ] No hardcoded secrets or API keys
 - [ ] File upload paths are sanitized (no path traversal)
 - [ ] User input is validated before use
@@ -22,17 +23,20 @@ Reviews Video Compressor code for quality, security, and compliance.
 - [ ] WebSocket messages are validated
 
 ### 2. ES Module Compliance
+
 - [ ] Uses `import`/`export` (not `require`/`module.exports`)
 - [ ] File extensions in imports (`.js`)
 - [ ] `"type": "module"` in package.json
 - [ ] No CommonJS patterns mixed with ESM
 
 ### 3. ESLint Compliance
+
 ```bash
 cd "/Users/rishaal/CODING/CODED TOOLS/VIDEO COMPRESSOR" && npx eslint . 2>&1
 ```
 
 ### 4. Code Quality
+
 - [ ] No unused variables or imports
 - [ ] Consistent error handling (try/catch or .catch())
 - [ ] Async functions properly awaited
@@ -40,12 +44,14 @@ cd "/Users/rishaal/CODING/CODED TOOLS/VIDEO COMPRESSOR" && npx eslint . 2>&1
 - [ ] WebSocket connections properly closed
 
 ### 5. Frontend Patterns
+
 - [ ] DOM selectors match actual HTML IDs/classes
 - [ ] Event listeners use proper delegation
 - [ ] No global namespace pollution
 - [ ] Theme-aware (uses CSS custom properties)
 
 ### 6. Backend Patterns
+
 - [ ] Express middleware properly ordered
 - [ ] Multer file upload limits set
 - [ ] Temp files cleaned up after compression
@@ -54,16 +60,20 @@ cd "/Users/rishaal/CODING/CODED TOOLS/VIDEO COMPRESSOR" && npx eslint . 2>&1
 
 ## Key Files to Review
 
-| File | Critical Checks |
-|------|----------------|
-| `server.js` | Route security, file handling, WebSocket |
-| `lib/ffmpeg.js` | Command injection, process management |
-| `lib/probe.js` | Input validation, error handling |
-| `lib/presets.js` | Preset value sanity |
-| `public/js/app.js` | XSS, DOM manipulation safety |
-| `public/js/filemanager.js` | File validation, size limits |
-| `public/js/compression.js` | Input sanitization |
-| `public/js/progress.js` | WebSocket error handling |
+| File                       | Critical Checks                          |
+| -------------------------- | ---------------------------------------- |
+| `server.js`                | Route security, file handling, WebSocket |
+| `lib/ffmpeg.js`            | Command injection, process management    |
+| `lib/probe.js`             | Input validation, error handling         |
+| `lib/jobQueue.js`          | Queue behavior, cancellation, retention  |
+| `lib/stitch.js`            | Stitch concat/re-encode safety           |
+| `lib/exiftool.js`          | Metadata stripping, clean-copy safety    |
+| `public/js/app.js`         | XSS, DOM manipulation safety             |
+| `public/js/filemanager.js` | File validation, size limits             |
+| `public/js/compression.js` | Input sanitization                       |
+| `public/js/progress.js`    | WebSocket error handling                 |
+| `public/js/stitch.js`      | Timeline state, trim payloads            |
+| `public/js/metaclean.js`   | Metadata report rendering                |
 
 ## Review Output Format
 
@@ -71,11 +81,13 @@ cd "/Users/rishaal/CODING/CODED TOOLS/VIDEO COMPRESSOR" && npx eslint . 2>&1
 ## Code Review: [filename]
 
 ### Issues Found
+
 1. **[SEVERITY]** Description
    - File: path/to/file.js:LINE
    - Fix: suggested fix
 
 ### Passed Checks
+
 - [x] Check that passed
 ```
 
