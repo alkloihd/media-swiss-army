@@ -23,7 +23,7 @@
 |---|---|---|
 | ☑ | Task 1: StillVideoBaker.bake returns (URL, CGSize) | Combined with Task 2 atomically because the signature change intentionally breaks callers until `StitchExporter` consumes the tuple. TDD red: `test_sim` failed on `URL` lacking `url`/`size`; green: `139/139` simulator tests. |
 | ☑ | Task 2: StitchExporter.buildPlan uses bake's CGSize for naturalSize | Completed in the same commit as Task 1; `StitchClip.naturalSize` now uses the baked movie dimensions from `StillVideoBaker`. |
-| ☐ | Task 3: Cap Max preset bitrate to ≤ source bitrate | |
+| ☑ | Task 3: Cap Max preset bitrate to ≤ source bitrate | Updated the existing old-contract test plus added plan regressions; TDD red failed three Max-only assertions, then `test_sim` passed `141/141`. |
 | ☐ | Task 4: Add SDR AVVideoColorPropertiesKey defensive defaults | |
 | ☐ | Task 5: Clamp framerate / GOP keys for high-bitrate paths | |
 | ☐ | Task 6: -11841 retry-with-downshift in CompressionService.encode | |
