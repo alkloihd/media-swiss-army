@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Design Review</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <h1>Design Review</h1>
+      <nav class="tabs">
+        <button class="tab on" data-view="grid">Grid</button>
+        <button class="tab" data-view="compare">Compare</button>
+      </nav>
+      <div class="actions">
+        <button id="reload-btn" class="btn">Reload manifest</button>
+        <button id="export-btn" class="btn primary">Download ratings.jsonl</button>
+        <button id="reset-btn" class="btn danger">Reset state</button>
+      </div>
+    </header>
+
+    <section class="filters">
+      <label>
+        Manifest path
+        <input
+          id="manifest-path"
+          type="text"
+          value="../.agents/skills/design-pipeline/output/manifest.json"
+        />
+      </label>
+      <label>
+        Filter
+        <select id="filter">
+          <option value="all">All</option>
+          <option value="unrated">Unrated</option>
+          <option value="approved">Approved</option>
+          <option value="rejected">Rejected</option>
+        </select>
+      </label>
+      <span id="status" class="status"></span>
+    </section>
+
+    <main id="main">
+      <div id="empty" class="empty" hidden>
+        <h2>No generated assets yet</h2>
+        <p>
+          Run the design pipeline first. It should write
+          <code>output/manifest.json</code> listing all assets.
+        </p>
+        <details>
+          <summary>Expected manifest shape</summary>
+          <pre><code>{
+  "generated_at": "2026-04-21T12:00:00Z",
+  "assets": [
+    {
+      "id": "asset-001",
+      "generation_id": "gen-abc",
+      "filename": "hero-v1.svg",
+      "path": "hero-v1.svg",
+      "type": "svg",
+      "prompt": "hero banner...",
+      "variant": "A",
+      "cost": 0.012,
+      "timestamp": "2026-04-21T12:00:00Z"
+    }
+  ]
+}</code></pre>
+        </details>
+      </div>
+
+      <div id="grid-view" class="grid"></div>
+      <div id="compare-view" class="compare" hidden></div>
+    </main>
+
+    <template id="card-tpl">
+      <article class="card">
+        <div class="thumb"></div>
+        <div class="body">
+          <div class="fname"></div>
+          <div class="meta"></div>
+          <div class="prompt"></div>
+          <div class="stars" role="radiogroup" aria-label="Rating"></div>
+          <div class="vote">
+            <button class="vote-btn approve" data-value="approved">Approve</button>
+            <button class="vote-btn reject" data-value="rejected">Reject</button>
+          </div>
+          <textarea class="note" placeholder="Notes (optional)"></textarea>
+          <div class="row">
+            <button class="btn save">Save</button>
+            <span class="saved-at"></span>
+          </div>
+        </div>
+      </article>
+    </template>
+
+    <script type="module" src="review.js"></script>
+  </body>
+</html>
