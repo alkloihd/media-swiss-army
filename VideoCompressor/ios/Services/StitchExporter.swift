@@ -31,6 +31,7 @@
 //
 
 import Foundation
+import UIKit
 @preconcurrency import AVFoundation
 import CoreMedia
 import CoreGraphics
@@ -54,7 +55,13 @@ actor StitchExporter {
     /// Builds the composition. Any failure (missing video track, codec
     /// mismatch on insert) throws and the caller surfaces it via
     /// `LibraryError.compression(.exportFailed)`.
-    func buildPlan(from clips: [StitchClip]) async throws -> Plan {
+    ///
+    /// `aspectMode` controls the output canvas:
+    /// - `.auto` (default): majority-vote on clip orientation
+    /// - `.portrait` / `.landscape` / `.square`: pin a fixed 1080-edge canvas
+    /// In all modes, mismatched clips render with letterbox / pillarbox bars
+    /// rather than being cropped.
+    func buildPlan(from clips: [StitchClip], aspectMode: StitchAspectMode = .auto) async throws -> Plan {
         guard !clips.isEmpty else {
             throw CompressionError.exportFailed("Stitch export requires at least one clip.")
         }
@@ -165,25 +172,30 @@ actor StitchExporter {
             cursor = CMTimeAdd(cursor, timeRange.duration)
         }
 
-        // Render size: largest natural size seen. Smaller clips letterbox
-        // inside this canvas (acceptable v1 behaviour). Phase 3 may swap to a
-        // computed tight bounding box.
-        let renderSize = maxNaturalSize == .zero
-            ? CGSize(width: 1280, height: 720)
-            : maxNaturalSize
+        // Render size derives from aspect mode. `.auto` votes from clip
+        // display orientations (majority wins; landscape on tie); explicit
+        // modes pin canonical 1080-edge sizes. We ALWAYS emit a real canvas
+        // (no shrink-to-fit on the smallest clip) so users get predictable
+        // 16:9 / 9:16 output regardless of which clips are present.
+        let renderSize = Self.computeRenderSize(
+            aspectMode: aspectMode,
+            clips: segments.map(\.clip),
+            fallback: maxNaturalSize == .zero
+                ? CGSize(width: 1920, height: 1080)
+                : maxNaturalSize
+        )
 
-        // When ANY clip has an edit, the videoComposition's `instructions`
-        // array must cover the full timeline contiguously and without gaps.
-        // We emit a layer instruction per segment — passthrough (no transform
-        // or crop) for unedited segments. This keeps Apple's contract happy
-        // (AVErrorInvalidVideoComposition -11841 otherwise — closes review
-        // {E-0503-1114} C1).
+        // We ALWAYS emit a videoComposition now — even with no user edits —
+        // because the aspect-fit transform is a per-clip render-time concern.
+        // A missing videoComposition would let AVFoundation use the source's
+        // own preferredTransform without scaling onto our canvas, producing
+        // crops when the canvas and clip orientations don't match (this was
+        // the user-reported bug). The instructions list still covers the
+        // timeline contiguously without gaps (closes review {E-0503-1114}
+        // C1's invariant).
         let videoComposition: AVMutableVideoComposition?
-        if anyEdit {
+        if !segments.isEmpty {
             let vc = AVMutableVideoComposition()
-            // Adopt the source frame rate when homogeneous; otherwise pick the
-            // higher rate seen so we don't drop frames. 30 is a safe default
-            // when the assets didn't report a value.
             let fps = firstNominalFrameRate.map { max($0, 1) } ?? 30
             vc.frameDuration = CMTime(value: 1, timescale: CMTimeScale(fps.rounded()))
             vc.renderSize = renderSize
@@ -191,7 +203,8 @@ actor StitchExporter {
                 buildInstruction(
                     clip: seg.clip,
                     track: videoTrack,
-                    segmentRange: seg.composedRange
+                    segmentRange: seg.composedRange,
+                    renderSize: renderSize
                 )
             }
             videoComposition = vc
@@ -199,8 +212,17 @@ actor StitchExporter {
             videoComposition = nil
         }
 
-        // Passthrough requires same size + same codec + same fps + no edits.
-        let canPassthrough = !anyEdit && allSameSize && allSameCodec && allSameFrameRate
+        // Passthrough is only safe when the canvas exactly matches every
+        // clip's display size — which is now ALSO contingent on aspect mode
+        // matching the natural orientation. With aspect-fit always on, we
+        // disable passthrough whenever clips disagree with the canvas. This
+        // is correctness over speed; users can still get a fast same-size
+        // stitch when all clips share the same display aspect.
+        let canPassthrough = !anyEdit
+            && allSameSize
+            && allSameCodec
+            && allSameFrameRate
+            && Self.allClipsMatchCanvas(clips: clips, renderSize: renderSize)
 
         return Plan(
             composition: composition,
@@ -274,47 +296,68 @@ actor StitchExporter {
 
     // MARK: - Private helpers
 
-    /// Builds a single videoComposition layer instruction for a clip whose
-    /// `edits` are non-identity. Combines rotation (about the clip centre)
-    /// and crop into one transform plus an optional crop rectangle.
+    /// Builds a per-segment layer instruction that:
+    /// 1. Applies the clip's `preferredTransform` (rotate iPhone portrait into
+    ///    upright orientation)
+    /// 2. Applies user rotation edits (about the rotated-display centre)
+    /// 3. Scales the rotated display to FIT inside `renderSize` while
+    ///    preserving aspect (`min(canvasW/displayW, canvasH/displayH)`)
+    /// 4. Translates to centre — black bars (letterbox or pillarbox) fill
+    ///    the residual canvas
+    /// 5. Applies user crop in clip-space (after step 1's rotation but before
+    ///    step 3's scale)
     ///
-    /// The layer instruction's time range lives in **composition** time
-    /// (where this segment was inserted), not source time.
+    /// The transform composition order matters: with CGAffineTransform's
+    /// concatenating semantics ("apply self first, then other"), the chain
+    /// reads as: preferred → rotation → scale → translate. Tested in
+    /// `StitchAspectRatioTests.testTransformComposesInRightOrder`.
     private func buildInstruction(
         clip: StitchClip,
         track: AVMutableCompositionTrack,
-        segmentRange: CMTimeRange
+        segmentRange: CMTimeRange,
+        renderSize: CGSize
     ) -> AVMutableVideoCompositionInstruction {
         let layer = AVMutableVideoCompositionLayerInstruction(assetTrack: track)
 
-        // Rotation: setTransform is applied as a single transform across the
-        // whole segment. We rotate about the clip's natural centre so the
-        // visible content stays roughly in-frame for 90/270 degrees, but the
-        // export render size in v1 is the source size — meaning a 90°
-        // rotation of a landscape clip will render letterboxed inside the
-        // landscape canvas. Acceptable for v1; Phase 3 can compute a
-        // tight render size.
+        // Step 1: clip's natural preferred transform (orientation correction).
+        var t = clip.preferredTransform
+
+        // Step 2: optional user rotation, applied about the display-space
+        // centre. We work in display space (post-preferredTransform) so the
+        // rotation is intuitive ("rotate the visible image").
         if clip.edits.rotationDegrees != 0 {
             let radians = CGFloat(clip.edits.rotationDegrees) * .pi / 180
-            let size = clip.naturalSize
-            // Rotate about the clip centre by translating to centre, rotating,
-            // then translating back. Pre-multiplied so order is rotate-first.
-            let toCentre = CGAffineTransform(
-                translationX: -size.width / 2,
-                y: -size.height / 2
-            )
-            let rotate = CGAffineTransform(rotationAngle: radians)
-            let fromCentre = CGAffineTransform(
-                translationX: size.width / 2,
-                y: size.height / 2
-            )
-            let combined = toCentre.concatenating(rotate).concatenating(fromCentre)
-            layer.setTransform(combined, at: segmentRange.start)
+            let display = clip.displaySize
+            let cx = display.width / 2
+            let cy = display.height / 2
+            let toC = CGAffineTransform(translationX: -cx, y: -cy)
+            let rot = CGAffineTransform(rotationAngle: radians)
+            let fromC = CGAffineTransform(translationX: cx, y: cy)
+            t = t.concatenating(toC).concatenating(rot).concatenating(fromC)
         }
 
-        // Crop: setCropRectangle expects clip-space pixel coordinates. We
-        // store crop in normalized 0...1 over the clip's natural size, so
-        // we de-normalize here.
+        // Step 3 + 4: scale-to-fit on canvas, then centre.
+        let display = clip.displaySize
+        if display.width > 0, display.height > 0,
+           renderSize.width > 0, renderSize.height > 0 {
+            let scale = min(
+                renderSize.width / display.width,
+                renderSize.height / display.height
+            )
+            let scaledW = display.width * scale
+            let scaledH = display.height * scale
+            let dx = (renderSize.width - scaledW) / 2
+            let dy = (renderSize.height - scaledH) / 2
+            t = t.concatenating(CGAffineTransform(scaleX: scale, y: scale))
+            t = t.concatenating(CGAffineTransform(translationX: dx, y: dy))
+        }
+
+        layer.setTransform(t, at: segmentRange.start)
+
+        // Step 5: optional user crop in clip-space pixel coords (de-normalize
+        // from the 0...1 stored value over naturalSize). AVFoundation applies
+        // setCropRectangle in clip-source coordinates BEFORE the layer
+        // transform — so crop semantics are unaffected by the canvas math.
         if let crop = clip.edits.cropNormalized {
             let pixelRect = CGRect(
                 x: crop.origin.x * clip.naturalSize.width,
@@ -327,8 +370,51 @@ actor StitchExporter {
 
         let instruction = AVMutableVideoCompositionInstruction()
         instruction.timeRange = segmentRange
+        instruction.backgroundColor = UIColor.black.cgColor
         instruction.layerInstructions = [layer]
         return instruction
+    }
+
+    /// Pure function — pinned by `StitchAspectRatioTests`.
+    static func computeRenderSize(
+        aspectMode: StitchAspectMode,
+        clips: [StitchClip],
+        fallback: CGSize = CGSize(width: 1920, height: 1080)
+    ) -> CGSize {
+        if let fixed = aspectMode.fixedRenderSize { return fixed }
+
+        // Auto: majority vote on display orientation.
+        var landscape = 0, portrait = 0, square = 0
+        for clip in clips {
+            switch clip.displayOrientation {
+            case .landscape: landscape += 1
+            case .portrait:  portrait += 1
+            case .square:    square += 1
+            }
+        }
+        // Landscape wins ties (most common phone-shot videos).
+        if landscape >= portrait && landscape >= square {
+            return CGSize(width: 1920, height: 1080)
+        }
+        if portrait >= square {
+            return CGSize(width: 1080, height: 1920)
+        }
+        if square > 0 {
+            return CGSize(width: 1080, height: 1080)
+        }
+        return fallback
+    }
+
+    /// True when every clip's display size matches the canvas exactly. Used
+    /// to gate the passthrough fast path — when this is true and there are
+    /// no edits / codec drift / fps drift, we can skip the videoComposition
+    /// re-encode entirely.
+    static func allClipsMatchCanvas(clips: [StitchClip], renderSize: CGSize) -> Bool {
+        clips.allSatisfy { clip in
+            let s = clip.displaySize
+            return abs(s.width - renderSize.width) < 1.0
+                && abs(s.height - renderSize.height) < 1.0
+        }
     }
 
     /// AVAssetExportPresetPassthrough run. Mirrors the polling/progress

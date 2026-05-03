@@ -19,6 +19,10 @@ final class StitchProject: ObservableObject {
     @Published var exportProgress: BoundedProgress = .zero
     @Published var exportState: StitchExportState = .idle
     @Published var lastImportError: LibraryError?
+    /// Output canvas aspect mode. `.auto` decides from majority clip
+    /// orientation; explicit modes pin a 9:16 / 16:9 / 1:1 canvas. Mismatched
+    /// clips render with black bars rather than being cropped.
+    @Published var aspectMode: StitchAspectMode = .auto
 
     private let inputsDir: URL
     private let outputsDir: URL
@@ -133,8 +137,9 @@ final class StitchProject: ObservableObject {
         }
 
         let exporter = StitchExporter()
+        let aspect = self.aspectMode
         do {
-            let plan = try await exporter.buildPlan(from: clipsSnapshot)
+            let plan = try await exporter.buildPlan(from: clipsSnapshot, aspectMode: aspect)
             try Task.checkCancellation()
 
             let url = try await exporter.export(
