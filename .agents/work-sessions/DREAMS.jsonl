@@ -1,0 +1,2 @@
+{"date":"2026-05-02","time":"13:26 SAST","source":"codex/gpt-5.5","idea":"Create an interactive multi-page audit dashboard under public/audit with JSON checklist data, stress-test controls, built-vs-left-to-build status, and iOS port guidance.","status":"queued"}
+{"date":"2026-05-02","time":"13:26 SAST","source":"codex/gpt-5.5","idea":"Port Video Compressor to a native SwiftUI iOS/macOS app using AVFoundation and VideoToolbox, keeping Firebase optional for future cloud features only.","status":"backburner"}

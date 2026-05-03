@@ -21,41 +21,51 @@ UI/UX specialist for the Video Compressor web application.
 
 ## Key Files
 
-| File | Purpose |
-|------|---------|
-| `public/index.html` | Main SPA page |
-| `public/css/styles.css` | All styles with CSS custom properties |
-| `public/js/app.js` | Main app entry, orchestrates modules |
-| `public/js/compression.js` | Compression UI logic, presets, progress |
-| `public/js/filemanager.js` | Drag-and-drop, file list, card rendering |
-| `public/js/progress.js` | WebSocket progress tracking |
-| `public/js/theme.js` | Dark/light theme toggle |
+| File                       | Purpose                                               |
+| -------------------------- | ----------------------------------------------------- |
+| `public/index.html`        | Main SPA page                                         |
+| `public/css/styles.css`    | All styles with CSS custom properties                 |
+| `public/js/app.js`         | Main app entry, orchestrates modules                  |
+| `public/js/compression.js` | Compression UI logic, presets, progress               |
+| `public/js/dragdrop.js`    | Drag-and-drop, file input, path input                 |
+| `public/js/filemanager.js` | File list, cards, per-file resolution, download links |
+| `public/js/progress.js`    | WebSocket progress tracking                           |
+| `public/js/matrix.js`      | Compression quality/resolution matrix                 |
+| `public/js/stitch.js`      | Stitch timeline workflow                              |
+| `public/js/metaclean.js`   | MetaClean workflow                                    |
+| `public/js/tabs.js`        | Compress/Stitch/MetaClean tab navigation              |
 
 ## Architecture
 
 ```
 index.html
   +-- app.js (orchestrator)
-       +-- filemanager.js  (drag-drop, file cards)
-       +-- compression.js  (presets, compress button, estimation)
+       +-- dragdrop.js     (compress file input and path input)
+       +-- filemanager.js  (file cards)
+       +-- compression.js  (matrix, presets, estimates, controls)
        +-- progress.js     (WebSocket -> progress bars)
-       +-- theme.js        (dark/light toggle, persists to localStorage)
+       +-- stitch.js       (stitch workflow)
+       +-- metaclean.js    (metadata cleaning workflow)
+       +-- tabs.js         (tab navigation)
 ```
 
 ## Theme System
 
 CSS custom properties defined on `:root` and `[data-theme="dark"]`:
+
 - `--bg-primary`, `--bg-secondary`, `--bg-card`
 - `--text-primary`, `--text-secondary`
 - `--accent`, `--accent-hover`
 - `--border`, `--shadow`
 
-Toggle via `document.documentElement.setAttribute('data-theme', 'dark'|'light')`.
+The current app forces dark mode in `public/index.html`. Light variables exist in CSS, but the old Light/System/Dark toggle is not active.
 
 ## Patterns
 
 ### File Cards
+
 Each uploaded video gets a card with:
+
 - Thumbnail (generated server-side or placeholder)
 - Filename, size, duration
 - Resolution dropdown
@@ -63,6 +73,7 @@ Each uploaded video gets a card with:
 - Status indicator
 
 ### WebSocket Progress
+
 ```js
 const ws = new WebSocket(`ws://${location.host}`);
 ws.onmessage = (e) => {
@@ -72,8 +83,9 @@ ws.onmessage = (e) => {
 ```
 
 ### Compression Presets
-- Aggressive, Balanced, Gentle, Custom
-- Each maps to CRF, codec, and resolution settings
+
+- `lossless`, `maximum`, `high`, `balanced`, `compact`, `tiny`
+- Each maps to backend presets in `lib/ffmpeg.js` and frontend estimates in `public/js/compression.js`
 
 ## Constraints
 

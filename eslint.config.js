@@ -1,6 +1,6 @@
 export default [
   {
-    ignores: ['node_modules/**', 'node_modules.nosync/**'],
+    ignores: ['node_modules/**', 'node_modules.nosync/**', '.claude/worktrees/**'],
   },
   {
     files: ['**/*.js'],
@@ -22,6 +22,11 @@ export default [
         fetch: 'readonly',
         FormData: 'readonly',
         WebSocket: 'readonly',
+        Blob: 'readonly',
+        DOMParser: 'readonly',
+        NodeFilter: 'readonly',
+        URL: 'readonly',
+        confirm: 'readonly',
         crypto: 'readonly',
         HTMLElement: 'readonly',
         HTMLVideoElement: 'readonly',

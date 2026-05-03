@@ -13,6 +13,7 @@ Diagnoses and fixes compression quality issues in the Video Compressor applicati
 ## Diagnostic Workflow
 
 ### 1. Gather Information
+
 ```bash
 # Probe source file
 /opt/homebrew/bin/ffmpeg -i "$INPUT" 2>&1 | grep -E "Duration|Stream|bitrate"
@@ -27,8 +28,10 @@ ls -lh "$INPUT" "$OUTPUT"
 ### 2. Common Problems
 
 #### Output Larger Than Input
+
 **Cause**: CRF-based encoding chose a higher bitrate than the source.
 **Fix**: Enable bitrate capping in `lib/ffmpeg.js`:
+
 ```js
 // Cap at source_bitrate * preset_ratio
 const maxBitrate = sourceBitrate * presetRatio;
@@ -36,20 +39,25 @@ args.push('-maxrate', `${maxBitrate}k`, '-bufsize', `${maxBitrate * 2}k`);
 ```
 
 #### Quality Too Low
+
 **Cause**: CRF too high or resolution too aggressively downscaled.
 **Check**:
+
 - CRF value (H.264: >28 is aggressive; H.265: >32 is aggressive)
 - Resolution scaling (did it drop from 4K to 480p?)
 - Codec mismatch (using H.265 when H.264 would be better for the content)
 
 #### Encoding Too Slow
+
 **Cause**: Slow preset or software encoding on large files.
 **Fix**:
+
 - Use faster preset (`-preset fast` or `veryfast`)
 - Enable VideoToolbox hardware acceleration
 - Reduce resolution before encoding
 
 #### Audio Quality Degraded
+
 **Cause**: Audio re-encoding with low bitrate.
 **Check**: Audio stream bitrate in output vs input.
 **Fix**: Use `-c:a copy` if audio doesn't need re-encoding, or set `-b:a 192k` minimum.
@@ -62,6 +70,7 @@ args.push('-maxrate', `${maxBitrate}k`, '-bufsize', `${maxBitrate * 2}k`);
 ```
 
 Key metrics to check:
+
 - `format.bit_rate` -- overall bitrate
 - `streams[0].bit_rate` -- video bitrate
 - `streams[1].bit_rate` -- audio bitrate
@@ -70,20 +79,38 @@ Key metrics to check:
 
 ### 4. Preset Validation
 
-Check `lib/presets.js` for preset definitions:
-- Each preset should have: `crf`, `codec`, `audioCodec`, `audioBitrate`
-- Bitrate cap ratios: aggressive (0.5), balanced (0.7), gentle (0.85)
+Check `lib/ffmpeg.js` for preset definitions and `public/js/compression.js` for frontend estimates.
+
+Current preset tiers:
+
+- `lossless`
+- `maximum`
+- `high`
+- `balanced`
+- `compact`
+- `tiny`
+
+Current bitrate cap ratios in `lib/ffmpeg.js`:
+
+- `lossless`: no cap
+- `maximum`: 0.9
+- `high`: 0.7
+- `balanced`: 0.5
+- `compact`: 0.3
+- `tiny`: 0.15
 
 ## Key Files
 
-| File | Purpose |
-|------|---------|
-| `lib/ffmpeg.js` | FFmpeg command builder -- check CRF, bitrate caps |
-| `lib/presets.js` | Preset definitions -- check ratios and values |
-| `lib/probe.js` | ffprobe wrapper -- check what data is extracted |
-| `server.js` | API endpoint -- check how presets are passed through |
+| File                       | Purpose                                               |
+| -------------------------- | ----------------------------------------------------- |
+| `lib/ffmpeg.js`            | FFmpeg command builder -- check CRF, bitrate caps     |
+| `public/js/compression.js` | Frontend estimates -- check drift from backend values |
+| `lib/probe.js`             | ffprobe wrapper -- check what data is extracted       |
+| `lib/jobQueue.js`          | HW/SW queue behavior and progress                     |
+| `server.js`                | API endpoint -- check how presets are passed through  |
 
 ## Quick Diagnostic Command
+
 ```bash
 # One-liner: compare input vs output
 echo "INPUT:" && /opt/homebrew/bin/ffprobe -v quiet -show_entries format=size,bit_rate,duration -of compact "$INPUT" && echo "OUTPUT:" && /opt/homebrew/bin/ffprobe -v quiet -show_entries format=size,bit_rate,duration -of compact "$OUTPUT"
