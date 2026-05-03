@@ -6,7 +6,7 @@
 //  bitrate caps. Replaces the curated AVAssetExportSession path. The
 //  cap math mirrors the web app's `lib/ffmpeg.js`:
 //
-//    Max       — source bitrate (no cap)              HEVC
+//    Max       — min(50 Mbps, source × 0.9)           HEVC
 //    Balanced  — min(6 Mbps, source × 0.7)            HEVC
 //    Small     — min(3 Mbps, source × 0.4)            HEVC
 //    Streaming — min(4 Mbps, source × 0.5) + faststart H.264
@@ -165,8 +165,8 @@ actor CompressionService {
         writer.shouldOptimizeForNetworkUse = settings.optimizesForNetwork
 
         // Video output settings dict.
-        let frameRate = nominalFrameRate > 0 ? nominalFrameRate : 30
-        let gop = Int(frameRate.rounded()) * 2  // 2-second GOP
+        let frameRate = Self.clamp(frameRate: nominalFrameRate)
+        let gop = Self.clamp(gop: Int(frameRate.rounded()) * 2)
 
         let profileLevel: String = {
             if settings.videoCodec == .h264 {
@@ -194,6 +194,7 @@ actor CompressionService {
             AVVideoWidthKey: NSNumber(value: targetWidth),
             AVVideoHeightKey: NSNumber(value: targetHeight),
             AVVideoCompressionPropertiesKey: compressionProps,
+            AVVideoColorPropertiesKey: Self.sdrColorProperties(),
         ]
 
         let videoInput = AVAssetWriterInput(
@@ -532,6 +533,23 @@ actor CompressionService {
         // Round to nearest even, minimum 2.
         let n = max(v, 2)
         return n.isMultiple(of: 2) ? n : n - 1
+    }
+
+    static func sdrColorProperties() -> [String: Any] {
+        [
+            AVVideoColorPrimariesKey: AVVideoColorPrimaries_ITU_R_709_2,
+            AVVideoTransferFunctionKey: AVVideoTransferFunction_ITU_R_709_2,
+            AVVideoYCbCrMatrixKey: AVVideoYCbCrMatrix_ITU_R_709_2,
+        ]
+    }
+
+    static func clamp(frameRate: Float) -> Float {
+        guard frameRate > 0 else { return 30 }
+        return min(frameRate, 120)
+    }
+
+    static func clamp(gop: Int) -> Int {
+        Swift.max(2, Swift.min(gop, 60))
     }
 }
 

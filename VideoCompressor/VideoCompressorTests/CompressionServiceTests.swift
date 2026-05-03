@@ -122,4 +122,48 @@ final class CompressionServiceTests: XCTestCase {
             "Cancelled encode must not leave an output file at \(predicted.path)."
         )
     }
+
+    // MARK: - Cluster 0 writer safety settings
+
+    func testSDRColorPropertiesShape() {
+        let props = CompressionService.sdrColorProperties()
+        XCTAssertEqual(
+            props[AVVideoColorPrimariesKey] as? String,
+            AVVideoColorPrimaries_ITU_R_709_2
+        )
+        XCTAssertEqual(
+            props[AVVideoTransferFunctionKey] as? String,
+            AVVideoTransferFunction_ITU_R_709_2
+        )
+        XCTAssertEqual(
+            props[AVVideoYCbCrMatrixKey] as? String,
+            AVVideoYCbCrMatrix_ITU_R_709_2
+        )
+    }
+
+    func testFrameRateClampedToMax120() {
+        XCTAssertEqual(CompressionService.clamp(frameRate: 30), 30)
+        XCTAssertEqual(CompressionService.clamp(frameRate: 60), 60)
+        XCTAssertEqual(CompressionService.clamp(frameRate: 120), 120)
+        XCTAssertEqual(
+            CompressionService.clamp(frameRate: 240), 120,
+            "240 fps slow-mo must clamp to 120."
+        )
+        XCTAssertEqual(
+            CompressionService.clamp(frameRate: 0), 30,
+            "Zero/missing nominalFrameRate must default to 30."
+        )
+    }
+
+    func testGopClampedToMax60() {
+        XCTAssertEqual(CompressionService.clamp(gop: 60), 60)
+        XCTAssertEqual(
+            CompressionService.clamp(gop: 240), 60,
+            "Slow-mo GOP must clamp to 60."
+        )
+        XCTAssertEqual(
+            CompressionService.clamp(gop: 1), 2,
+            "GOP must be at least 2."
+        )
+    }
 }
