@@ -11,13 +11,44 @@ import Foundation
 import AVFoundation
 import CoreGraphics
 
+/// What kind of media a `StitchClip` represents. Phase 3 commit 5 added
+/// stills as a first-class import target. Composition rendering for stills
+/// (single-frame video segment via `AVAssetWriterInputPixelBufferAdaptor`)
+/// is a Phase 3 commit 6 follow-up — for this commit, stills CAN be added
+/// to the timeline but cannot yet be exported.
+enum ClipKind: String, Sendable, Hashable {
+    case video
+    case still
+}
+
 struct StitchClip: Identifiable, Hashable, Sendable {
     let id: UUID
     let sourceURL: URL
     let displayName: String
     let naturalDuration: CMTime
     let naturalSize: CGSize
+    /// Defaults to `.video` for source-compat with all existing call sites
+    /// that construct StitchClip without specifying a kind.
+    let kind: ClipKind
     var edits: ClipEdits
+
+    init(
+        id: UUID,
+        sourceURL: URL,
+        displayName: String,
+        naturalDuration: CMTime,
+        naturalSize: CGSize,
+        kind: ClipKind = .video,
+        edits: ClipEdits
+    ) {
+        self.id = id
+        self.sourceURL = sourceURL
+        self.displayName = displayName
+        self.naturalDuration = naturalDuration
+        self.naturalSize = naturalSize
+        self.kind = kind
+        self.edits = edits
+    }
 
     /// The source-clip time range to insert into an AVMutableComposition.
     /// Both ends are clamped to [0, naturalDuration]. Uses timescale 600
@@ -59,11 +90,17 @@ struct ClipEdits: Hashable, Sendable {
     var cropNormalized: CGRect?
     /// 0 / 90 / 180 / 270 — clockwise rotation applied at render time.
     var rotationDegrees: Int
+    /// Display duration in seconds for `.still` clips. Ignored for `.video`.
+    /// Phase 3 commit 5 stores this; commit 6 honors it during composition.
+    /// Default 3.0 s per backlog spec; clamped to [0.5, 10.0] at the editor
+    /// boundary, not here (model is permissive).
+    var stillDuration: Double?
 
     static let identity = ClipEdits(
         trimStartSeconds: nil,
         trimEndSeconds: nil,
         cropNormalized: nil,
-        rotationDegrees: 0
+        rotationDegrees: 0,
+        stillDuration: nil
     )
 }

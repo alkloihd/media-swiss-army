@@ -10,6 +10,7 @@
 //
 
 import SwiftUI
+import UIKit
 
 struct MetaCleanExportSheet: View {
     @ObservedObject var queue: MetaCleanQueue
@@ -17,6 +18,7 @@ struct MetaCleanExportSheet: View {
     /// Called after a successful save (dismiss both sheet and inspector).
     let onDone: () -> Void
     @Environment(\.dismiss) private var dismiss
+    @State private var saveStatus: SaveStatus = .unsaved
 
     var body: some View {
         NavigationStack {
@@ -79,11 +81,28 @@ struct MetaCleanExportSheet: View {
             Text("Cleaning… \(queue.cleanProgress.percent)%")
                 .font(.caption.monospacedDigit())
         case .finished(let result):
-            Label(
-                "Saved \(result.sizeLabel)",
-                systemImage: "checkmark.seal.fill"
-            )
-            .foregroundStyle(.green)
+            switch saveStatus {
+            case .unsaved:
+                Label(
+                    "Cleaned \(result.sizeLabel) — tap Clean & Save again to save",
+                    systemImage: "checkmark.seal.fill"
+                )
+                .foregroundStyle(.green)
+            case .saving:
+                HStack(spacing: 8) {
+                    ProgressView()
+                    Text("Saving to Photos…")
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                }
+            case .saved:
+                Label("Saved to Photos", systemImage: "checkmark.circle.fill")
+                    .foregroundStyle(.green)
+                    .symbolEffect(.bounce, value: saveStatus)
+            case .saveFailed(let reason):
+                Label(reason, systemImage: "exclamationmark.triangle")
+                    .foregroundStyle(.red)
+            }
         case .failed(let err):
             Label(err.displayMessage, systemImage: "exclamationmark.triangle")
                 .foregroundStyle(.red)
@@ -95,25 +114,26 @@ struct MetaCleanExportSheet: View {
     // MARK: - Action
 
     private func run() {
-        // Reset any previous terminal state so progressFooter shows clean.
+        // Reset any previous save-state so the footer re-animates on retry.
+        saveStatus = .unsaved
         let deleteEnabled = queue.deleteOriginalAfterSave && item.originalAssetID != nil
         queue.clean(item.id) { result in
             Task { @MainActor in
                 switch result {
                 case .success(let metaResult):
+                    self.saveStatus = .saving
                     do {
                         try await PhotosSaver.saveAndOptionallyDeleteOriginal(
                             cleanedURL: metaResult.cleanedURL,
                             originalAssetID: deleteEnabled ? item.originalAssetID : nil
                         )
-                        onDone()
-                        dismiss()
+                        self.saveStatus = .saved
+                        UINotificationFeedbackGenerator().notificationOccurred(.success)
+                        self.onDone()
+                        self.dismiss()
                     } catch {
-                        // PhotosSaver throws PhotosSaverError; surface via queue state.
-                        // The clean succeeded so we leave the result in place and show
-                        // a Photos-specific failure message without overwriting it.
-                        // (In practice dismiss already happened on success above; this
-                        // branch only fires if PhotosSaver throws.)
+                        self.saveStatus = .saveFailed(reason: error.localizedDescription)
+                        UINotificationFeedbackGenerator().notificationOccurred(.error)
                     }
                 case .failure:
                     // cleanState is already .failed — progressFooter shows the error.

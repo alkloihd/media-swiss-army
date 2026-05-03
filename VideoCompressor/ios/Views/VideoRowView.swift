@@ -23,7 +23,7 @@ struct VideoRowView: View {
 
     private var header: some View {
         HStack(alignment: .firstTextBaseline) {
-            Image(systemName: "film")
+            Image(systemName: video.kind == .still ? "photo" : "film")
                 .foregroundStyle(.tint)
             Text(video.displayName)
                 .font(.subheadline.weight(.semibold))
@@ -31,15 +31,40 @@ struct VideoRowView: View {
                 .truncationMode(.middle)
             Spacer()
             if case .finished = video.jobState {
-                Button {
-                    Task { await library.saveOutputToPhotos(for: video.id) }
-                } label: {
-                    Label("Save", systemImage: "square.and.arrow.down")
-                        .labelStyle(.iconOnly)
-                }
-                .buttonStyle(.borderless)
-                .accessibilityIdentifier("saveToPhotos-\(video.id.uuidString)")
+                saveButton
+                    .accessibilityIdentifier("saveToPhotos-\(video.id.uuidString)")
             }
+        }
+    }
+
+    @ViewBuilder
+    private var saveButton: some View {
+        switch video.saveStatus {
+        case .unsaved:
+            Button {
+                Task { await library.saveOutputToPhotos(for: video.id) }
+            } label: {
+                Label("Save to Photos", systemImage: "square.and.arrow.down")
+                    .labelStyle(.iconOnly)
+            }
+            .buttonStyle(.borderless)
+        case .saving:
+            ProgressView()
+                .scaleEffect(0.7)
+                .frame(width: 24, height: 24)
+        case .saved:
+            Image(systemName: "checkmark.circle.fill")
+                .foregroundStyle(.green)
+                .symbolEffect(.bounce, value: video.saveStatus)
+        case .saveFailed:
+            Button {
+                Task { await library.saveOutputToPhotos(for: video.id) }
+            } label: {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.red)
+            }
+            .buttonStyle(.borderless)
+            .accessibilityLabel("Retry save to Photos")
         }
     }
 

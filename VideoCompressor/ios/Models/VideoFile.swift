@@ -10,6 +10,14 @@
 import Foundation
 import AVFoundation
 
+/// Tracks whether this video's output has been saved to Photos.
+enum SaveStatus: Hashable, Sendable {
+    case unsaved
+    case saving
+    case saved
+    case saveFailed(reason: String)
+}
+
 struct VideoFile: Identifiable, Hashable, Sendable {
     let id: UUID
     /// On-disk URL inside the app's tmp/import directory. PhotosPicker hands
@@ -18,29 +26,43 @@ struct VideoFile: Identifiable, Hashable, Sendable {
     let sourceURL: URL
     let displayName: String
     let importedAt: Date
+    /// What kind of media this is. Defaults to `.video` for source-compat
+    /// with all existing call sites; the still-image import path passes
+    /// `.still` explicitly. See PhotoMedia.swift.
+    ///
+    /// `metadata` and `output` cover both kinds — for stills the metadata
+    /// holder reports `pixelWidth/Height` from CGImageSource, with
+    /// `durationSeconds = 0` and `nominalFrameRate = 0`.
+    let kind: MediaKind
 
     var metadata: VideoMetadata?
     var jobState: CompressionJobState
     /// Cohesive output payload — set together when compression finishes.
     /// Replaces the former `outputURL: URL?` + `outputBytes: Int64?` pair.
     var output: CompressedOutput?
+    /// Per-row Photos save state — drives the save icon in VideoRowView.
+    var saveStatus: SaveStatus = .unsaved
 
     init(
         id: UUID = UUID(),
         sourceURL: URL,
         displayName: String,
         importedAt: Date = Date(),
+        kind: MediaKind = .video,
         metadata: VideoMetadata? = nil,
         jobState: CompressionJobState = .idle,
-        output: CompressedOutput? = nil
+        output: CompressedOutput? = nil,
+        saveStatus: SaveStatus = .unsaved
     ) {
         self.id = id
         self.sourceURL = sourceURL
         self.displayName = displayName
         self.importedAt = importedAt
+        self.kind = kind
         self.metadata = metadata
         self.jobState = jobState
         self.output = output
+        self.saveStatus = saveStatus
     }
 }
 

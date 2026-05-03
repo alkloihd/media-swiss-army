@@ -247,3 +247,178 @@ Roughly one full day of agent time, plus user-side "open Xcode once to
 add the Share Extension target" if XcodeBuildMCP can't scaffold one
 (check via `xcodebuildmcp project-scaffolding scaffold-extension --help`
 when phase 3 starts).
+
+---
+
+## 6. Trim editor live-preview behavior (Build 11 user spec)
+
+User direction 2026-05-03 14:14:
+> "for the stitch i guess let's add live preview of each clip when we
+> click it to edit and trim so it auto plays from the start after each
+> trim and if trimming the end it auto plays the last 2 seconds of the
+> clip on movement that should be easy right? can we auto compact
+> though after so you work more efficiently"
+
+### Behavior
+- **Tap a clip in the timeline** → editor sheet opens with an
+  `AVPlayerViewController` (or custom `AVPlayer` view) docked at the top
+  showing the clip.
+- **Drag the trim-START handle**:
+  - Player seeks to the new in-point on every drag tick
+  - When user releases, player auto-plays from the new in-point
+- **Drag the trim-END handle**:
+  - Player seeks to `(newEndPoint - 2 sec)` on every drag tick
+  - When user releases, player auto-plays the last 2 sec up to the new
+    out-point, then stops
+- "Easy" because `AVPlayer.seek(to:tolerance:)` + `play()` is two API
+  calls. The slider-to-player wiring is small.
+
+### "Auto compact" interpretation
+Two possible reads — implement both, since they're cheap:
+1. **Auto-dismiss editor on Done** — already does this in current build,
+   confirm.
+2. **Auto-apply edits live (no Done button needed)** — the parent
+   `StitchProject.updateEdits` is called continuously as the user drags,
+   not only on Done. Cancel discards a snapshot. This makes the workflow
+   "drag, see result, drag again" without modal commits.
+
+If unclear when implementing, default to interpretation #2 since it's
+the more iMovie-like flow.
+
+### Effort
+M (~half day).
+- Add `AVPlayerViewController` to TrimEditorView
+- Wire seek-on-drag via Slider's `onChange`
+- Auto-play on release via `Slider`'s editing-changed callback
+- Live-apply edits to the parent project
+- Visual: dock the player at the top of the editor sheet, sliders below
+
+---
+
+## 7. Save-to-Photos confirmation feedback (Build 12 user feedback)
+
+User direction 2026-05-03 14:30:
+> "When I press save to photos there's no indication it's saved to the
+> gallery"
+
+### Behavior
+- After tapping save: trigger `UINotificationFeedbackGenerator.success` haptic
+- Icon transitions: `square.and.arrow.down` → animated checkmark for ~2 sec → settled "saved" state (different icon: `checkmark.circle.fill` with green tint)
+- Optional: thin toast at the bottom: "Saved to Photos" with a fade
+- On error: same haptic but `.error` style + toast with reason
+
+### Files to touch
+- `Views/VideoRowView.swift` (Compress save icon)
+- `Views/MetaCleanTab/MetaCleanRowView.swift` if there's a save action there
+- `Views/StitchTab/StitchExportSheet.swift` for the stitch save button
+
+### Effort
+S (~30 min). Pure SwiftUI animation + haptic feedback.
+
+---
+
+## 8. Temp file lifecycle / cache management (Build 12 user feedback)
+
+User direction 2026-05-03 14:30:
+> "what happens to the temp files etc?"
+
+### Current state
+Files accumulate forever in:
+- `Documents/Inputs/`        (Compress picker imports)
+- `Documents/Outputs/`       (Compress encoder outputs)
+- `Documents/StitchInputs/`  (Stitch picker imports)
+- `Documents/StitchOutputs/` (Stitch encoder outputs)
+- `Documents/CleanInputs/`   (MetaClean picker imports)
+- `Documents/Cleaned/`       (MetaClean remux outputs)
+
+`isExcludedFromBackup = true` is already set on Inputs + Outputs (per Build 5db2187).
+Need to extend that to the 4 other dirs (StitchInputs/Outputs, CleanInputs, Cleaned).
+
+### Sweep policy
+
+**Auto-sweep at lifecycle hooks**:
+- On successful save-to-Photos for a Compress item: delete `sourceURL` from Inputs/ (user has the original in Photos already, our copy is redundant)
+- On row removal (already partially implemented): delete output too if it exists
+- On app launch: enumerate all 6 dirs, delete files modified > 7 days ago
+
+**Manual control**:
+- Add a Settings tab (or attach to existing About / overflow menu) with:
+  - Total cache size shown live
+  - Per-folder breakdown (videos imported / compressed / stitch / cleaned)
+  - "Clear cache" button → confirmation alert → wipe all 6 dirs
+
+### Files to touch
+- New: `Views/Shared/CacheManagerView.swift`
+- New: `Services/CacheSweeper.swift` (actor; launch sweep + per-folder size enumerate)
+- `VideoCompressorApp.swift`: hook `CacheSweeper.sweepOnLaunch()` in `init`
+- Each `runJob` / `saveOutputToPhotos` post-flight: opportunistic deletion
+
+### Effort
+M (~half day). Mostly straightforward filesystem + UI.
+
+---
+
+## 9. Advanced mode + size preview (Build 12 user feedback)
+
+User direction 2026-05-03 14:30:
+> "have an advanced mode so we can see what will happen and the actual
+> file size differences? WhatsApp seems to do a way better job and still
+> preserves quality what can we do to improve the small"
+
+### Standard mode improvements
+On the preset picker sheet, for each preset row, show LIVE preview computed against the FIRST imported video's metadata:
+- "Output: ~XX MB" using `CompressionSettings.bitrate(forSourceBitrate:) × duration / 8`
+- "Codec: HEVC" or "H.264" (from `settings.videoCodec`)
+- "Resolution: 1080p" (if downscaled) or "Source" (if .source)
+- "Estimated time: ~Xm" (rough heuristic: 1 sec encode per 4 sec of 1080p HEVC source on modern phones)
+
+### Advanced mode (new screen, accessed via "Advanced..." button below preset list)
+
+Custom-tune section with these knobs:
+- **Codec**: H.264 / HEVC pill picker
+- **Bitrate** slider: 500 kbps → 50 Mbps (log scale)
+- **Resolution** picker: source / 4K / 1440p / 1080p / 720p / 540p / 480p / custom (W×H)
+- **Audio bitrate** slider: 64 / 96 / 128 / 192 / 256 / 320 kbps + Passthrough toggle
+- **Encoder profile** pill: Baseline / Main / High (H.264) or Main / Main10 (HEVC)
+- **Keyframe interval** slider: 1 sec / 2 sec / 4 sec
+- Live size estimate at the top of the sheet, updates as user drags
+- "Save as Preset" button → user-defined named preset shows in standard list
+
+### Why WhatsApp looks better at small sizes
+- HEVC instead of H.264 (1.5× more efficient at the same quality)
+- Slightly slower encoder preset (medium vs fast) — Apple VideoToolbox doesn't expose this knob directly but can be approximated via `AVVideoExpectedSourceFrameRateKey` tuning
+- 2-pass encoding for known target sizes (Apple's API doesn't expose 2-pass; workaround = run twice at different bitrates and pick the closer match)
+- Tighter keyframe intervals (we use 60-frame GOP; WhatsApp tends to be 90-120 frame for static scenes)
+
+For phase 3, just adopting HEVC + correct bitrate caps via Commit 1 will already close most of the WhatsApp gap. The Advanced knobs let power users go further.
+
+### Files to touch
+- New: `Views/AdvancedSettingsView.swift`
+- `Views/PresetPickerView.swift`: add live size estimate per row + "Advanced..." button
+- `Models/CompressionSettings.swift`: add a `.custom(...)` case OR a sibling `CustomCompressionSettings` struct for user-defined tuning
+- `Services/CompressionService.swift`: ensure the encoder respects the custom values
+
+### Effort
+L (~1 day). Settings UI is straightforward; the live estimate calc is fast; the Advanced screen is the bulk of the work.
+
+---
+
+## Phase 3 commit ordering update (post-Build-12 testing feedback)
+
+Inserting items 7, 8, 9 into the existing 7-commit plan from HANDOFF-v2:
+
+| # | Commit | Source |
+|---|---|---|
+| 1 | AVAssetWriter + smart bitrate caps | original — running NOW |
+| 2 | Audio Background Mode opt-in | original |
+| 3 | Save-to-Photos confirmation feedback | NEW (item 7) |
+| 4 | Cache management + auto-sweep | NEW (item 8) |
+| 5 | Photos as first-class | original (item 3.5) |
+| 6 | iMovie drag + live trim preview | original (items 5+6) |
+| 7 | Advanced mode + size preview | NEW (item 9) |
+| 8 | iOS Share Extension | original (item 2) |
+| 9 | Multi-clip parallel encode | original |
+| 10 | Final red team + sim E2E | original |
+
+10 commits now, ~5-7 days agent time. All on the same `feature/phase-3-stitch-ux-and-photos` branch — no auto-deploy until everything green and merged.
+

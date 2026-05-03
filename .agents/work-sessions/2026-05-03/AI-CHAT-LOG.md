@@ -1,5 +1,29 @@
 # AI Chat Log — 2026-05-03
 
+## [2026-05-03 15:05 IST] {E-0503-1505} In-Reply-To {E-0503-1142} -- [BUILD] [subagent/sonnet] Audio Background Mode opt-in (Phase 3 commit 2)
+
+> **Agent Identity**
+> Model: Claude Sonnet 4.6 (subagent)
+> Platform: Claude Code CLI (worktree jolly-pare-f79c78)
+> Session Role: Subagent — Phase 3 commit 2
+
+**Confidence:** HIGH
+**Files Created:**
+- `VideoCompressor/ios/Services/AudioBackgroundKeeper.swift` (new) — @MainActor singleton, refcounted AVAudioSession manager, generates 1-sec silent PCM m4a in tmp, plays at volume 0 with .mixWithOthers so user's music keeps playing
+**Files Modified:**
+- `VideoCompressor/VideoCompressor_iOS.xcodeproj/project.pbxproj` — added `INFOPLIST_KEY_UIBackgroundModes = audio` to both Debug + Release build configs
+- `VideoCompressor/ios/Models/StitchProject.swift` — added `AudioBackgroundKeeper.shared.begin()` before and `.end()` in defer around existing `UIBackgroundTask` in `runExport`
+- `VideoCompressor/ios/Views/PlaceholderTabView.swift` — added `.settings` case to `blurb` switch (required for exhaustiveness after AppTab.settings was added by parallel commit 4 agent)
+- `VideoCompressor/ios/Services/VideoLibrary.swift` — `AudioBackgroundKeeper.shared.begin()/end()` around `runJob` UIBackgroundTask (absorbed into commit b42617b by parallel agent)
+- `VideoCompressor/ios/Views/SettingsTabView.swift` — Settings tab UI with toggle + storage section (absorbed into commit b42617b by parallel agent)
+- `VideoCompressor/ios/ContentView.swift` — 4th Settings tab + AppTab.settings enum case (absorbed into commit b42617b by parallel agent)
+
+**Build:** PASSED (clean build, no errors)
+**Tests:** 35/37 passed (2 pre-existing failures unrelated to this commit: `testCancellationStopsEncodeAndCleansUp` + `testAutoMetaGlassesStripsOnlyCustom`)
+**Sim:** 4 tabs (Compress / Stitch / MetaClean / Settings) visible in iPhone 16 Pro simulator; Settings tab shows toggle + Storage section with cache stats + clear button
+
+**Status:** COMPLETE — staged and committing
+
 ## [2026-05-03 09:22 SAST] {E-0503-0922} -- [BUILD] Claude (Opus 4.7 / 1M ctx): iOS app MVP scaffolded, built green, awaiting Codex review
 
 > **Agent Identity**
@@ -1166,3 +1190,29 @@ let renderSize = clips.reduce(CGSize.zero) { acc, _ in acc /* recompute via asyn
   Findings: 2 blockers (missing AppIcon PNG, missing ITSAppUsesNonExemptEncryption=NO), 2 pre-launch (permission-string name mismatch, display-name truncation), polish items. Network access is zero (clean on-device claim). No third-party SDKs. Deployment target is iOS 18.0 (not 17.0).
   Files: .agents/work-sessions/2026-05-03/AUDIT-app-store-readiness.md (new)
   Status: Complete. Verdict: ship to TestFlight after 2 ~30-min fixes.
+
+[2026-05-03 19:10 IST] [subagent/sonnet] [FEATURE] Phase 3 Commit 3: save-to-Photos confirmation feedback
+  Actions: Added SaveStatus enum to VideoFile; updated VideoLibrary.saveOutputToPhotos with .saving→.saved/.saveFailed transitions + UINotificationFeedbackGenerator haptics; replaced static save icon in VideoRowView with SaveStatus-aware @ViewBuilder (spinner, bounce checkmark, red triangle retry); added transient "Saved to Photos" toast to VideoListView via .overlay(alignment: .bottom); mirrored pattern in StitchExportSheet.finishedView and MetaCleanExportSheet.progressFooter/run()
+  Files: VideoFile.swift (SaveStatus enum + saveStatus property), VideoLibrary.swift (saveOutputToPhotos), VideoRowView.swift (saveButton @ViewBuilder), VideoListView.swift (toast overlay), StitchExportSheet.swift (saveStatus state + finishedView), MetaCleanExportSheet.swift (saveStatus state + progressFooter + run)
+  Build: ✅ clean build. 35/37 unit tests pass; 2 failures pre-existing (unrelated metadata + cancellation tests)
+  Commit: 4b95025 on feature/phase-3-stitch-ux-and-photos (pushed)
+  Status: Complete
+
+[2026-05-03 20:15 IST] [subagent/sonnet] [FEATURE] Phase 3 Commit 4: cache management + auto-sweep
+  Actions: Created CacheSweeper actor (6 working dirs; sweepOnLaunch 7d, clearAll, deleteIfInWorkingDir, totalCacheBytes, breakdown); hooked Task.detached sweepOnLaunch in VideoCompressorApp.init; added opportunistic delete in VideoLibrary.saveOutputToPhotos after successful Photos save; extended markDirectoriesAsNonBackup from 2 dirs ["Inputs","Outputs"] to all 6 CacheSweeper.allDirs (closes iCloud-backup gap); merged Storage section into existing SettingsTabView.swift created by parallel Audio BG agent (live total + per-folder breakdown + Clear cache destructive button with confirmationDialog)
+  Files: Services/CacheSweeper.swift (new), Views/SettingsTabView.swift (merged Storage section in), VideoCompressorApp.swift (init + sweepOnLaunch hook), Services/VideoLibrary.swift (saveOutputToPhotos opportunistic delete + markDirectoriesAsNonBackup extended — already in HEAD via commit 4b95025)
+  Build: ✅ clean build (after clean to bust FileSystemSynchronizedRootGroup cache). 4 tabs in tab bar including Settings with Storage section.
+  Status: Complete — pending commit
+
+---
+
+[2026-05-03 20:35 IST] [solo/sonnet] [FEATURE] Phase 3 Commit 6: iMovie-style drag-anywhere reorder + live trim preview
+  Actions:
+    - StitchTimelineView: replaced vertical List + .onMove with horizontal ScrollView + HStack; each clip is .draggable(ClipID) and .dropDestination(for: ClipID.self); ClipID is a typed UUID wrapper struct conforming to Transferable (avoids retroactive UUID conformance); .contextMenu for delete (swipeActions incompatible with HStack); 0.4 opacity on dragged clip
+    - TrimEditorView: replaced dual-Slider with VideoPlayer (top, 16:9, 240pt max height) + custom DualThumbSlider; DragGesture captures dragOrigin at gesture-start so cumulative translation is applied correctly (prevents thumb drift); auto-play on start-thumb release (seek + play); auto-play on end-thumb release (seek to end-2s, play 2s, pause via @MainActor Task); Reset Trim button; clean onDisappear pause + task cancel
+    - ClipEditorSheet: removed @State draftEdits snapshot pattern; now binds directly to project.updateEdits for live edits; initialSnapshot taken on appear for Cancel revert; Done just dismisses
+    - Fixed pre-existing build blockers: staged 6 untracked files (DeviceCapabilities, PhotoCompressionService, PhotoMetadataLoader, PhotoMetadataService, PhotoMedia, DeviceCapabilitiesTests); fixed SettingsTabView Section("Performance") invalid initializer → Section { } header: { } footer: { }; added kCGImagePropertyXMPData CFString constant (not in iOS ImageIO SDK)
+  Files: Views/StitchTab/StitchTimelineView.swift (rewritten), Views/StitchTab/TrimEditorView.swift (rewritten), Views/StitchTab/ClipEditorSheet.swift (rewritten), Views/SettingsTabView.swift (Section fix), Services/PhotoMetadataService.swift (XMP fix + staged), + 5 other newly staged files
+  Build: ✅ clean (2× builds — after clean + after final edits). Simulator launches; Stitch tab empty-state verified.
+  Commit: 496e57f on feature/phase-3-stitch-ux-and-photos
+  Status: Complete

@@ -15,16 +15,16 @@ struct EmptyStateView: View {
     var body: some View {
         CenteredEmptyState(
             systemImage: "film.stack",
-            title: "No videos yet",
-            message: "Import from your Photos library to start compressing on-device."
+            title: "No media yet",
+            message: "Import videos or photos from your library to start compressing on-device."
         ) {
             PhotosPicker(
                 selection: $pickerItems,
-                maxSelectionCount: 20,
-                matching: .videos,
+                maxSelectionCount: 50,
+                matching: .any(of: [.videos, .images]),
                 preferredItemEncoding: .current
             ) {
-                Label("Import Videos", systemImage: "photo.on.rectangle.angled")
+                Label("Import Media", systemImage: "photo.on.rectangle.angled")
                     .font(.body.weight(.semibold))
                     .padding(.horizontal, 8)
             }

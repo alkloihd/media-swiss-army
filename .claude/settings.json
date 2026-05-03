@@ -1,0 +1,258 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "env": {
+    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1",
+    "ENABLE_TOOL_SEARCH": "auto:5"
+  },
+  "permissions": {
+    "allow": [
+      "Read",
+      "Edit",
+      "Grep",
+      "Write",
+      "Glob",
+      "TodoWrite",
+      "WebSearch",
+      "mcp__plugin_context7_context7__resolve-library-id",
+      "mcp__plugin_context7_context7__query-docs",
+      "Bash(ls:*)",
+      "Bash(cat:*)",
+      "Bash(grep:*)",
+      "Bash(rg:*)",
+      "Bash(find:*)",
+      "Bash(head:*)",
+      "Bash(tail:*)",
+      "Bash(wc:*)",
+      "Bash(pwd:*)",
+      "Bash(which:*)",
+      "Bash(date:*)",
+      "Bash(echo:*)",
+      "Bash(printf:*)",
+      "Bash(node:*)",
+      "Bash(jq:*)",
+      "Bash(sort:*)",
+      "Bash(uniq:*)",
+      "Bash(cut:*)",
+      "Bash(tr:*)",
+      "Bash(sed:*)",
+      "Bash(awk:*)",
+      "Bash(diff:*)",
+      "Bash(tee:*)",
+      "Bash(xargs:*)",
+      "Bash(du:*)",
+      "Bash(df:*)",
+      "Bash(stat:*)",
+      "Bash(file:*)",
+      "Bash(readlink:*)",
+      "Bash(realpath:*)",
+      "Bash(mkdir:*)",
+      "Bash(cp:*)",
+      "Bash(mv:*)",
+      "Bash(touch:*)",
+      "Bash(chmod:*)",
+      "Bash(open:*)",
+      "Bash(tar:*)",
+      "Bash(zip:*)",
+      "Bash(unzip:*)",
+      "Bash(curl:*)",
+      "Bash(wget:*)",
+      "Bash(#:*)",
+      "Bash(npm:*)",
+      "Bash(npx:*)",
+      "Bash(lsof:*)",
+      "Bash(ps:*)",
+      "Bash(pgrep:*)",
+      "Bash(top -l:*)",
+      "Bash(env:*)",
+      "Bash(printenv:*)",
+      "Bash(uname:*)",
+      "Bash(whoami:*)",
+      "Bash(id:*)",
+      "Bash(hostname:*)",
+      "Bash(rm:*)",
+      "Bash(cd:*)",
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git branch:*)",
+      "Bash(git fetch:*)",
+      "Bash(git show:*)",
+      "Bash(git rev-parse:*)",
+      "Bash(git remote:*)",
+      "Bash(git tag:*)",
+      "Bash(git shortlog:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git worktree:*)",
+      "Bash(git stash:*)",
+      "Bash(git checkout:*)",
+      "Bash(git switch:*)",
+      "Bash(git pull:*)",
+      "Bash(git merge:*)",
+      "Bash(git check-ignore:*)",
+      "Bash(/opt/homebrew/bin/ffmpeg:*)",
+      "Bash(/opt/homebrew/bin/ffprobe:*)",
+      "Bash(exiftool:*)",
+      "Bash(echo Exit: $?:*)",
+      "Bash(cd \"/Users/rishaal/CODING/CODED TOOLS/VIDEO COMPRESSOR\" && gh repo edit --default-branch main 2>&1)",
+      "Bash(/opt/homebrew/bin/exiftool:*)",
+      "Bash(echo === Step 4a: Stitch probe - 3 matching clips ===:*)",
+      "Bash(__NEW_LINE_30805d1ea61f1e35__ echo:*)",
+      "Bash(echo $UPLOAD_RESULT:*)",
+      "Bash(echo === Probe output file ===:*)",
+      "Bash(echo === Download headers ===:*)",
+      "Bash(echo Checking: $CLEAN_LATEST:*)",
+      "Bash(echo === Checking Description '2Q' ===:*)",
+      "Bash(echo === Unique identifiers remaining in cleaned file ===:*)",
+      "Bash(python3 -c \":*)",
+      "Bash(__NEW_LINE_2f14e44f047b3acd__ echo \"\")",
+      "Read(//Users/rishaal/CODING/CODED TOOLS/VIDEO COMPRESSOR/**)",
+      "Bash(PORT=4000 node server.js)",
+      "Bash(python3 -m json.tool)",
+      "Bash(python3 -c ':*)",
+      "Bash(/Users/rishaal/.claude/plugins/cache/claude-plugins-official/superpowers/5.0.7/skills/brainstorming/scripts/start-server.sh --project-dir \"/Users/rishaal/CODING/CODED TOOLS/VIDEO COMPRESSOR\")",
+      "Bash(xcodebuild -version)",
+      "Bash(sw_vers)",
+      "Bash(git rm *)",
+      "Bash(PORT=4099 timeout 4 node server.js)",
+      "Bash(wait)",
+      "Read(//tmp/**)",
+      "Read(//Users/rishaal/CODING/KINWOVEN/**)",
+      "mcp__plugin_playwright_playwright__browser_click",
+      "Read(//Users/rishaal/Movies/Video Compressor Output/**)",
+      "Bash(xcode-select -p)",
+      "Read(//Applications/**)",
+      "Bash(mdfind \"kMDItemCFBundleIdentifier == 'com.apple.dt.Xcode'\")",
+      "Bash(sudo xcode-select:*)",
+      "mcp__playwright",
+      "mcp__playwright__browser_navigate",
+      "mcp__playwright__browser_snapshot",
+      "mcp__playwright__browser_take_screenshot",
+      "mcp__playwright__browser_click",
+      "mcp__playwright__browser_type",
+      "mcp__playwright__browser_evaluate",
+      "mcp__playwright__browser_resize",
+      "mcp__playwright__browser_tabs",
+      "mcp__playwright__browser_drop",
+      "mcp__plugin_playwright_playwright",
+      "mcp__plugin_playwright_playwright__browser_navigate",
+      "mcp__plugin_playwright_playwright__browser_snapshot",
+      "mcp__plugin_playwright_playwright__browser_take_screenshot",
+      "mcp__plugin_playwright_playwright__browser_type",
+      "mcp__plugin_playwright_playwright__browser_evaluate",
+      "mcp__plugin_playwright_playwright__browser_resize",
+      "mcp__plugin_playwright_playwright__browser_tabs",
+      "mcp__plugin_playwright_playwright__browser_drop",
+      "mcp__xcodebuildmcp",
+      "mcp__XcodeBuildMCP"
+    ],
+    "deny": [
+      "Read(./.env)",
+      "Read(./.env.local)",
+      "Read(./secrets/**)",
+      "Read(./config/credentials.json)",
+      "Read(./**/*.pem)",
+      "Read(./**/*.key)",
+      "Read(./**/*id_rsa*)",
+      "Bash(rm -rf /*)",
+      "Bash(git push --force origin main)",
+      "Bash(git push --force*)",
+      "Bash(git push -f*)",
+      "Bash(git reset --hard*)",
+      "Bash(git clean -f*)",
+      "Bash(git branch -D*)"
+    ],
+    "ask": [
+      "Bash(kill:*)",
+      "Bash(pkill:*)",
+      "Bash(killall:*)",
+      "Bash(git push:*)",
+      "Bash(git rebase:*)",
+      "Bash(npm publish:*)"
+    ],
+    "defaultMode": "default"
+  },
+  "enableAllProjectMcpServers": false,
+  "enabledMcpjsonServers": ["context7", "fetch"],
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/block-node-modules.sh",
+            "timeout": 30
+          },
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/block-package-lock.sh",
+            "timeout": 30
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/block-destructive-git.sh",
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/auto-prettier.sh",
+            "timeout": 60
+          },
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/auto-eslint.sh",
+            "timeout": 60
+          },
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/syntax-check.sh",
+            "timeout": 30
+          },
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/backend-restart-notice.sh",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/session-log-prompt.sh",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/session-log-stop.sh",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  },
+  "plansDirectory": ".claude/plans"
+}

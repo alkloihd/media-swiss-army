@@ -9,6 +9,7 @@
 //
 
 import SwiftUI
+import UIKit
 
 struct StitchExportSheet: View {
     @ObservedObject var project: StitchProject
@@ -19,6 +20,7 @@ struct StitchExportSheet: View {
     @State private var draftSettings: CompressionSettings = .balanced
     @State private var saveTask: Task<Void, Never>?
     @State private var saveError: String?
+    @State private var saveStatus: SaveStatus = .unsaved
 
     var body: some View {
         NavigationStack {
@@ -148,27 +150,58 @@ struct StitchExportSheet: View {
                 .foregroundStyle(.green)
                 .font(.body.weight(.semibold))
 
-            Button {
-                runSaveToPhotos(url: output.url)
-            } label: {
-                Label("Save to Photos", systemImage: "photo.badge.plus")
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 4)
+            switch saveStatus {
+            case .unsaved:
+                Button {
+                    runSaveToPhotos(url: output.url)
+                } label: {
+                    Label("Save to Photos", systemImage: "photo.badge.plus")
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 4)
+                }
+                .buttonStyle(.borderedProminent)
+                .accessibilityIdentifier("stitchSaveToPhotosButton")
+            case .saving:
+                HStack(spacing: 8) {
+                    ProgressView()
+                    Text("Saving…")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+            case .saved:
+                Label("Saved to Photos", systemImage: "checkmark.circle.fill")
+                    .foregroundStyle(.green)
+                    .font(.body.weight(.semibold))
+                    .symbolEffect(.bounce, value: saveStatus)
+            case .saveFailed:
+                Button {
+                    runSaveToPhotos(url: output.url)
+                } label: {
+                    Label("Retry Save to Photos", systemImage: "exclamationmark.triangle.fill")
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 4)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(.red)
+                .accessibilityIdentifier("stitchSaveToPhotosButton")
             }
-            .buttonStyle(.borderedProminent)
-            .accessibilityIdentifier("stitchSaveToPhotosButton")
         }
     }
 
     private func runSaveToPhotos(url: URL) {
         saveError = nil
+        saveStatus = .saving
         saveTask?.cancel()
         saveTask = Task {
             do {
                 try await PhotosSaver.saveVideo(at: url)
+                saveStatus = .saved
+                UINotificationFeedbackGenerator().notificationOccurred(.success)
             } catch {
                 if !Task.isCancelled {
+                    saveStatus = .saveFailed(reason: error.localizedDescription)
                     saveError = error.localizedDescription
+                    UINotificationFeedbackGenerator().notificationOccurred(.error)
                 }
             }
         }

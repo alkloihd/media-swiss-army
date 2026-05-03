@@ -124,10 +124,12 @@ final class StitchProject: ObservableObject {
         let bgTaskID = UIApplication.shared.beginBackgroundTask(
             withName: "VideoCompressor.stitchExport"
         )
+        AudioBackgroundKeeper.shared.begin()
         defer {
             if bgTaskID != .invalid {
                 UIApplication.shared.endBackgroundTask(bgTaskID)
             }
+            AudioBackgroundKeeper.shared.end()
         }
 
         let exporter = StitchExporter()

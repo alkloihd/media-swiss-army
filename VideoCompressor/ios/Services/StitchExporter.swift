@@ -58,6 +58,16 @@ actor StitchExporter {
         guard !clips.isEmpty else {
             throw CompressionError.exportFailed("Stitch export requires at least one clip.")
         }
+        // Phase 3 commit 5: stills can be added to the timeline but cannot
+        // yet be exported. Composition rendering for stills (single-frame
+        // video segment via AVAssetWriterInputPixelBufferAdaptor) lands in
+        // commit 6. Fail gracefully here rather than producing a confusing
+        // AVFoundation error.
+        if clips.contains(where: { $0.kind == .still }) {
+            throw CompressionError.exportFailed(
+                "Photo clips can be added to the timeline but stitch export with photos is coming soon. Remove photo clips and re-export."
+            )
+        }
 
         let composition = AVMutableComposition()
         guard let videoTrack = composition.addMutableTrack(

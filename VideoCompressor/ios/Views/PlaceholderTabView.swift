@@ -48,6 +48,8 @@ struct PlaceholderTabView: View {
             return "Reorder, trim, and concatenate clips with all processing held until the final export."
         case .metaClean:
             return "Strip GPS, timestamps, and device fingerprints from videos without re-encoding."
+        case .settings:
+            return "Configure app-wide preferences."
         }
     }
 }

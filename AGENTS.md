@@ -92,7 +92,7 @@ Recommended iOS direction: native SwiftUI + AVFoundation + VideoToolbox + Photos
 | MetaClean            | Built. ExifTool detection, image/video upload, attribution/privacy modes, surgical tag removal, removed/preserved report UI, clean download. Known risk: uploaded clean files live in temp output unless downloaded.                  |
 | Download             | Built. `GET /api/download?path=` streams output as attachment.                                                                                                                                                                        |
 | Design Review        | Built as a local no-build static review tool under `design-review/`; not currently served by the main Express app.                                                                                                                    |
-| iOS/macOS native app | Planned. Draft specs and plans exist under `Docs/superpowers/` and `docs/superpowers/`.                                                                                                                                               |
+| iOS native app       | **Live on TestFlight.** Native SwiftUI + AVAssetWriter + VideoToolbox + PhotosUI. 4 tabs: Compress / Stitch / MetaClean / Settings. Auto-deploy from `main` via GitHub Actions. See Part 15 for full pipeline.                          |
 
 ### API Surface
 
@@ -517,6 +517,164 @@ Deliverables:
 - Built vs left-to-build report.
 - Stress-test matrix.
 - iOS port recommendation.
+
+---
+
+## Part 15: iOS App + TestFlight Deployment Pipeline
+
+**This section is mandatory reading for any agent touching `VideoCompressor/` or `.github/workflows/`. The pipeline below means a single push to `main` produces a TestFlight build — agents must understand the blast radius before pushing.**
+
+### App identity
+
+| Field                | Value                                              |
+| -------------------- | -------------------------------------------------- |
+| Bundle ID            | `com.alkloihd.videocompressor`                     |
+| Home-screen name     | `Media Swiss Army`                                 |
+| In-app title         | `Alkloihd Video Swiss-AK`                          |
+| Apple Team ID        | `9577LMA4J5`                                       |
+| Xcode project        | `VideoCompressor/VideoCompressor_iOS.xcodeproj`    |
+| Scheme               | `VideoCompressor_iOS`                              |
+| Source folder        | `VideoCompressor/ios/` (PBXFileSystemSynchronizedRootGroup — files added on disk auto-included) |
+| Test target          | `VideoCompressor/VideoCompressorTests/`            |
+| Min iOS              | 17.0                                               |
+| Encryption export    | `ITSAppUsesNonExemptEncryption=NO`                 |
+| Background modes     | `audio` (opt-in via Settings → "Allow encoding in background") |
+
+### iOS architecture (current truth)
+
+- **SwiftUI** for all UI; no UIKit ViewControllers.
+- **AVAssetWriter + AVAssetReader** for compression (NOT `AVAssetExportSession` — that produced 1.2 GB outputs from 600 MB sources at fixed bitrate). Smart bitrate caps from `lib/ffmpeg.js` ported to `CompressionSettings.bitrate(forSourceBitrate:)`: `balanced` 70%, `small` 40%, `streaming` 50% of source.
+- **HEVC** for max/balanced/small presets; **H.264** for streaming preset.
+- **VideoToolbox** hardware encoder via AVAssetWriter `kVTCompressionPropertyKey_*`.
+- **PhotosUI** `PhotosPicker` with `matching: .any(of: [.videos, .images])` — Photos library is first-class (HEIC/JPEG compress + metaclean + stitch on still images planned in commit 5).
+- **Audio Background Mode** opt-in (`AudioBackgroundKeeper` plays a 1-sec silent AAC at volume 0 with `.mixWithOthers`) bypasses iOS's ~30s background ceiling. Foreground-only by default.
+- **CacheSweeper** actor manages 6 working dirs (`Inputs/`, `Outputs/`, `Stitch/`, `Thumbnails/`, `MetaClean/`, `tmp/`); auto-sweeps files >7 days old on launch; manual "Clear cache" in Settings.
+- **DeviceCapabilities** classifies device by `hw.machine` sysctl — Pro phones (2× encoder engines) get parallel multi-clip encode via `TaskGroup`; standard phones serialize.
+- **MetadataService** uses CGImageSource/CGImageDestination for stills; `AVMetadataItem` + atom-walking for video. Meta-glasses fingerprint detection looks for binary "Comment"/"Description" atoms with `ray-ban`/`meta`/`rayban` markers.
+- **`StripRules.autoMetaGlasses`** is intentionally narrow: `{stripCategories: [], stripMetaFingerprintAlways: true}` — only strips the binary fingerprint atom, preserving date/GPS/device info.
+
+### Key iOS files
+
+| Path                                                        | Responsibility                                                       |
+| ----------------------------------------------------------- | -------------------------------------------------------------------- |
+| `VideoCompressor/ios/ContentView.swift`                     | TabView host: Compress / Stitch / MetaClean / Settings.              |
+| `VideoCompressor/ios/Models/CompressionSettings.swift`      | Resolution × QualityLevel; smart bitrate cap math.                   |
+| `VideoCompressor/ios/Models/VideoFile.swift`                | Per-file state: pickedAt, metadata, jobState, saveStatus, kind.      |
+| `VideoCompressor/ios/Services/CompressionService.swift`     | AVAssetWriter pipeline, cancellation, cleanup-on-cancel.             |
+| `VideoCompressor/ios/Services/VideoLibrary.swift`           | @MainActor ObservableObject; UIBackgroundTask + AudioBackgroundKeeper wrap. |
+| `VideoCompressor/ios/Services/AudioBackgroundKeeper.swift`  | Refcounted AVAudioSession singleton; gated on `allowBackgroundEncoding` UserDefaults. |
+| `VideoCompressor/ios/Services/CacheSweeper.swift`           | Actor managing working dirs; sweep / clear / breakdown.              |
+| `VideoCompressor/ios/Services/MetadataService.swift`        | Read/strip metadata; Meta fingerprint detection.                     |
+| `VideoCompressor/ios/Services/StitchExporter.swift`         | AVMutableComposition concat with per-clip trim.                      |
+| `VideoCompressor/ios/Views/SettingsTabView.swift`           | Background-encode toggle + cache breakdown + clear button.           |
+| `VideoCompressor/ios/Views/StitchTab/`                      | Timeline, ClipEditor, TrimEditor (live preview, drag reorder).       |
+| `VideoCompressor/VideoCompressorTests/`                     | XCTest target. `MetadataTagTests`, `CompressionSettingsTests`, `CompressionServiceTests` (uses `/tmp/sample_test_video.mp4` fixture, XCTSkip if missing). |
+
+### Auto-deploy: push to `main` → TestFlight
+
+Pipeline file: **`.github/workflows/testflight.yml`**.
+
+```text
+push to main
+  └─> GitHub Actions (macos-26 runner)
+       ├─ checkout
+       ├─ xcodebuild archive (-allowProvisioningUpdates, no manual signing)
+       ├─ xcodebuild -exportArchive (ExportOptions.plist destination=upload)
+       │     ↳ uses App Store Connect API key from repo secret
+       └─> IPA delivered directly to App Store Connect
+            └─> TestFlight processing (~3-8 min more)
+                 └─> available on iPhone TestFlight app
+```
+
+**End-to-end ~12 min from commit to "available to testers."**
+
+### Triggering builds
+
+| Method              | When                                                              |
+| ------------------- | ----------------------------------------------------------------- |
+| Push to `main`      | Automatic. Every commit on `main` triggers TestFlight.            |
+| `workflow_dispatch` | Manual trigger from GitHub UI (Actions tab → TestFlight → Run workflow). Workflow file must already exist on `main`. |
+
+**Cherry-pick gotcha:** if you create the workflow on a feature branch, `workflow_dispatch` will not appear in the Actions tab until the workflow file lands on `main`. Always cherry-pick CI changes to `main` before relying on manual dispatch.
+
+### Repo secrets (GitHub Actions)
+
+These are configured in **GitHub → Repo → Settings → Secrets and variables → Actions**. Never commit any of these to the tree.
+
+| Secret                                | Purpose                                          |
+| ------------------------------------- | ------------------------------------------------ |
+| `APP_STORE_CONNECT_API_KEY_ID`        | Key ID from App Store Connect (e.g. `APSFBYWUZJ`). |
+| `APP_STORE_CONNECT_API_ISSUER_ID`     | Issuer UUID from App Store Connect.              |
+| `APP_STORE_CONNECT_API_KEY_BASE64`    | Base64-encoded `.p8` private key.                |
+
+**Required role: `Admin`.** "App Manager" is insufficient for `destination=upload` — uploads will fail with a permissions error. If a key was created with the wrong role, regenerate it as Admin.
+
+### Confidence-gate: when to push to `main`
+
+The user's standing direction (2026-05-03):
+
+> *"Don't trigger a bunch of builds separately — fix everything via teams of agents, and only when confidence is above 90% across all dimensions, merge to main and trigger the canonical TestFlight build."*
+
+Practical protocol:
+
+1. **All multi-commit work happens on a feature branch** — current is `feature/phase-3-stitch-ux-and-photos`.
+2. **Each commit must build green and pass tests locally** before landing on the feature branch.
+3. **Red team before merging:** dispatch ≥4 Opus reviewers across orthogonal dimensions (security, encoding correctness, UI/UX, performance). Resolve all CRITICAL + most HIGH findings.
+4. **Simulator E2E walkthrough:** boot iPhone Pro sim, exercise each tab, verify output sizes match expectations, confirm no crashes/leaks.
+5. **Only after confidence ≥ 90% on all dimensions:** open PR feature → main, merge, single TestFlight build kicks off.
+
+Hotfixes that are unambiguously safe (small, well-tested, blocking testers) MAY go direct to `main` — but ask first.
+
+### Local iOS dev
+
+Configured via `.xcodebuildmcp/config.yaml`. Default workflows: `simulator, simulator-management, ui-automation, debugging, logging, device, project-discovery, project-scaffolding, coverage, utilities`.
+
+```bash
+# Session start (Claude Code agents)
+mcp__xcodebuildmcp__session_show_defaults
+
+# Build + run on default sim
+mcp__xcodebuildmcp__build_run_sim
+
+# Run tests
+mcp__xcodebuildmcp__test_sim
+
+# Screenshot for verification
+mcp__xcodebuildmcp__screenshot
+```
+
+For physical-device builds, the user must complete one-time signing in Xcode (Signing & Capabilities → Automatically manage signing → Team: 9577LMA4J5). After that, MCP-driven device builds work.
+
+### Tracked Claude Code config (auto-inherited by branches)
+
+These ARE in git on `main`, so every feature branch inherits the same agent permissions, MCPs, hooks, skills:
+
+```text
+.claude/settings.json          ← team-shared permissions + env flags
+.claude/agents/                ← role definitions (ffmpeg-expert, frontend-builder, scribe, ...)
+.claude/commands/              ← slash commands (/compress, /diagnose, /status)
+.claude/hooks/                 ← Pre/PostToolUse + session hooks
+.claude/skills/                ← progressive-disclosure skills
+.github/workflows/testflight.yml  ← deploy pipeline
+.github/workflows/ci.yml          ← lint/format/syntax/audit
+.xcodebuildmcp/config.yaml     ← XcodeBuildMCP workflow gate
+AGENTS.md, CLAUDE.md           ← canonical protocol
+```
+
+Per-user-only (gitignored, never tracked):
+
+```text
+.claude/settings.local.json    ← personal MCP servers, machine-specific keys
+.claude/plans/                 ← scratch plan-mode output
+.claude/worktrees/             ← agent-spawned worktrees
+.agents/work-sessions/**/session-activity.log  ← raw shell history
+```
+
+If a new agent picks up this repo cold:
+1. `git clone` from `main` → all of the above lands automatically.
+2. `npm install` for the web app.
+3. `xcodebuildmcp setup` (Codex) or `claude mcp add --scope user xcodebuildmcp -- xcodebuildmcp mcp` (Claude Code) for iOS work.
+4. A push to `main` will deploy to TestFlight without further wiring — the secrets live on GitHub, not locally.
 
 ---
 

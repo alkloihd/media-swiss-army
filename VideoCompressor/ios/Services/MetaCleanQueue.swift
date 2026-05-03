@@ -25,6 +25,7 @@ final class MetaCleanQueue: ObservableObject {
     @Published var deleteOriginalAfterSave: Bool = false
 
     private let service = MetadataService()
+    private let photoService = PhotoMetadataService()
     private var cleanTask: Task<Void, Never>?
 
     // MARK: - Import / append
@@ -40,8 +41,13 @@ final class MetaCleanQueue: ObservableObject {
     private func scan(_ id: UUID) async {
         guard let i = items.firstIndex(where: { $0.id == id }) else { return }
         let url = items[i].sourceURL
+        let kind = items[i].kind
         do {
-            let tags = try await service.read(url: url)
+            let tags: [MetadataTag]
+            switch kind {
+            case .video: tags = try await service.read(url: url)
+            case .still: tags = try await photoService.read(url: url)
+            }
             if let j = items.firstIndex(where: { $0.id == id }) {
                 items[j].tags = tags
             }
@@ -90,12 +96,22 @@ final class MetaCleanQueue: ObservableObject {
     ) async {
         guard let item = items.first(where: { $0.id == id }) else { return }
         do {
-            let result = try await service.strip(
-                url: item.sourceURL,
-                rules: rules
-            ) { [weak self] progress in
-                // onProgress is @MainActor @Sendable — we're already on @MainActor here.
-                self?.cleanProgress = progress
+            let result: MetadataCleanResult
+            switch item.kind {
+            case .video:
+                result = try await service.strip(
+                    url: item.sourceURL,
+                    rules: rules
+                ) { [weak self] progress in
+                    self?.cleanProgress = progress
+                }
+            case .still:
+                result = try await photoService.strip(
+                    url: item.sourceURL,
+                    rules: rules
+                ) { [weak self] progress in
+                    self?.cleanProgress = progress
+                }
             }
             if let i = items.firstIndex(where: { $0.id == id }) {
                 items[i].cleanResult = result

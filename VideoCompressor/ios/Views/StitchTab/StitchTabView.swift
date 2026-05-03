@@ -12,6 +12,8 @@
 import SwiftUI
 import PhotosUI
 import AVFoundation
+import ImageIO
+import CoreGraphics
 
 struct StitchTabView: View {
     @StateObject private var project = StitchProject()
@@ -29,8 +31,8 @@ struct StitchTabView: View {
                     ) {
                         PhotosPicker(
                             selection: $pickerItems,
-                            maxSelectionCount: 20,
-                            matching: .videos,
+                            maxSelectionCount: 50,
+                            matching: .any(of: [.videos, .images]),
                             preferredItemEncoding: .current
                         ) {
                             Label("Import Videos", systemImage: "photo.on.rectangle.angled")
@@ -49,8 +51,8 @@ struct StitchTabView: View {
                 ToolbarItem(placement: .topBarTrailing) {
                     PhotosPicker(
                         selection: $pickerItems,
-                        maxSelectionCount: 20,
-                        matching: .videos,
+                        maxSelectionCount: 50,
+                        matching: .any(of: [.videos, .images]),
                         preferredItemEncoding: .current
                     ) {
                         Label("Add", systemImage: "plus.circle.fill")
@@ -124,54 +126,95 @@ struct StitchTabView: View {
         try? FileManager.default.createDirectory(at: stitchInputs, withIntermediateDirectories: true)
 
         for item in items {
+            // 1. Try video Transferable first; fall back to photo.
+            var transferableURL: URL?
+            var transferableName: String?
+            var pickedKind: ClipKind = .video
+
             do {
-                // 1. Transferable gives us a temp-dir-staged file.
-                guard let transferable = try await item.loadTransferable(type: VideoTransferable.self) else {
+                if let v = try await item.loadTransferable(type: VideoTransferable.self) {
+                    transferableURL = v.url
+                    transferableName = v.suggestedName
+                    pickedKind = .video
+                }
+            } catch { /* fall through */ }
+
+            if transferableURL == nil {
+                do {
+                    if let p = try await item.loadTransferable(type: PhotoTransferable.self) {
+                        transferableURL = p.url
+                        transferableName = p.suggestedName
+                        pickedKind = .still
+                    }
+                } catch {
+                    await MainActor.run {
+                        project.lastImportError = .fileSystem(message: error.localizedDescription)
+                    }
                     continue
                 }
+            }
+            guard let srcURL = transferableURL else { continue }
 
+            do {
                 // 2. Copy into a stable directory so sourceURL survives picker scope exit.
                 let stableURL = try stageToStitchInputs(
-                    source: transferable.url,
-                    suggestedName: transferable.suggestedName,
+                    source: srcURL,
+                    suggestedName: transferableName,
                     into: stitchInputs
                 )
 
-                // 3. Probe duration (required) and natural size (best-effort).
-                let asset = AVURLAsset(url: stableURL)
+                // 3. Probe duration + natural size based on kind.
                 let duration: CMTime
-                do {
-                    duration = try await asset.load(.duration)
-                } catch {
-                    // Can't place clip without duration — surface error, clean up.
-                    try? FileManager.default.removeItem(at: stableURL)
-                    await MainActor.run {
-                        project.lastImportError = .fileSystem(
-                            message: "Could not read \(stableURL.lastPathComponent): \(error.localizedDescription)"
-                        )
-                    }
-                    continue
-                }
-
-                // Natural size via video track — required. A zero size would
-                // cause CropEditorView's normalized math to divide by zero.
                 let naturalSize: CGSize
-                if let track = try? await asset.loadTracks(withMediaType: .video).first,
-                   let size = try? await track.load(.naturalSize),
-                   size.width > 0, size.height > 0 {
-                    naturalSize = size
-                } else {
-                    try? FileManager.default.removeItem(at: stableURL)
-                    await MainActor.run {
-                        project.lastImportError = .fileSystem(
-                            message: "Could not read video dimensions for \(stableURL.lastPathComponent). The file may be corrupt or use an unsupported codec."
-                        )
+                switch pickedKind {
+                case .video:
+                    let asset = AVURLAsset(url: stableURL)
+                    do {
+                        duration = try await asset.load(.duration)
+                    } catch {
+                        try? FileManager.default.removeItem(at: stableURL)
+                        await MainActor.run {
+                            project.lastImportError = .fileSystem(
+                                message: "Could not read \(stableURL.lastPathComponent): \(error.localizedDescription)"
+                            )
+                        }
+                        continue
                     }
-                    continue
+                    if let track = try? await asset.loadTracks(withMediaType: .video).first,
+                       let size = try? await track.load(.naturalSize),
+                       size.width > 0, size.height > 0 {
+                        naturalSize = size
+                    } else {
+                        try? FileManager.default.removeItem(at: stableURL)
+                        await MainActor.run {
+                            project.lastImportError = .fileSystem(
+                                message: "Could not read video dimensions for \(stableURL.lastPathComponent)."
+                            )
+                        }
+                        continue
+                    }
+                case .still:
+                    // Stills: fixed default duration (3 s); pull pixel size from CGImageSource.
+                    duration = CMTime(seconds: 3.0, preferredTimescale: 600)
+                    let stillSize: CGSize = await Task.detached(priority: .userInitiated) {
+                        guard let src = CGImageSourceCreateWithURL(stableURL as CFURL, nil),
+                              CGImageSourceGetCount(src) > 0,
+                              let props = CGImageSourceCopyPropertiesAtIndex(src, 0, nil) as? [CFString: Any]
+                        else { return CGSize(width: 1920, height: 1080) }
+                        let w = (props[kCGImagePropertyPixelWidth] as? NSNumber)?.intValue ?? 1920
+                        let h = (props[kCGImagePropertyPixelHeight] as? NSNumber)?.intValue ?? 1080
+                        return CGSize(width: w, height: h)
+                    }.value
+                    naturalSize = stillSize
                 }
 
-                let displayName = transferable.suggestedName
+                let displayName = transferableName
                     ?? stableURL.deletingPathExtension().lastPathComponent
+
+                var edits: ClipEdits = .identity
+                if pickedKind == .still {
+                    edits.stillDuration = 3.0
+                }
 
                 let clip = StitchClip(
                     id: UUID(),
@@ -179,7 +222,8 @@ struct StitchTabView: View {
                     displayName: displayName,
                     naturalDuration: duration,
                     naturalSize: naturalSize,
-                    edits: .identity
+                    kind: pickedKind,
+                    edits: edits
                 )
 
                 await MainActor.run {
