@@ -106,16 +106,41 @@ struct MetaCleanTabView: View {
         try? FileManager.default.createDirectory(at: stagingDir, withIntermediateDirectories: true)
 
         for item in items {
+            // Try video first; fall back to photo. Mirrors VideoLibrary's
+            // dual-loadTransferable pattern.
+            var stagedURL: URL?
+            var displayName: String = ""
+            var kind: MediaKind = .video
+            var defaultExt = "mov"
+
             do {
-                guard let transferable = try await item.loadTransferable(type: VideoTransferable.self) else {
+                if let transferable = try await item.loadTransferable(type: VideoTransferable.self) {
+                    stagedURL = transferable.url
+                    displayName = transferable.suggestedName ?? transferable.url.lastPathComponent
+                    kind = .video
+                    defaultExt = "mov"
+                }
+            } catch { /* fall through */ }
+            if stagedURL == nil {
+                do {
+                    if let transferable = try await item.loadTransferable(type: PhotoTransferable.self) {
+                        stagedURL = transferable.url
+                        displayName = transferable.suggestedName ?? transferable.url.lastPathComponent
+                        kind = .still
+                        defaultExt = "heic"
+                    }
+                } catch {
+                    queue.lastImportError = .fileSystem(message: error.localizedDescription)
                     continue
                 }
+            }
+            guard let transferableURL = stagedURL else { continue }
 
-                let ext = transferable.url.pathExtension.isEmpty
-                    ? "mov"
-                    : transferable.url.pathExtension
-                let rawBase = transferable.suggestedName
-                    ?? "clip-\(UUID().uuidString.prefix(8))"
+            do {
+                let ext = transferableURL.pathExtension.isEmpty
+                    ? defaultExt
+                    : transferableURL.pathExtension
+                let rawBase = displayName
                 let base = rawBase
                     .replacingOccurrences(of: "/", with: "_")
                     .deletingSuffix(".\(ext)")
@@ -126,33 +151,26 @@ struct MetaCleanTabView: View {
                     target = stagingDir.appendingPathComponent("\(base)-\(suffix).\(ext)")
                 }
 
-                try FileManager.default.moveItem(at: transferable.url, to: target)
+                try FileManager.default.moveItem(at: transferableURL, to: target)
 
-                // Clean up the Picks-* wrapper directory left by VideoTransferable.
-                let parent = transferable.url.deletingLastPathComponent()
+                let parent = transferableURL.deletingLastPathComponent()
                 if parent.lastPathComponent.hasPrefix("Picks-") {
                     try? FileManager.default.removeItem(at: parent)
                 }
 
-                let displayName = transferable.suggestedName ?? target.lastPathComponent
-
-                // PhotosPickerItem.itemIdentifier is available on iOS 16+ when the
-                // user has granted full (.readWrite) authorization. Under limited
-                // access it returns nil — we store it anyway and the ExportSheet
-                // disables delete-original gracefully when nil.
                 let assetID = item.itemIdentifier
 
                 let newItem = MetaCleanItem(
                     id: UUID(),
                     sourceURL: target,
-                    displayName: displayName,
+                    displayName: displayName.isEmpty ? target.lastPathComponent : displayName,
+                    kind: kind,
                     originalAssetID: assetID,
                     tags: [],
                     scanError: nil,
                     cleanResult: nil
                 )
                 await queue.append(newItem)
-
             } catch {
                 queue.lastImportError = .fileSystem(message: error.localizedDescription)
             }

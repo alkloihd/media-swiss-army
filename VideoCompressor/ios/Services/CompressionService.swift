@@ -359,6 +359,18 @@ actor CompressionService {
                     return
                 }
 
+                // Race-guard: `withTaskCancellationHandler` invokes `onCancel`
+                // synchronously when the surrounding Task was already cancelled
+                // BEFORE we entered the body. In that case the inputs already
+                // had `markAsFinished()` called on them via onCancel, and
+                // `requestMediaDataWhenReady` will throw
+                // `NSInternalInconsistencyException` ("Cannot call method when
+                // status is 2"). Detect that state and resume immediately.
+                if Task.isCancelled {
+                    for _ in pumpsSnapshot { pumpState.finishOnePump() }
+                    return
+                }
+
                 for pair in pumpsSnapshot {
                     let queue = DispatchQueue(label: "compress.pump.\(pair.label)")
                     let input = pair.input

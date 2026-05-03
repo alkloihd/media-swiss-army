@@ -89,14 +89,12 @@ actor PhotoCompressionService {
         // with a 320×240 thumb sidecar.
         let cgImage: CGImage
         if let maxDim = settings.maxDimension {
-            var thumbOpts: [CFString: Any] = [
+            let thumbOpts: [CFString: Any] = [
                 kCGImageSourceCreateThumbnailFromImageAlways: true,
                 kCGImageSourceCreateThumbnailWithTransform: true,
                 kCGImageSourceShouldCacheImmediately: true,
                 kCGImageSourceThumbnailMaxPixelSize: maxDim,
             ]
-            // Don't set thumbOpts[shouldCache]; default is fine.
-            _ = thumbOpts // silence unused-key warning if any future change
             guard let img = CGImageSourceCreateThumbnailAtIndex(
                 source, 0, thumbOpts as CFDictionary
             ) else {
