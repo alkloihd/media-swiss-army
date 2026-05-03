@@ -8,6 +8,8 @@
 //
 
 import SwiftUI
+import ImageIO
+import UIKit
 
 struct ClipBlockView: View {
     let clip: StitchClip
@@ -73,11 +75,42 @@ struct ClipBlockView: View {
     }
 
     private func loadThumbnails() async {
+        // Stills come straight from ImageIO — AVAssetImageGenerator can't
+        // read HEIC / JPEG / PNG (they're not movies) so it would error and
+        // we'd end up with the warning-triangle placeholder for every photo
+        // the user imports. Render the still itself as the thumbnail.
+        if clip.kind == .still {
+            if let img = await Self.loadStillThumbnail(from: clip.sourceURL) {
+                thumbnails = Array(repeating: img, count: 4)
+            } else {
+                thumbnailLoadError = "Couldn't decode still."
+            }
+            return
+        }
+
         let gen = ThumbnailStripGenerator()
         do {
             thumbnails = try await gen.generate(for: clip.sourceURL, count: 4, maxDimension: 80)
         } catch {
             thumbnailLoadError = error.localizedDescription
         }
+    }
+
+    private static func loadStillThumbnail(from url: URL) async -> UIImage? {
+        await Task.detached(priority: .userInitiated) {
+            guard let src = CGImageSourceCreateWithURL(url as CFURL, nil),
+                  CGImageSourceGetCount(src) > 0 else {
+                return nil as UIImage?
+            }
+            let opts: [CFString: Any] = [
+                kCGImageSourceCreateThumbnailFromImageAlways: true,
+                kCGImageSourceCreateThumbnailWithTransform: true,
+                kCGImageSourceShouldCacheImmediately: true,
+                kCGImageSourceThumbnailMaxPixelSize: 200,
+            ]
+            guard let cg = CGImageSourceCreateThumbnailAtIndex(src, 0, opts as CFDictionary)
+            else { return nil as UIImage? }
+            return UIImage(cgImage: cg)
+        }.value
     }
 }

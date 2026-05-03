@@ -44,6 +44,13 @@ struct ClipEditorInlinePanel: View {
     /// Periodic time observer token — must be removed on disappear / clip swap
     /// or the AVPlayer leaks.
     @State private var timeObserverToken: Any?
+    /// Tick haptics — fire on each value-bucket crossing during continuous
+    /// drag. Trim handles snap to 0.5 s; playhead fires every 1.0 s; still
+    /// duration is already 0.5 s step-quantised by the slider itself.
+    @StateObject private var trimStartTicker = HapticTicker(step: 0.5)
+    @StateObject private var trimEndTicker = HapticTicker(step: 0.5)
+    @StateObject private var playheadTicker = HapticTicker(step: 1.0)
+    @StateObject private var stillDurationTicker = HapticTicker(step: 0.5)
 
     init(project: StitchProject, clipID: StitchClip.ID, onClose: @escaping () -> Void) {
         self.project = project
@@ -71,19 +78,35 @@ struct ClipEditorInlinePanel: View {
         if let clip = clip {
             VStack(spacing: 10) {
                 header(clip: clip)
-                VideoPlayer(player: player)
-                    .aspectRatio(16 / 9, contentMode: .fit)
-                    .frame(maxWidth: .infinity, maxHeight: 220)
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
 
-                Text(durationLabel)
-                    .font(.caption.monospacedDigit())
-                    .foregroundStyle(.secondary)
+                // Stills get a static image preview; videos get the AVPlayer.
+                // Without this branch, AVPlayer(url: heicURL) renders a black
+                // rectangle and feels broken (closes hotfix May 2026).
+                if clip.kind == .still {
+                    StillPreview(url: clip.sourceURL)
+                        .aspectRatio(16 / 9, contentMode: .fit)
+                        .frame(maxWidth: .infinity, maxHeight: 220)
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                } else {
+                    VideoPlayer(player: player)
+                        .aspectRatio(16 / 9, contentMode: .fit)
+                        .frame(maxWidth: .infinity, maxHeight: 220)
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                }
 
-                playheadSlider
-                trimSlider
+                if clip.kind == .still {
+                    stillDurationControl(clip: clip)
+                } else {
+                    Text(durationLabel)
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(.secondary)
 
-                splitHint
+                    playheadSlider
+                    splitButtonRow
+                    trimSlider
+
+                    splitHint
+                }
             }
             .padding(.horizontal, 12)
             .padding(.bottom, 12)
@@ -95,6 +118,52 @@ struct ClipEditorInlinePanel: View {
             // Clip vanished mid-edit (deleted from timeline). Auto-close.
             Color.clear.onAppear { onClose() }
         }
+    }
+
+    // MARK: - Still duration control
+
+    @ViewBuilder
+    private func stillDurationControl(clip: StitchClip) -> some View {
+        let duration = clip.edits.stillDuration ?? 3.0
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text("Display duration")
+                    .font(.subheadline)
+                Spacer()
+                Text("\(String(format: "%.1f", duration)) s")
+                    .font(.subheadline.monospacedDigit().weight(.semibold))
+            }
+            Slider(
+                value: Binding(
+                    get: { duration },
+                    set: { newValue in
+                        let clamped = min(10.0, max(1.0, newValue))
+                        // Snapshot pre-drag for undo on the very first set.
+                        if startSnapshotForUndo == nil {
+                            startSnapshotForUndo = clip.edits
+                        }
+                        project.updateEdits(for: clipID) {
+                            $0.stillDuration = clamped
+                        }
+                        stillDurationTicker.update(clamped)
+                    }
+                ),
+                in: 1.0 ... 10.0,
+                step: 0.5
+            ) { editing in
+                if editing {
+                    stillDurationTicker.reset()
+                } else if let snap = startSnapshotForUndo, snap != self.clip?.edits {
+                    project.commitHistorySnapshot(for: clipID, previous: snap)
+                    startSnapshotForUndo = nil
+                    Haptics.tapLight()
+                }
+            }
+            Text("Plays for \(String(format: "%.1f", duration)) seconds in the stitched video. Range: 1–10 s.")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+        }
+        .padding(.top, 4)
     }
 
     // MARK: - Header
@@ -166,6 +235,7 @@ struct ClipEditorInlinePanel: View {
                 set: { newValue in
                     playheadSeconds = newValue
                     seekTo(newValue)
+                    playheadTicker.update(newValue)
                 }
             ),
             in: 0 ... max(naturalDuration, 0.1)
@@ -173,9 +243,29 @@ struct ClipEditorInlinePanel: View {
             isDraggingPlayhead = editing
             if editing {
                 player.pause()
+                playheadTicker.reset()
             }
         }
         .accessibilityIdentifier("clipEditorPlayheadSlider")
+    }
+
+    // MARK: - Split button row (prominent action right under the playhead)
+
+    @ViewBuilder
+    private var splitButtonRow: some View {
+        HStack {
+            Button {
+                splitAtPlayhead()
+            } label: {
+                Label("Split at Playhead", systemImage: "scissors")
+                    .font(.subheadline.weight(.semibold))
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.small)
+            .disabled(!canSplitAtPlayhead)
+            .accessibilityIdentifier("clipEditorSplitButton")
+        }
     }
 
     // MARK: - Trim slider
@@ -191,6 +281,7 @@ struct ClipEditorInlinePanel: View {
                         $0.trimStartSeconds = clamped
                     }
                     seekTo(clamped)
+                    trimStartTicker.update(clamped)
                 }
             ),
             end: Binding(
@@ -201,6 +292,7 @@ struct ClipEditorInlinePanel: View {
                         $0.trimEndSeconds = clamped
                     }
                     seekTo(max(currentStart, clamped - 2.0))
+                    trimEndTicker.update(clamped)
                 }
             ),
             range: 0 ... max(naturalDuration, 0.1),
@@ -212,13 +304,13 @@ struct ClipEditorInlinePanel: View {
         .accessibilityIdentifier("clipEditorTrimSlider")
         .onChange(of: isDraggingStart) { wasDragging, dragging in
             if dragging && !wasDragging {
-                // Drag started — snapshot the pre-edit state for undo.
                 startSnapshotForUndo = clip?.edits
+                trimStartTicker.reset()
             }
             if wasDragging && !dragging {
-                // Drag ended — commit the snapshot if it differs from now.
                 if let snap = startSnapshotForUndo, snap != clip?.edits {
                     project.commitHistorySnapshot(for: clipID, previous: snap)
+                    Haptics.tapLight()
                 }
                 startSnapshotForUndo = nil
             }
@@ -226,10 +318,12 @@ struct ClipEditorInlinePanel: View {
         .onChange(of: isDraggingEnd) { wasDragging, dragging in
             if dragging && !wasDragging {
                 endSnapshotForUndo = clip?.edits
+                trimEndTicker.reset()
             }
             if wasDragging && !dragging {
                 if let snap = endSnapshotForUndo, snap != clip?.edits {
                     project.commitHistorySnapshot(for: clipID, previous: snap)
+                    Haptics.tapLight()
                 }
                 endSnapshotForUndo = nil
             }
@@ -240,10 +334,17 @@ struct ClipEditorInlinePanel: View {
 
     @ViewBuilder
     private var splitHint: some View {
-        Text("Drag the playhead to a moment, then tap ✂︎ to split. To remove a section, split at both ends, then long-press the middle clip and Delete.")
-            .font(.caption2)
-            .foregroundStyle(.secondary)
-            .multilineTextAlignment(.center)
+        if canSplitAtPlayhead {
+            Text("Tap **Split at Playhead** to cut here. To remove a section, split at both ends and long-press the middle clip → Delete.")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+        } else {
+            Text("Drag the playhead (top slider) into the trim window to enable Split.")
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+                .multilineTextAlignment(.center)
+        }
     }
 
     // MARK: - Computed
@@ -281,18 +382,34 @@ struct ClipEditorInlinePanel: View {
     // MARK: - Player wiring
 
     private func onAppearWithClip() {
+        // Pre-warm haptic generators — first-tick latency drops from ~30 ms
+        // to ~5 ms. Apple's recommended pattern.
+        trimStartTicker.prepare()
+        trimEndTicker.prepare()
+        playheadTicker.prepare()
+        stillDurationTicker.prepare()
+
+        // Stills don't render through AVPlayer — skip the time observer
+        // (saves ~30 main-thread callbacks per second for a player that's
+        // never visible).
+        guard clip?.kind != .still else { return }
         attachTimeObserver()
         seekTo(currentStart)
     }
 
     private func swapClip() {
         teardown()
-        if let clip = clip {
-            player.replaceCurrentItem(with: AVPlayerItem(url: clip.sourceURL))
-            attachTimeObserver()
-            seekTo(currentStart)
-            playheadSeconds = currentStart
+        guard let clip = clip else { return }
+        if clip.kind == .still {
+            // Don't bother loading the still URL into AVPlayer — the
+            // VideoPlayer view isn't rendered for stills. StillPreview
+            // handles the visible frame via ImageIO instead.
+            return
         }
+        player.replaceCurrentItem(with: AVPlayerItem(url: clip.sourceURL))
+        attachTimeObserver()
+        seekTo(currentStart)
+        playheadSeconds = currentStart
     }
 
     private func teardown() {
@@ -321,5 +438,48 @@ struct ClipEditorInlinePanel: View {
     private func seekTo(_ seconds: Double) {
         let t = CMTime(seconds: seconds, preferredTimescale: 600)
         player.seek(to: t, toleranceBefore: .zero, toleranceAfter: .zero)
+    }
+}
+
+// MARK: - StillPreview
+
+/// Loads and displays a still image (HEIC / JPEG / PNG) from disk via
+/// ImageIO. Used by the inline editor when the selected clip is a still —
+/// AVPlayer renders black for non-movie URLs so we can't reuse VideoPlayer.
+private struct StillPreview: View {
+    let url: URL
+    @State private var image: UIImage?
+
+    var body: some View {
+        ZStack {
+            Color.black
+            if let image = image {
+                Image(uiImage: image)
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+            } else {
+                ProgressView().tint(.white)
+            }
+        }
+        .task(id: url) { await load() }
+    }
+
+    private func load() async {
+        let result = await Task.detached(priority: .userInitiated) { () -> UIImage? in
+            guard let src = CGImageSourceCreateWithURL(url as CFURL, nil),
+                  CGImageSourceGetCount(src) > 0 else {
+                return nil
+            }
+            let opts: [CFString: Any] = [
+                kCGImageSourceCreateThumbnailFromImageAlways: true,
+                kCGImageSourceCreateThumbnailWithTransform: true,
+                kCGImageSourceShouldCacheImmediately: true,
+                kCGImageSourceThumbnailMaxPixelSize: 1024,
+            ]
+            guard let cg = CGImageSourceCreateThumbnailAtIndex(src, 0, opts as CFDictionary)
+            else { return nil }
+            return UIImage(cgImage: cg)
+        }.value
+        await MainActor.run { self.image = result }
     }
 }
