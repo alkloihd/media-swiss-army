@@ -32,6 +32,38 @@ struct SettingsTabView: View {
                     )
                 }
 
+                // MARK: Performance (Phase 3 commit 8)
+                Section {
+                    HStack {
+                        Text("Device class")
+                        Spacer()
+                        Text(
+                            DeviceCapabilities.deviceClass == .pro
+                                ? "Pro (2× encoder)"
+                                : DeviceCapabilities.deviceClass == .standard
+                                    ? "Standard (1× encoder)"
+                                    : "Unknown"
+                        )
+                        .foregroundStyle(.secondary)
+                    }
+                    HStack {
+                        Text("Parallel encodes")
+                        Spacer()
+                        Text("\(DeviceCapabilities.currentSafeConcurrency())")
+                            .foregroundStyle(.secondary)
+                            .monospacedDigit()
+                    }
+                } header: {
+                    Text("Performance")
+                } footer: {
+                    Text(
+                        "Pro iPhones (13 Pro – 17 Pro) have 2 dedicated video encoder engines — " +
+                        "both are used when batch-compressing. " +
+                        "Concurrency drops to 1 if the device is thermally stressed."
+                    )
+                    .font(.caption)
+                }
+
                 // MARK: Storage
                 Section("Storage") {
                     HStack {

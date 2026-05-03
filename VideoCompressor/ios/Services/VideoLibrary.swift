@@ -24,19 +24,28 @@ import UIKit
 final class VideoLibrary: ObservableObject {
     @Published private(set) var videos: [VideoFile] = []
     @Published var selectedSettings: CompressionSettings = .balanced
+    /// Photo equivalent of `selectedSettings`. The PresetPickerView decides
+    /// which one to display based on the current selection's media kinds.
+    @Published var selectedPhotoSettings: PhotoCompressionSettings = .balanced
     @Published var lastError: LibraryError?
 
     /// Convenience accessor for SwiftUI alert bindings.
     var lastErrorMessage: String? { lastError?.displayMessage }
 
     private var activeTask: Task<Void, Never>?
-    private let service = CompressionService()
+    // No shared CompressionService — each runJob creates its own instance so
+    // concurrent calls don't serialize on a single actor. See Phase 3 commit 8.
+    /// Shared photo compression service — photo encodes are fast (~100 ms)
+    /// so serialization on the actor is acceptable; no per-call instance needed.
+    private let photoService = PhotoCompressionService()
     /// Single shared MetadataService for auto-fingerprint-strip across
     /// Compress + Stitch + (future) Share Extension paths.
     fileprivate static let metadataService = MetadataService()
+    fileprivate static let photoMetadataService = PhotoMetadataService()
     /// Public alias so StitchProject can call into the same instance
     /// without exposing the fileprivate name.
     static var metadataServiceShared: MetadataService { metadataService }
+    static var photoMetadataServiceShared: PhotoMetadataService { photoMetadataService }
 
     init() {
         Self.markDirectoriesAsNonBackup()
@@ -67,18 +76,39 @@ final class VideoLibrary: ObservableObject {
 
     func importPickedItems(_ items: [PhotosPickerItem]) async {
         for item in items {
+            // Try video first; if that fails (the item is a still), try photo.
+            // PhotosPickerItem has supportedContentTypes which we could check
+            // up front, but the empirical "load video, fall back to photo"
+            // pattern is simpler and gives the same result.
             do {
-                guard let movie = try await item.loadTransferable(type: VideoTransferable.self) else {
+                if let movie = try await item.loadTransferable(type: VideoTransferable.self) {
+                    let stableURL = try copyToWorkingDir(movie.url, originalName: movie.suggestedName)
+                    let displayName = movie.suggestedName ?? stableURL.lastPathComponent
+                    let placeholder = VideoFile(
+                        sourceURL: stableURL,
+                        displayName: displayName,
+                        kind: .video
+                    )
+                    videos.append(placeholder)
+                    await loadMetadata(for: placeholder.id)
                     continue
                 }
-                let stableURL = try copyToWorkingDir(movie.url, originalName: movie.suggestedName)
-                let displayName = movie.suggestedName ?? stableURL.lastPathComponent
-                let placeholder = VideoFile(
-                    sourceURL: stableURL,
-                    displayName: displayName
-                )
-                videos.append(placeholder)
-                await loadMetadata(for: placeholder.id)
+            } catch {
+                // fall through to still attempt
+            }
+            do {
+                if let photo = try await item.loadTransferable(type: PhotoTransferable.self) {
+                    let stableURL = try copyToWorkingDir(photo.url, originalName: photo.suggestedName)
+                    let displayName = photo.suggestedName ?? stableURL.lastPathComponent
+                    let placeholder = VideoFile(
+                        sourceURL: stableURL,
+                        displayName: displayName,
+                        kind: .still
+                    )
+                    videos.append(placeholder)
+                    await loadMetadata(for: placeholder.id)
+                    continue
+                }
             } catch {
                 lastError = .fileSystem(message: error.localizedDescription)
             }
@@ -111,8 +141,15 @@ final class VideoLibrary: ObservableObject {
     private func loadMetadata(for id: UUID) async {
         guard let idx = videos.firstIndex(where: { $0.id == id }) else { return }
         let url = videos[idx].sourceURL
+        let kind = videos[idx].kind
         do {
-            let meta = try await VideoMetadataLoader.load(from: url)
+            let meta: VideoMetadata
+            switch kind {
+            case .video:
+                meta = try await VideoMetadataLoader.load(from: url)
+            case .still:
+                meta = try await PhotoMetadataLoader.load(from: url)
+            }
             if let i = videos.firstIndex(where: { $0.id == id }) {
                 videos[i].metadata = meta
             }
@@ -143,10 +180,44 @@ final class VideoLibrary: ObservableObject {
             .filter { !$0.jobState.isTerminal && !$0.jobState.isActive }
             .map(\.id)
 
+        // Mark all as queued so the UI shows correct state for waiting clips
+        // before their encode slot opens up.
+        for id in pendingIDs {
+            if let i = videos.firstIndex(where: { $0.id == id }) {
+                videos[i].jobState = .queued
+            }
+        }
+
+        // On Pro iPhones (13 Pro – 17 Pro) we have 2 dedicated video encoder
+        // engines; use both. Non-Pro or thermally stressed devices fall back to
+        // serial (concurrency = 1). See DeviceCapabilities.swift.
+        let concurrency = DeviceCapabilities.currentSafeConcurrency()
+
         activeTask = Task { [weak self] in
-            for id in pendingIDs {
-                guard !Task.isCancelled else { return }
-                await self?.runJob(for: id, settings: settings)
+            await withTaskGroup(of: Void.self) { group in
+                // Bounded concurrency: at most `concurrency` jobs in flight.
+                // Feed the queue from the main loop, blocking when the group
+                // is full via `await group.next()`.
+                var fed = 0
+                for id in pendingIDs {
+                    if Task.isCancelled { break }
+                    if fed < concurrency {
+                        group.addTask { [weak self] in
+                            await self?.runJob(for: id, settings: settings)
+                        }
+                        fed += 1
+                    } else {
+                        // Wait for one slot to free before adding the next.
+                        _ = await group.next()
+                        if Task.isCancelled { break }
+                        group.addTask { [weak self] in
+                            await self?.runJob(for: id, settings: settings)
+                        }
+                        // fed stays the same — we consumed one and added one.
+                    }
+                }
+                // Drain any remaining in-flight tasks.
+                for await _ in group {}
             }
         }
     }
@@ -161,6 +232,13 @@ final class VideoLibrary: ObservableObject {
 
     private func runJob(for id: UUID, settings: CompressionSettings) async {
         guard let idx = videos.firstIndex(where: { $0.id == id }) else { return }
+        // Branch on kind: stills go through the photo pipeline.
+        if videos[idx].kind == .still {
+            await runPhotoJob(for: id, settings: selectedPhotoSettings)
+            return
+        }
+        // Transition from .queued → .running.  (compressAll pre-marks as
+        // .queued; compress() single-clip path may still be .idle here.)
         videos[idx].jobState = .running(progress: .zero)
         let inputURL = videos[idx].sourceURL
 
@@ -183,8 +261,12 @@ final class VideoLibrary: ObservableObject {
             AudioBackgroundKeeper.shared.end()
         }
 
+        // Fresh actor instance per job — prevents a shared CompressionService
+        // actor from serializing concurrent encodes on Pro devices.
+        let perJobService = CompressionService()
+
         do {
-            let outputURL = try await service.compress(
+            let outputURL = try await perJobService.compress(
                 input: inputURL,
                 settings: settings
             ) { [weak self] progress in
@@ -278,6 +360,95 @@ final class VideoLibrary: ObservableObject {
         }
     }
 
+    // MARK: - Photo job
+
+    /// Photo-side equivalent of `runJob`. Drives the ImageIO encoder via
+    /// `PhotoCompressionService`, applies the same auto-fingerprint-strip,
+    /// and reports the same `CompressionJobState` transitions so the row UI
+    /// is identical regardless of media kind.
+    private func runPhotoJob(for id: UUID, settings: PhotoCompressionSettings) async {
+        guard let idx = videos.firstIndex(where: { $0.id == id }) else { return }
+        videos[idx].jobState = .running(progress: .zero)
+        let inputURL = videos[idx].sourceURL
+
+        // No background-task ceremony for photos — encode is sub-second on
+        // every modern device. AVFoundation's screen-lock killer doesn't
+        // apply here.
+
+        do {
+            let outputURL = try await photoService.compress(
+                input: inputURL,
+                settings: settings
+            ) { [weak self] progress in
+                guard let self else { return }
+                if let i = self.videos.firstIndex(where: { $0.id == id }) {
+                    self.videos[i].jobState = .running(progress: progress)
+                }
+            }
+
+            let bytes: Int64 = (try? FileManager.default
+                .attributesOfItem(atPath: outputURL.path)[.size] as? NSNumber)?.int64Value ?? 0
+            guard bytes > 0 else {
+                if let i = videos.firstIndex(where: { $0.id == id }) {
+                    videos[i].jobState = .failed(
+                        error: .compression(.exportFailed("Photo compressor produced an empty file."))
+                    )
+                }
+                try? FileManager.default.removeItem(at: outputURL)
+                return
+            }
+
+            // Auto-strip Meta fingerprint for stills (XMP / MakerApple).
+            await Self.photoMetadataService.stripMetaFingerprintInPlace(at: outputURL)
+            let finalBytes: Int64 = (try? FileManager.default
+                .attributesOfItem(atPath: outputURL.path)[.size] as? NSNumber)?.int64Value ?? bytes
+
+            // Skip-if-not-smaller guard mirrors the video path. HEIC at quality
+            // 1.0 on a HEIC source is a near-no-op; same threshold (95%).
+            let sourceBytes: Int64 = {
+                let onDisk = (try? FileManager.default
+                    .attributesOfItem(atPath: inputURL.path)[.size] as? NSNumber)?.int64Value ?? 0
+                if onDisk > 0 { return onDisk }
+                return videos.first(where: { $0.id == id })?.metadata?.fileSizeBytes ?? 0
+            }()
+            if sourceBytes > 0, finalBytes >= Int64(Double(sourceBytes) * 0.95) {
+                try? FileManager.default.removeItem(at: outputURL)
+                if let i = videos.firstIndex(where: { $0.id == id }) {
+                    let pct = Int(Double(finalBytes) / Double(sourceBytes) * 100)
+                    videos[i].jobState = .skipped(
+                        reason: "Already optimized (\(pct)% of source) — kept original"
+                    )
+                }
+                return
+            }
+
+            guard let i = videos.firstIndex(where: { $0.id == id }) else {
+                try? FileManager.default.removeItem(at: outputURL)
+                return
+            }
+            videos[i].jobState = .finished
+            // Photo settings don't currently fit `CompressedOutput.settings`
+            // (which is typed `CompressionSettings`). v1: store nil; the row
+            // UI renders savings purely from bytes.
+            videos[i].output = CompressedOutput(
+                url: outputURL,
+                bytes: finalBytes,
+                createdAt: Date(),
+                settings: nil
+            )
+        } catch is CancellationError {
+            if let i = videos.firstIndex(where: { $0.id == id }) {
+                videos[i].jobState = .cancelled
+            }
+        } catch {
+            if let i = videos.firstIndex(where: { $0.id == id }) {
+                videos[i].jobState = .failed(
+                    error: .compression(.exportFailed(error.localizedDescription))
+                )
+            }
+        }
+    }
+
     // MARK: - Saving
 
     func saveOutputToPhotos(for id: UUID) async {
@@ -346,6 +517,31 @@ struct VideoTransferable: Transferable {
             try? FileManager.default.removeItem(at: target)
             try FileManager.default.moveItem(at: received.file, to: target)
             return VideoTransferable(url: target, suggestedName: suggestedName)
+        }
+    }
+}
+
+/// Photo equivalent of `VideoTransferable`. Same lifecycle: PhotosPicker
+/// hands us a scoped temp file, we move it into our `Picks-*` wrapper dir,
+/// caller copies into the real working directory and tears down the wrapper.
+///
+/// Phase 3 commit 5 (2026-05-03).
+struct PhotoTransferable: Transferable {
+    let url: URL
+    let suggestedName: String?
+
+    static var transferRepresentation: some TransferRepresentation {
+        FileRepresentation(contentType: .image) { transferable in
+            SentTransferredFile(transferable.url)
+        } importing: { received in
+            let tmpDir = FileManager.default.temporaryDirectory
+                .appendingPathComponent("Picks-\(UUID().uuidString.prefix(6))", isDirectory: true)
+            try FileManager.default.createDirectory(at: tmpDir, withIntermediateDirectories: true)
+            let suggestedName = received.file.lastPathComponent
+            let target = tmpDir.appendingPathComponent(suggestedName)
+            try? FileManager.default.removeItem(at: target)
+            try FileManager.default.moveItem(at: received.file, to: target)
+            return PhotoTransferable(url: target, suggestedName: suggestedName)
         }
     }
 }

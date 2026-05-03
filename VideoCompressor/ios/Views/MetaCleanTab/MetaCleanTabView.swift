@@ -33,7 +33,7 @@ struct MetaCleanTabView: View {
                         PhotosPicker(
                             selection: $pickerItems,
                             maxSelectionCount: 50,
-                            matching: .videos,
+                            matching: .any(of: [.videos, .images]),
                             preferredItemEncoding: .current
                         ) {
                             Label("Import Videos", systemImage: "photo.on.rectangle.angled")
@@ -64,7 +64,7 @@ struct MetaCleanTabView: View {
                     PhotosPicker(
                         selection: $pickerItems,
                         maxSelectionCount: 50,
-                        matching: .videos,
+                        matching: .any(of: [.videos, .images]),
                         preferredItemEncoding: .current
                     ) {
                         Label("Add", systemImage: "plus.circle.fill")

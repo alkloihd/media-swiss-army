@@ -23,7 +23,7 @@ struct VideoRowView: View {
 
     private var header: some View {
         HStack(alignment: .firstTextBaseline) {
-            Image(systemName: "film")
+            Image(systemName: video.kind == .still ? "photo" : "film")
                 .foregroundStyle(.tint)
             Text(video.displayName)
                 .font(.subheadline.weight(.semibold))

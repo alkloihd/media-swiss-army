@@ -26,6 +26,14 @@ struct VideoFile: Identifiable, Hashable, Sendable {
     let sourceURL: URL
     let displayName: String
     let importedAt: Date
+    /// What kind of media this is. Defaults to `.video` for source-compat
+    /// with all existing call sites; the still-image import path passes
+    /// `.still` explicitly. See PhotoMedia.swift.
+    ///
+    /// `metadata` and `output` cover both kinds — for stills the metadata
+    /// holder reports `pixelWidth/Height` from CGImageSource, with
+    /// `durationSeconds = 0` and `nominalFrameRate = 0`.
+    let kind: MediaKind
 
     var metadata: VideoMetadata?
     var jobState: CompressionJobState
@@ -40,6 +48,7 @@ struct VideoFile: Identifiable, Hashable, Sendable {
         sourceURL: URL,
         displayName: String,
         importedAt: Date = Date(),
+        kind: MediaKind = .video,
         metadata: VideoMetadata? = nil,
         jobState: CompressionJobState = .idle,
         output: CompressedOutput? = nil,
@@ -49,6 +58,7 @@ struct VideoFile: Identifiable, Hashable, Sendable {
         self.sourceURL = sourceURL
         self.displayName = displayName
         self.importedAt = importedAt
+        self.kind = kind
         self.metadata = metadata
         self.jobState = jobState
         self.output = output
