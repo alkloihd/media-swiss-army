@@ -28,7 +28,7 @@ struct ContentView: View {
                 }
                 .tag(AppTab.stitch)
 
-            PlaceholderTabView(tab: .metaClean)
+            MetaCleanTabView()
                 .tabItem {
                     Label("MetaClean", systemImage: AppTab.metaClean.symbolName)
                 }

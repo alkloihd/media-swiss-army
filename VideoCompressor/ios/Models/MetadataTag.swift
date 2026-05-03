@@ -106,6 +106,23 @@ struct StripRules: Hashable, Sendable {
     )
 }
 
+// MARK: - StripRules helpers
+
+extension StripRules {
+    /// Predicts whether a tag would be stripped under these rules.
+    /// Mirrors `MetadataService.shouldStrip(tag:rules:)` exactly so the
+    /// MetadataInspectorView can show red/green indicators without running
+    /// the full remux pipeline.
+    ///
+    /// Note: `.technical` is never stripped even if included in
+    /// `stripCategories` — that mirrors the service's guard.
+    func willStrip(_ tag: MetadataTag) -> Bool {
+        if tag.category == .technical { return false }
+        if tag.isMetaFingerprint && stripMetaFingerprintAlways { return true }
+        return stripCategories.contains(tag.category)
+    }
+}
+
 /// Result payload of `MetadataService.strip` — mirrors `CompressedOutput`.
 ///
 /// `tagsKept` and `tagsStripped` are the as-classified record so the UI
