@@ -17,10 +17,12 @@ node_modules.nosync/
 .superpowers/
 screenshots/
 
-# Local Claude Code config (permissions, plans)
-# Note: .claude/settings.local.json is the standard local-only file.
-# .claude/settings.json here is also local — not tracked upstream.
-.claude/settings.json
+# Claude Code config
+# .claude/settings.json IS tracked on main — team-shared permissions, MCP
+# enables, env flags. Every feature branch off main inherits the same agent
+# capabilities (incl. xcodebuildmcp, context7, and TestFlight deploy access).
+# .claude/settings.local.json is the per-user override (personal MCP, machine
+# keys) — gitignored, never committed.
 .claude/settings.local.json
 .claude/plans/
 .claude/worktrees/
