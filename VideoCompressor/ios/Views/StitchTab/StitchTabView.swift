@@ -87,6 +87,28 @@ struct StitchTabView: View {
                     }
                     .accessibilityIdentifier("stitchAddButton")
                 }
+                ToolbarItem(placement: .topBarTrailing) {
+                    if project.clips.count >= 2 {
+                        Menu {
+                            Button {
+                                Task {
+                                    let changed = await project.sortByCreationDateAsync()
+                                    if changed {
+                                        Haptics.tapMedium()
+                                    } else {
+                                        Haptics.notifyWarning()
+                                    }
+                                }
+                            } label: {
+                                Label("Sort by Date Taken", systemImage: "calendar")
+                            }
+                        } label: {
+                            Image(systemName: "arrow.up.arrow.down.circle")
+                                .imageScale(.large)
+                        }
+                        .accessibilityIdentifier("stitchSortMenu")
+                    }
+                }
             }
             .safeAreaInset(edge: .bottom) {
                 if !project.clips.isEmpty {
@@ -321,6 +343,12 @@ struct StitchTabView: View {
                     edits.stillDuration = 3.0
                 }
 
+                // Capture Photos asset ID at import (cheap, in-memory).
+                // The expensive PHAsset → creationDate lookup is deferred
+                // to sortByCreationDate's batch fetch, which is N×faster
+                // than N synchronous fetches here. (Red-team H-2.)
+                let assetID = item.itemIdentifier
+
                 let clip = StitchClip(
                     id: UUID(),
                     sourceURL: stableURL,
@@ -329,6 +357,8 @@ struct StitchTabView: View {
                     naturalSize: naturalSize,
                     kind: pickedKind,
                     preferredTransform: preferredTransform,
+                    originalAssetID: assetID,
+                    creationDate: nil,
                     edits: edits
                 )
 

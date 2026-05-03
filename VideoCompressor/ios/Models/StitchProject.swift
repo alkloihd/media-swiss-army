@@ -59,7 +59,7 @@ final class StitchProject: ObservableObject {
     /// disable the Export button and show progress.
     var isExporting: Bool {
         switch exportState {
-        case .building, .encoding: return true
+        case .building, .preparing, .encoding: return true
         default:                   return false
         }
     }
@@ -117,6 +117,70 @@ final class StitchProject: ObservableObject {
     func insert(_ clip: StitchClip, after index: Int) {
         let safeIdx = max(0, min(index + 1, clips.count))
         clips.insert(clip, at: safeIdx)
+    }
+
+    /// Re-orders the timeline so clips with the earliest `creationDate`
+    /// come first. Clips without a captured date (drag-drop, share extension,
+    /// limited Photos auth) sort to the END, preserving their relative order.
+    /// The sort is stable. Returns true if the order actually changed.
+    ///
+    /// Pure / synchronous variant — uses dates that were captured at clip
+    /// construction time. Useful for tests and when the caller has already
+    /// populated dates. Production UI uses the async variant.
+    @discardableResult
+    func sortByCreationDate() -> Bool {
+        let before = clips.map(\.id)
+        let indexed = clips.enumerated().map { (offset: $0.offset, clip: $0.element) }
+        let sorted = indexed.sorted { lhs, rhs in
+            switch (lhs.clip.creationDate, rhs.clip.creationDate) {
+            case let (.some(l), .some(r)) where l != r: return l < r
+            case (.some, .none): return true
+            case (.none, .some): return false
+            default: return lhs.offset < rhs.offset
+            }
+        }
+        let newClips = sorted.map(\.clip)
+        let after = newClips.map(\.id)
+        guard before != after else { return false }
+        clips = newClips
+        return true
+    }
+
+    /// Fetches missing creation dates from Photos in a single batch call
+    /// (cheaper than N×serial), populates the in-memory cache on each clip,
+    /// then runs the sync sort. Returns true if the timeline order
+    /// changed. Used by the toolbar "Sort by Date Taken" action.
+    @discardableResult
+    func sortByCreationDateAsync() async -> Bool {
+        // Collect asset IDs for clips that don't already have a cached date.
+        let missingIDs = clips.compactMap { clip -> String? in
+            guard clip.creationDate == nil, let id = clip.originalAssetID
+            else { return nil }
+            return id
+        }
+        if !missingIDs.isEmpty {
+            let dates = await StitchClipFetcher.creationDates(forAssetIDs: missingIDs)
+            // Rewrite clips with newly-resolved dates. Preserve all other fields.
+            clips = clips.map { clip in
+                guard clip.creationDate == nil,
+                      let id = clip.originalAssetID,
+                      let date = dates[id]
+                else { return clip }
+                return StitchClip(
+                    id: clip.id,
+                    sourceURL: clip.sourceURL,
+                    displayName: clip.displayName,
+                    naturalDuration: clip.naturalDuration,
+                    naturalSize: clip.naturalSize,
+                    kind: clip.kind,
+                    preferredTransform: clip.preferredTransform,
+                    originalAssetID: clip.originalAssetID,
+                    creationDate: date,
+                    edits: clip.edits
+                )
+            }
+        }
+        return sortByCreationDate()
     }
 
     /// Mutates `ClipEdits` for the clip with the given id in place, triggering
@@ -242,6 +306,8 @@ final class StitchProject: ObservableObject {
             naturalSize: clip.naturalSize,
             kind: clip.kind,
             preferredTransform: clip.preferredTransform,
+            originalAssetID: clip.originalAssetID,
+            creationDate: clip.creationDate,
             edits: firstEdits
         )
         let secondHalf = StitchClip(
@@ -252,6 +318,8 @@ final class StitchProject: ObservableObject {
             naturalSize: clip.naturalSize,
             kind: clip.kind,
             preferredTransform: clip.preferredTransform,
+            originalAssetID: clip.originalAssetID,
+            creationDate: clip.creationDate,
             edits: secondEdits
         )
 
@@ -339,6 +407,8 @@ final class StitchProject: ObservableObject {
             naturalSize: firstHalf.naturalSize,
             kind: firstHalf.kind,
             preferredTransform: firstHalf.preferredTransform,
+            originalAssetID: firstHalf.originalAssetID,
+            creationDate: firstHalf.creationDate,
             edits: mergedEdits
         )
         clips.remove(at: secondHalfIdx)
@@ -398,7 +468,14 @@ final class StitchProject: ObservableObject {
             let plan = try await exporter.buildPlan(
                 from: clipsSnapshot,
                 aspectMode: aspect,
-                transition: transition
+                transition: transition,
+                onPrepareProgress: { [weak self] current, total in
+                    // Surface still-baking progress so users don't sit on a
+                    // mute "Building composition…" for several seconds when
+                    // their timeline has photos. Encode progress takes over
+                    // immediately after.
+                    self?.exportState = .preparing(current: current, total: total)
+                }
             )
             try Task.checkCancellation()
 
@@ -463,6 +540,11 @@ final class StitchProject: ObservableObject {
 enum StitchExportState: Hashable, Sendable {
     case idle
     case building
+    /// Pre-encode preparation phase (currently: still-image baking). Progress
+    /// is fraction of stills baked so far. Surfaced separately from
+    /// `.encoding` because the bake step has different perceptual feel
+    /// (no streaming progress, just N→N+1 transitions per still).
+    case preparing(current: Int, total: Int)
     case encoding(BoundedProgress)
     case finished(CompressedOutput)
     case cancelled

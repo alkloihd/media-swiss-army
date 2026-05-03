@@ -45,6 +45,11 @@ struct StitchTimelineView: View {
     /// deselect. nil = no clip currently being edited.
     @Binding var selectedClipID: StitchClip.ID?
     @State private var draggedID: StitchClip.ID?
+    /// Which clip's gap is currently a valid drop target. Used to render
+    /// a visible insertion indicator BETWEEN clips so the user can see
+    /// where the dragged clip will land. iOS Photos / Files use this
+    /// pattern; without it the drop is a guess.
+    @State private var dropTargetID: StitchClip.ID?
     /// User-controlled pinch-to-zoom on the timeline strip. 1.0 = default
     /// 200pt clip width; clamped to [0.5, 2.5] so clips never get unusably
     /// small or absurdly large. Persisted across re-renders only — not
@@ -61,6 +66,20 @@ struct StitchTimelineView: View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
                 ForEach(project.clips) { clip in
+                    HStack(spacing: 0) {
+                        // Drop-target indicator — a 6pt-wide accent-colored
+                        // pill on the LEFT of the clip when this is the
+                        // current drop target and the dragged clip is being
+                        // moved into this position.
+                        Capsule()
+                            .fill(Color.accentColor)
+                            .frame(
+                                width: dropTargetID == clip.id && draggedID != clip.id ? 6 : 0,
+                                height: baseClipHeight * zoom * 0.85
+                            )
+                            .padding(.trailing, dropTargetID == clip.id && draggedID != clip.id ? 4 : 0)
+                            .animation(.easeInOut(duration: 0.15), value: dropTargetID)
+
                     ClipBlockView(clip: clip)
                         .frame(width: baseClipWidth * zoom, height: baseClipHeight * zoom)
                         .opacity(draggedID == clip.id ? 0.4 : 1.0)
@@ -98,7 +117,10 @@ struct StitchTimelineView: View {
                                 let from = project.clips.firstIndex(where: { $0.id == droppedClipID }),
                                 let to = project.clips.firstIndex(where: { $0.id == clip.id }),
                                 from != to
-                            else { return false }
+                            else {
+                                dropTargetID = nil
+                                return false
+                            }
                             withAnimation(.easeInOut(duration: 0.25)) {
                                 // Match the semantic of List.onMove: inserting after the
                                 // target when dragging forward, before when dragging back.
@@ -106,10 +128,21 @@ struct StitchTimelineView: View {
                                 project.move(from: IndexSet(integer: from), to: dst)
                             }
                             draggedID = nil
+                            dropTargetID = nil
                             Haptics.tapMedium()
                             return true
-                        } isTargeted: { _ in
-                            // Visual feedback could be added here in a future pass
+                        } isTargeted: { isTargeted in
+                            // Light up the insertion indicator + selection-tick
+                            // a haptic so the user FEELS where the clip would
+                            // land before they release.
+                            if isTargeted {
+                                if dropTargetID != clip.id {
+                                    dropTargetID = clip.id
+                                    Haptics.selectionTick()
+                                }
+                            } else if dropTargetID == clip.id {
+                                dropTargetID = nil
+                            }
                         }
                         // iOS-native long-press lift + haptic + larger preview
                         // pane that auto-plays the clip (or shows the still).
@@ -122,6 +155,7 @@ struct StitchTimelineView: View {
                             ClipLongPressPreview(clip: clip)
                                 .frame(width: 360, height: 220)
                         })
+                    }  // end inner HStack(spacing: 0) wrapping indicator + clip
                 }
             }
             .padding(.horizontal, 16)
@@ -183,6 +217,8 @@ struct StitchTimelineView: View {
             naturalSize: clip.naturalSize,
             kind: clip.kind,
             preferredTransform: clip.preferredTransform,
+            originalAssetID: clip.originalAssetID,
+            creationDate: clip.creationDate,
             edits: clip.edits
         )
         // Insert immediately after the original. Note: source file is now
