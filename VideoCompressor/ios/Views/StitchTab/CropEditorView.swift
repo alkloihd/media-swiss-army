@@ -66,6 +66,23 @@ struct CropEditorView: View {
     // MARK: - Explicit CGRect field bindings
     // CGFloat and Double are distinct types; Swift does not synthesize
     // WritableKeyPath<CGRect, Double>, so we use four explicit bindings.
+    // Each setter normalizes to nil when the rect is approximately the
+    // identity (full frame) so the exporter's passthrough fast-path stays
+    // available — exact CGFloat equality is float-fragile (closes review
+    // {E-0503-1101} H1).
+
+    private static let identityEpsilon: CGFloat = 1e-4
+
+    private static func isApproximatelyIdentity(_ r: CGRect) -> Bool {
+        abs(r.minX) < identityEpsilon
+            && abs(r.minY) < identityEpsilon
+            && abs(r.width  - 1) < identityEpsilon
+            && abs(r.height - 1) < identityEpsilon
+    }
+
+    private func commit(_ rect: CGRect) {
+        edits.cropNormalized = Self.isApproximatelyIdentity(rect) ? nil : rect
+    }
 
     private var xBinding: Binding<Double> {
         Binding(
@@ -73,7 +90,7 @@ struct CropEditorView: View {
             set: { newValue in
                 var rect = edits.cropNormalized ?? CGRect(x: 0, y: 0, width: 1, height: 1)
                 rect.origin.x = CGFloat(newValue)
-                edits.cropNormalized = rect == CGRect(x: 0, y: 0, width: 1, height: 1) ? nil : rect
+                commit(rect)
             }
         )
     }
@@ -84,7 +101,7 @@ struct CropEditorView: View {
             set: { newValue in
                 var rect = edits.cropNormalized ?? CGRect(x: 0, y: 0, width: 1, height: 1)
                 rect.origin.y = CGFloat(newValue)
-                edits.cropNormalized = rect == CGRect(x: 0, y: 0, width: 1, height: 1) ? nil : rect
+                commit(rect)
             }
         )
     }
@@ -95,7 +112,7 @@ struct CropEditorView: View {
             set: { newValue in
                 var rect = edits.cropNormalized ?? CGRect(x: 0, y: 0, width: 1, height: 1)
                 rect.size.width = CGFloat(newValue)
-                edits.cropNormalized = rect == CGRect(x: 0, y: 0, width: 1, height: 1) ? nil : rect
+                commit(rect)
             }
         )
     }
@@ -106,7 +123,7 @@ struct CropEditorView: View {
             set: { newValue in
                 var rect = edits.cropNormalized ?? CGRect(x: 0, y: 0, width: 1, height: 1)
                 rect.size.height = CGFloat(newValue)
-                edits.cropNormalized = rect == CGRect(x: 0, y: 0, width: 1, height: 1) ? nil : rect
+                commit(rect)
             }
         )
     }
