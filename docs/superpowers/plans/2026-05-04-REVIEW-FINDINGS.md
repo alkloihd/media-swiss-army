@@ -120,9 +120,9 @@ But the bundled JSON `binaryAtomMarkers.comment` does NOT contain a bare `"meta"
 **Fix:** Either change the test input to `"xxxx...meta wearable"` (or another marker present in the bundled JSON), OR add bare `"meta"` to `binaryAtomMarkers.comment` in the JSON (which then weakens the false-positive guard's value because user-typed text containing `meta` is more common than `meta wearable`).
 **Owner:** Plan author. This is a hard contradiction — the test as written cannot pass against the JSON as written.
 
-### H6. Cluster 4 Task 4 references a stale repo URL but says NOT to "fix" reference docs to match — yet the plan-test asserts `Link(destination: URL(string: "https://alkloihd.github.io/video-compressor-FUCKMETA/privacy/")!)`. Project name `video-compressor-FUCKMETA` is unsuitable for a public privacy-policy URL listed in App Store Connect.
+### H6. Cluster 4 Task 4 references a stale repo URL but says NOT to "fix" reference docs to match — yet the plan-test asserts `Link(destination: URL(string: "https://alkloihd.github.io/media-swiss-army/privacy/")!)`. Project name `media-swiss-army` is unsuitable for a public privacy-policy URL listed in App Store Connect.
 **File:** `docs/superpowers/plans/2026-05-04-phase3-cluster4-app-store-hardening.md`, Task 4 (URL choice)
-**Issue:** The repo name `video-compressor-FUCKMETA` is the working name but is profane and will be visible in the App Store Connect privacy policy URL field. App Reviewers see this. Apple App Review can reject for inappropriate language in submitted URLs.
+**Issue:** The repo name `media-swiss-army` is the working name but is profane and will be visible in the App Store Connect privacy policy URL field. App Reviewers see this. Apple App Review can reject for inappropriate language in submitted URLs.
 **Fix:** Either (a) rename the public Pages output path (set up a custom domain or rename the repo before enabling Pages), OR (b) host the privacy policy on a separate non-profane URL (e.g. `mediaswissarmy.app/privacy`), OR (c) explicitly tell the user this is a manual step they need to resolve before App Store submission. The plan's "Notes for the executing agent" mentions GitHub Pages enablement as a manual step but does NOT flag the repo-name profanity issue.
 **Owner:** Plan author + user (need to decide URL strategy before this PR can land safely).
 
