@@ -173,10 +173,7 @@
     "defaultMode": "default"
   },
   "enableAllProjectMcpServers": false,
-  "enabledMcpjsonServers": [
-    "context7",
-    "fetch"
-  ],
+  "enabledMcpjsonServers": ["context7", "fetch"],
   "hooks": {
     "PreToolUse": [
       {
