@@ -104,6 +104,62 @@ final class MetadataTagTests: XCTestCase {
         XCTAssertNotEqual(a, b, "MetadataTag identity is per-instance UUID, not per-key")
     }
 
+    // MARK: - Fingerprint detection
+
+    func testFingerprintMatchesRayBanInDecodedText() {
+        // The case web-app commit a3ad413 was titled to fix: a "Comment"
+        // atom whose stringValue is nil but whose dataValue bytes
+        // decode to text containing "Ray-Ban".
+        XCTAssertTrue(
+            MetadataService.isMetaGlassesFingerprint(
+                key: "com.apple.quicktime.comment",
+                decodedText: "Ray-Ban Stories"
+            ),
+            "Fingerprint detector must match decoded binary text containing 'Ray-Ban'"
+        )
+    }
+
+    func testFingerprintMatchesMetaInDecodedText() {
+        XCTAssertTrue(
+            MetadataService.isMetaGlassesFingerprint(
+                key: "com.apple.quicktime.description",
+                decodedText: "Recorded with Meta glasses"
+            )
+        )
+    }
+
+    func testFingerprintIgnoresBinaryPlaceholderValue() {
+        // Regression: the inspector display value is "<binary, N bytes>"
+        // for binary-typed atoms. The fingerprint detector must NOT
+        // match against that placeholder — it must use the decoded
+        // bytes. Passing the placeholder text should return false.
+        XCTAssertFalse(
+            MetadataService.isMetaGlassesFingerprint(
+                key: "com.apple.quicktime.comment",
+                decodedText: "<binary, 32 bytes>"
+            )
+        )
+    }
+
+    func testFingerprintReturnsFalseForUnreadableData() {
+        XCTAssertFalse(
+            MetadataService.isMetaGlassesFingerprint(
+                key: "com.apple.quicktime.comment",
+                decodedText: nil
+            )
+        )
+    }
+
+    func testFingerprintRequiresCommentOrDescriptionKey() {
+        XCTAssertFalse(
+            MetadataService.isMetaGlassesFingerprint(
+                key: "com.apple.quicktime.location.ISO6709",
+                decodedText: "Ray-Ban"
+            ),
+            "Fingerprint detector should only match comment/description keys"
+        )
+    }
+
     // MARK: - MetadataCleanResult
 
     func testCleanResultSizeLabelFormatsBytes() {

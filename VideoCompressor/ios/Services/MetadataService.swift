@@ -332,20 +332,51 @@ actor MetadataService {
         // `load(.stringValue)` and friends return `T?` directly (the
         // accessor itself is non-optional but the underlying value may
         // be nil). One `try?` per access; chain via fallback.
+        // Display value (shown in inspector). For binary blobs we
+        // substitute a `<binary, N bytes>` placeholder so the UI never
+        // dumps raw bytes.
+        //
+        // Decoded text (used ONLY for fingerprint matching). Web app
+        // commit `a3ad413` ("Fix MetaClean: strip binary Comment
+        // containing Meta device fingerprint") established that Meta
+        // Ray-Ban glasses stash their fingerprint in a binary `Comment`
+        // atom whose bytes ARE printable ASCII like "Ray-Ban Stories".
+        // `stringValue` returns nil for those (the type-coded atom is
+        // not a string), so we have to UTF-8 decode the data ourselves
+        // to match. Decoded text is computed lazily and never shown to
+        // the user.
         let value: String
+        var decodedTextForMatching: String?
         if let s = (try? await item.load(.stringValue)) ?? nil {
             value = s
+            decodedTextForMatching = s
         } else if let d = (try? await item.load(.dataValue)) ?? nil {
             value = "<binary, \(d.count) bytes>"
+            // Try UTF-8 then ASCII-tolerant decode for fingerprint match.
+            if let utf8 = String(data: d, encoding: .utf8) {
+                decodedTextForMatching = utf8
+            } else if let ascii = String(data: d, encoding: .ascii) {
+                decodedTextForMatching = ascii
+            } else {
+                // Some Meta atoms are UTF-16 / mixed binary. Strip
+                // non-printable bytes and try once more.
+                let printable = d.filter { (0x20...0x7E).contains($0) }
+                decodedTextForMatching = String(data: printable, encoding: .ascii)
+            }
         } else if let n = (try? await item.load(.numberValue)) ?? nil {
             value = "\(n)"
+            decodedTextForMatching = value
         } else if let date = (try? await item.load(.dateValue)) ?? nil {
             value = ISO8601DateFormatter().string(from: date)
+            decodedTextForMatching = value
         } else {
             value = "(unreadable)"
         }
         let category = Self.categoryFor(key: key)
-        let isFingerprint = Self.isMetaGlassesFingerprint(key: key, value: value)
+        let isFingerprint = Self.isMetaGlassesFingerprint(
+            key: key,
+            decodedText: decodedTextForMatching
+        )
         return MetadataTag(
             id: UUID(),
             key: key,
@@ -381,14 +412,20 @@ actor MetadataService {
     }
 
     /// Web app fingerprint detection (commits `a3ad413`, `be6e360`):
-    /// Meta Ray-Ban glasses leave a binary "Comment" or "Description"
-    /// atom containing the marker bytes "Ray-Ban" or "Meta". Match
-    /// case-insensitively against either form.
-    private static func isMetaGlassesFingerprint(key: String, value: String) -> Bool {
+    /// Meta Ray-Ban glasses leave a "Comment" or "Description" atom —
+    /// often binary-typed despite containing printable ASCII — with
+    /// marker bytes "Ray-Ban", "Rayban", or "Meta".
+    ///
+    /// `decodedText` is the UTF-8 / ASCII decode of the atom's bytes
+    /// when `stringValue` was nil. The display `value` (e.g. "<binary,
+    /// 32 bytes>") is NOT what we match against — that placeholder
+    /// would never contain the marker and `autoMetaGlasses` would
+    /// silently no-op against the very files it's named for.
+    static func isMetaGlassesFingerprint(key: String, decodedText: String?) -> Bool {
         let k = key.lowercased()
         guard k.contains("comment") || k.contains("description") else { return false }
-        let v = value.lowercased()
-        return v.contains("ray-ban") || v.contains("rayban") || v.contains("meta")
+        guard let text = decodedText?.lowercased() else { return false }
+        return text.contains("ray-ban") || text.contains("rayban") || text.contains("meta")
     }
 
     private func shouldStrip(tag: MetadataTag, rules: StripRules) -> Bool {
