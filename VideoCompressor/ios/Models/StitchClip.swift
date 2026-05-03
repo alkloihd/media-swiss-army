@@ -21,6 +21,49 @@ enum ClipKind: String, Sendable, Hashable {
     case still
 }
 
+/// Aspect-ratio canvas mode for the stitched output. `.auto` picks orientation
+/// from a majority vote across the clips (fall-back: landscape on tie). The
+/// explicit modes use canonical 1080-edge sizes. Mismatched clips render with
+/// black bars (letterbox / pillarbox) instead of being cropped — that was the
+/// pre-fix behaviour and the user's main complaint.
+enum StitchAspectMode: String, CaseIterable, Hashable, Sendable, Identifiable {
+    case auto
+    case portrait
+    case landscape
+    case square
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .auto:      return "Auto"
+        case .portrait:  return "9:16"
+        case .landscape: return "16:9"
+        case .square:    return "1:1"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .auto:      return "rectangle.dashed"
+        case .portrait:  return "rectangle.portrait"
+        case .landscape: return "rectangle"
+        case .square:    return "square"
+        }
+    }
+
+    /// Canonical render size for the explicit modes. `.auto` returns nil and
+    /// callers compute from clip orientation distribution.
+    var fixedRenderSize: CGSize? {
+        switch self {
+        case .portrait:  return CGSize(width: 1080, height: 1920)
+        case .landscape: return CGSize(width: 1920, height: 1080)
+        case .square:    return CGSize(width: 1080, height: 1080)
+        case .auto:      return nil
+        }
+    }
+}
+
 struct StitchClip: Identifiable, Hashable, Sendable {
     let id: UUID
     let sourceURL: URL
@@ -30,6 +73,13 @@ struct StitchClip: Identifiable, Hashable, Sendable {
     /// Defaults to `.video` for source-compat with all existing call sites
     /// that construct StitchClip without specifying a kind.
     let kind: ClipKind
+    /// AVAssetTrack.preferredTransform — captured at import. iPhone portrait
+    /// videos report `naturalSize = (1920, 1080)` PRE-rotation; the
+    /// preferredTransform is a 90° rotation that flips them upright. Without
+    /// applying this in the composition layer instructions, portrait clips
+    /// render sideways and aspect-fit math is wrong. Defaults to `.identity`
+    /// for backward compat with old call sites + tests.
+    let preferredTransform: CGAffineTransform
     var edits: ClipEdits
 
     init(
@@ -39,6 +89,7 @@ struct StitchClip: Identifiable, Hashable, Sendable {
         naturalDuration: CMTime,
         naturalSize: CGSize,
         kind: ClipKind = .video,
+        preferredTransform: CGAffineTransform = .identity,
         edits: ClipEdits
     ) {
         self.id = id
@@ -47,7 +98,31 @@ struct StitchClip: Identifiable, Hashable, Sendable {
         self.naturalDuration = naturalDuration
         self.naturalSize = naturalSize
         self.kind = kind
+        self.preferredTransform = preferredTransform
         self.edits = edits
+    }
+
+    /// Display-space size after applying `preferredTransform`. Use this for
+    /// orientation comparisons and aspect-fit math — `naturalSize` alone is
+    /// in pre-rotation pixel space and gives wrong answers for iPhone
+    /// portrait video.
+    var displaySize: CGSize {
+        let rect = CGRect(origin: .zero, size: naturalSize)
+            .applying(preferredTransform)
+        return CGSize(width: abs(rect.width), height: abs(rect.height))
+    }
+
+    /// Coarse orientation classification used by `.auto` aspect mode.
+    var displayOrientation: DisplayOrientation {
+        let s = displaySize
+        guard s.width > 0, s.height > 0 else { return .square }
+        if s.width > s.height * 1.05 { return .landscape }
+        if s.height > s.width * 1.05 { return .portrait }
+        return .square
+    }
+
+    enum DisplayOrientation: Sendable, Hashable {
+        case landscape, portrait, square
     }
 
     /// The source-clip time range to insert into an AVMutableComposition.

@@ -43,7 +43,13 @@ struct StitchTabView: View {
                         .accessibilityIdentifier("stitchImportButton")
                     }
                 } else {
-                    StitchTimelineView(project: project)
+                    VStack(spacing: 0) {
+                        aspectModePicker
+                            .padding(.horizontal)
+                            .padding(.top, 8)
+                            .padding(.bottom, 4)
+                        StitchTimelineView(project: project)
+                    }
                 }
             }
             .navigationTitle("Stitch")
@@ -88,6 +94,41 @@ struct StitchTabView: View {
             let items = newItems
             pickerItems = []
             Task { await importClips(items) }
+        }
+    }
+
+    // MARK: - Aspect-mode picker
+
+    @ViewBuilder
+    private var aspectModePicker: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 8) {
+                Image(systemName: "aspectratio")
+                    .foregroundStyle(.secondary)
+                Text("Output Aspect")
+                    .font(.subheadline.weight(.medium))
+                Spacer()
+            }
+            Picker("Output Aspect", selection: $project.aspectMode) {
+                ForEach(StitchAspectMode.allCases) { mode in
+                    Label(mode.displayName, systemImage: mode.systemImage).tag(mode)
+                }
+            }
+            .pickerStyle(.segmented)
+            Text(aspectCaption)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .accessibilityIdentifier("stitchAspectPicker")
+    }
+
+    private var aspectCaption: String {
+        switch project.aspectMode {
+        case .auto:      return "Picks orientation from your clips. Mismatched clips show with black bars instead of being cropped."
+        case .portrait:  return "9:16 canvas. Landscape clips will pillarbox (black bars on top/bottom)."
+        case .landscape: return "16:9 canvas. Portrait clips will pillarbox (black bars on left/right)."
+        case .square:    return "1:1 canvas. Mismatched clips show with black bars."
         }
     }
 
@@ -163,9 +204,14 @@ struct StitchTabView: View {
                     into: stitchInputs
                 )
 
-                // 3. Probe duration + natural size based on kind.
+                // 3. Probe duration + natural size + preferredTransform.
+                // preferredTransform is captured here so the stitch composition
+                // can rotate iPhone portrait video upright AND aspect-fit it
+                // onto the canvas without crop. Defaults to .identity for
+                // stills + fallback paths.
                 let duration: CMTime
                 let naturalSize: CGSize
+                var preferredTransform: CGAffineTransform = .identity
                 switch pickedKind {
                 case .video:
                     let asset = AVURLAsset(url: stableURL)
@@ -184,6 +230,9 @@ struct StitchTabView: View {
                        let size = try? await track.load(.naturalSize),
                        size.width > 0, size.height > 0 {
                         naturalSize = size
+                        if let t = try? await track.load(.preferredTransform) {
+                            preferredTransform = t
+                        }
                     } else {
                         try? FileManager.default.removeItem(at: stableURL)
                         await MainActor.run {
@@ -223,6 +272,7 @@ struct StitchTabView: View {
                     naturalDuration: duration,
                     naturalSize: naturalSize,
                     kind: pickedKind,
+                    preferredTransform: preferredTransform,
                     edits: edits
                 )
 
