@@ -207,6 +207,13 @@ actor MetadataService {
             }
         }
 
+        // Snapshot the mutable `var inputs` array into immutable `let`
+        // bindings BEFORE crossing the `@Sendable` closure boundary.
+        // Capturing the `var` directly trips Swift 6 strict-concurrency
+        // (closes review {E-0503-1135} H1).
+        let pumpInputs = inputs
+        let cancelInputs = inputs
+
         // Pump samples per track. Each track owns a dispatch queue.
         // Completion fires when all per-track pumps have signalled
         // `finishOnePump()` on the shared state.
@@ -220,7 +227,7 @@ actor MetadataService {
                     return
                 }
 
-                for pair in inputs {
+                for pair in pumpInputs {
                     let queue = DispatchQueue(label: "metaclean.pump.\(pair.input.mediaType.rawValue)")
                     let input = pair.input
                     let output = pair.output
@@ -255,7 +262,7 @@ actor MetadataService {
             }
         } onCancel: {
             reader.cancelReading()
-            for pair in inputs { pair.input.markAsFinished() }
+            for pair in cancelInputs { pair.input.markAsFinished() }
         }
 
         // Stop the poller before emitting the final 1.0 — same reason
