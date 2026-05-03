@@ -11,6 +11,7 @@ import Foundation
 import Combine
 import SwiftUI
 import AVFoundation
+import UIKit
 
 @MainActor
 final class StitchProject: ObservableObject {
@@ -116,6 +117,19 @@ final class StitchProject: ObservableObject {
         outputURL: URL,
         settings: CompressionSettings
     ) async {
+        // Hold a UIBackgroundTask for the same reason VideoLibrary.runJob
+        // does — multi-clip stitch encodes are even longer than single-clip
+        // compress, so screen-lock-during-export is the most likely cause
+        // of AVErrorOperationInterrupted (-11847) failures the user sees.
+        let bgTaskID = UIApplication.shared.beginBackgroundTask(
+            withName: "VideoCompressor.stitchExport"
+        )
+        defer {
+            if bgTaskID != .invalid {
+                UIApplication.shared.endBackgroundTask(bgTaskID)
+            }
+        }
+
         let exporter = StitchExporter()
         do {
             let plan = try await exporter.buildPlan(from: clipsSnapshot)

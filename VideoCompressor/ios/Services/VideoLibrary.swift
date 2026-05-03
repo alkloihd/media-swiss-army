@@ -18,6 +18,7 @@
 import Foundation
 import SwiftUI
 import PhotosUI
+import UIKit
 
 @MainActor
 final class VideoLibrary: ObservableObject {
@@ -159,6 +160,23 @@ final class VideoLibrary: ObservableObject {
         videos[idx].jobState = .running(progress: .zero)
         let inputURL = videos[idx].sourceURL
 
+        // Declare a UIBackgroundTask so iOS keeps the export running for up
+        // to ~30 s after the user locks the screen or backgrounds the app.
+        // Without this, AVAssetExportSession is killed mid-export with
+        // AVErrorOperationInterrupted (-11847) on long encodes — the bug
+        // reported on Build 9 for 3-min videos. Apple's hard ceiling is
+        // ~30 s of background time; longer encodes still need the user to
+        // keep the app foregrounded, but we cover the common screen-lock
+        // case cleanly.
+        let bgTaskID = UIApplication.shared.beginBackgroundTask(
+            withName: "VideoCompressor.compress.\(id.uuidString.prefix(8))"
+        )
+        defer {
+            if bgTaskID != .invalid {
+                UIApplication.shared.endBackgroundTask(bgTaskID)
+            }
+        }
+
         do {
             let outputURL = try await service.compress(
                 input: inputURL,
@@ -199,6 +217,26 @@ final class VideoLibrary: ObservableObject {
             await Self.metadataService.stripMetaFingerprintInPlace(at: outputURL)
             // Re-read size in case the remux changed it slightly.
             let finalBytes: Int64 = (try? FileManager.default.attributesOfItem(atPath: outputURL.path)[.size] as? NSNumber)?.int64Value ?? bytes
+
+            // Post-flight size guard. AVAssetExportSession's curated presets
+            // are fixed-bitrate; for source files that are already
+            // efficiently encoded (typically iPhone HEVC at 1080p) the
+            // output can be the SAME size or LARGER. Don't punish the user
+            // with a worse file — discard and report as "already optimized".
+            // 95% threshold leaves a small win room for genuinely beneficial
+            // re-encodes that happen to add metadata bytes. Phase 3
+            // AVAssetWriter migration replaces this with true smart-cap.
+            let sourceBytes = videos.first(where: { $0.id == id })?.metadata?.fileSizeBytes ?? .max
+            if sourceBytes > 0, finalBytes >= Int64(Double(sourceBytes) * 0.95) {
+                try? FileManager.default.removeItem(at: outputURL)
+                if let i = videos.firstIndex(where: { $0.id == id }) {
+                    let pct = Int(Double(finalBytes) / Double(sourceBytes) * 100)
+                    videos[i].jobState = .skipped(
+                        reason: "Already optimized (\(pct)% of source) — kept original"
+                    )
+                }
+                return
+            }
 
             guard let i = videos.firstIndex(where: { $0.id == id }) else {
                 // User removed the row mid-flight; clean up orphan.

@@ -83,6 +83,15 @@ struct VideoRowView: View {
                     .font(.caption.weight(.medium))
                     .foregroundStyle(.secondary)
             }
+        case .skipped(let reason):
+            HStack(spacing: 6) {
+                Image(systemName: "info.circle.fill")
+                    .foregroundStyle(.blue)
+                Text(reason)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+            }
         case .failed(let error):
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
