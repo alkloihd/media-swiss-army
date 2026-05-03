@@ -35,6 +35,12 @@ import Foundation
 import CoreMedia
 import VideoToolbox
 
+struct CompressionResult: Hashable, Sendable {
+    let url: URL
+    let settings: CompressionSettings
+    let fallbackMessage: String?
+}
+
 actor CompressionService {
     /// Output URL is derived from `inputURL` + settings suffix and lives in
     /// the app's Documents/Outputs folder so users can find their files via
@@ -60,7 +66,7 @@ actor CompressionService {
         input inputURL: URL,
         settings: CompressionSettings,
         onProgress: @MainActor @Sendable @escaping (BoundedProgress) -> Void
-    ) async throws -> URL {
+    ) async throws -> CompressionResult {
 
         let asset = AVURLAsset(url: inputURL, options: [
             AVURLAssetPreferPreciseDurationAndTimingKey: true,
@@ -73,13 +79,42 @@ actor CompressionService {
         }
 
         let outputURL = Self.outputURL(forInput: inputURL, settings: settings)
-        return try await encode(
-            asset: asset,
-            videoComposition: nil,
-            settings: settings,
-            outputURL: outputURL,
-            onProgress: onProgress
-        )
+        do {
+            let url = try await encode(
+                asset: asset,
+                videoComposition: nil,
+                settings: settings,
+                outputURL: outputURL,
+                onProgress: onProgress
+            )
+            return CompressionResult(url: url, settings: settings, fallbackMessage: nil)
+        } catch {
+            guard
+                case let CompressionError.exportFailed(message) = error,
+                Self.isEncoderEnvelopeRejectionMessage(message),
+                let fallback = Self.downshift(from: settings)
+            else {
+                throw error
+            }
+
+            await onProgress(.zero)
+            let fallbackOutputURL = Self.outputURL(forInput: inputURL, settings: fallback)
+            let retryAsset = AVURLAsset(url: inputURL, options: [
+                AVURLAssetPreferPreciseDurationAndTimingKey: true,
+            ])
+            let url = try await encode(
+                asset: retryAsset,
+                videoComposition: nil,
+                settings: fallback,
+                outputURL: fallbackOutputURL,
+                onProgress: onProgress
+            )
+            return CompressionResult(
+                url: url,
+                settings: fallback,
+                fallbackMessage: Self.downshiftMessage(from: settings, to: fallback)
+            )
+        }
     }
 
     /// Encode an arbitrary `AVAsset` (URL-backed or composition-backed) using
@@ -550,6 +585,24 @@ actor CompressionService {
 
     static func clamp(gop: Int) -> Int {
         Swift.max(2, Swift.min(gop, 60))
+    }
+
+    static func downshift(from settings: CompressionSettings) -> CompressionSettings? {
+        switch (settings.resolution, settings.quality) {
+        case (.source, .lossless):   return .balanced
+        case (.fhd1080, .high):      return .small
+        case (.sd540, .balanced):    return .small
+        case (.hd720, .balanced):    return nil
+        default:                     return nil
+        }
+    }
+
+    static func downshiftMessage(from: CompressionSettings, to: CompressionSettings) -> String {
+        "\(from.title) was rejected by the encoder for this source. Falling back to \(to.title)."
+    }
+
+    static func isEncoderEnvelopeRejectionMessage(_ message: String) -> Bool {
+        message.contains("-11841")
     }
 }
 

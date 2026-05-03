@@ -26,7 +26,7 @@
 | ☑ | Task 3: Cap Max preset bitrate to ≤ source bitrate | Updated the existing old-contract test plus added plan regressions; TDD red failed three Max-only assertions, then `test_sim` passed `141/141`. |
 | ☑ | Task 4: Add SDR AVVideoColorPropertiesKey defensive defaults | Combined with Task 5 because both modify `CompressionService` writer settings; TDD red compile-failed on missing helper APIs, then `test_sim` passed `144/144`. |
 | ☑ | Task 5: Clamp framerate / GOP keys for high-bitrate paths | Completed with Task 4; added helper-shape tests for 120 fps frame-rate clamp and 60-frame GOP clamp. Also cleaned low-severity stale bitrate comments from Task 3 review. |
-| ☐ | Task 6: -11841 retry-with-downshift in CompressionService.encode | |
+| ☑ | Task 6: -11841 retry-with-downshift in CompressionService.encode | Adapted to return `CompressionResult` so fallback is not silent: `VideoLibrary` stores the actual preset used and `CompressedOutput.note` surfaces the fallback note in the row UI. TDD red compile-failed on missing result/downshift APIs, then `test_sim` passed `150/150` (higher than plan because message/detection tests were added). |
 | ☐ | Task 7: Push, PR, CI, merge → TestFlight #0 | |
 
 ---
@@ -132,3 +132,4 @@
 |---|---|---|---|---|
 | 2026-05-04 | (planning) | (n/a) | Added Cluster 0 hotfix PR after real-device testing surfaced -11841 + photo scale-fit bugs. TestFlight cap raised from ≤5 to 6 (user clarified TestFlight has no hard limit). | Pending Codex execution |
 | 2026-05-04 | 0 | preflight | Read-only plan-vs-code scan found current-code drift. Codex will preserve the Cluster 0 behavioral contract but adapt snippets: combine baker tuple + StitchExporter use atomically, use valid >=32px fixtures, update existing Max-bitrate test contract, use Swift-valid retry structure, and surface fallback/downshift state rather than DEBUG-only logging. | Captured before implementation |
+| 2026-05-04 | 0 | Task 6 | Plan returned only `URL` and relied on DEBUG logs for fallback visibility. Codex changed `CompressionService.compress` to return `CompressionResult(url, settings, fallbackMessage)` and threaded that through `VideoLibrary`, `CompressedOutput`, and `VideoRowView` so the actual preset and fallback note are user-visible. | `test_sim` passed 150/150 |
