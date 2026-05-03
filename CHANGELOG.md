@@ -10,10 +10,12 @@ Agent identifier format: `[type/model]` — e.g. `[Claude Opus 4.7 / 1M ctx]`, `
 
 ### Reviewed
 
+- 2026-05-03 [subagent:opus/code-reviewer] Audit of 3f69f2b (per-clip editor sheet, commit 3): 1 HIGH (`CropEditorView` identity-rect FP comparison), 3 MEDIUM (modal-on-modal `.onAppear`, accent-color a11y contrast, missing accessibility labels), 4 LOW — see AI-CHAT-LOG {E-0503-1101}.
 - 2026-05-03 [subagent:opus/code-reviewer] Audit of d03d4bc (Stitch UI, commit 2): 1 HIGH (silent overwrite in `stageToStitchInputs`), 3 MEDIUM, 3 LOW — see AI-CHAT-LOG {E-0503-1050}.
 
 ### Added
 
+- 2026-05-03 [subagent:opus via Opus 4.7 lead] (79fc296) StitchExporter + export sheet (commit 4 of 6). Actor builds `AVMutableComposition` from clips, detects passthrough vs re-encode, applies per-clip `AVMutableVideoCompositionLayerInstruction` for crop/rotate. `CompressionService.encode(asset:videoComposition:settings:outputURL:onProgress:)` overload — single export pipeline shared by Compress and Stitch. `StitchExportSheet` settings picker + live progress + Save to Photos. `StitchProject.export(settings:)` replaces commit-1 stub.
 - 2026-05-03 [subagent:sonnet via Opus 4.7 lead] (3f69f2b) Per-clip editor sheet with trim/crop/rotate (commit 3 of 6).
 - 2026-05-03 [subagent:sonnet via Opus 4.7 lead] (d03d4bc) Stitch tab shell + timeline reorder + thumbnails (commit 2 of 6).
 - 2026-05-03 [subagent:sonnet] (8147e22) Stitch model + StitchProject state (commit 1 of 6).

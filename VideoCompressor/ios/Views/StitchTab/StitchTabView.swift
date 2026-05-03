@@ -16,6 +16,7 @@ import AVFoundation
 struct StitchTabView: View {
     @StateObject private var project = StitchProject()
     @State private var pickerItems: [PhotosPickerItem] = []
+    @State private var showExportSheet = false
 
     var body: some View {
         NavigationStack {
@@ -76,6 +77,9 @@ struct StitchTabView: View {
             } message: { error in
                 Text(error.displayMessage)
             }
+            .sheet(isPresented: $showExportSheet) {
+                StitchExportSheet(project: project)
+            }
         }
         .onChange(of: pickerItems) { _, newItems in
             guard !newItems.isEmpty else { return }
@@ -93,7 +97,7 @@ struct StitchTabView: View {
             HStack {
                 Spacer()
                 Button {
-                    project.export()
+                    showExportSheet = true
                 } label: {
                     Label("Stitch & Export", systemImage: "square.and.arrow.up")
                         .font(.subheadline.weight(.semibold))

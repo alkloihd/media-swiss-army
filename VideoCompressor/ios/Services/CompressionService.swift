@@ -38,6 +38,10 @@ actor CompressionService {
 
     /// Run a compression. Reports progress on the main actor via `onProgress`.
     /// Returns the output URL when complete. Throws on failure.
+    ///
+    /// Thin wrapper around `encode(asset:videoComposition:settings:outputURL:onProgress:)` —
+    /// the Stitch flow uses the same underlying pipeline with an
+    /// `AVMutableComposition` instead of an `AVURLAsset`.
     func compress(
         input inputURL: URL,
         settings: CompressionSettings,
@@ -54,6 +58,33 @@ actor CompressionService {
             throw CompressionError.noVideoTrack
         }
 
+        let outputURL = Self.outputURL(forInput: inputURL, settings: settings)
+        return try await encode(
+            asset: asset,
+            videoComposition: nil,
+            settings: settings,
+            outputURL: outputURL,
+            onProgress: onProgress
+        )
+    }
+
+    /// Encode an arbitrary `AVAsset` (URL-backed or composition-backed) using
+    /// the given settings. When `videoComposition` is non-nil it is attached
+    /// to the export session so per-clip layer instructions (crop / rotate)
+    /// are honoured. Single source of truth for the export pipeline shared
+    /// by the Compress flow and the Stitch flow.
+    ///
+    /// `outputURL` is passed in explicitly because the Stitch flow has no
+    /// "input URL" to derive from — composition assets are synthesised in
+    /// memory.
+    func encode(
+        asset: AVAsset,
+        videoComposition: AVMutableVideoComposition?,
+        settings: CompressionSettings,
+        outputURL: URL,
+        onProgress: @MainActor @Sendable @escaping (BoundedProgress) -> Void
+    ) async throws -> URL {
+
         guard let exporter = AVAssetExportSession(
             asset: asset,
             presetName: settings.avExportPresetName
@@ -61,7 +92,6 @@ actor CompressionService {
             throw CompressionError.exporterUnavailable(settings.avExportPresetName)
         }
 
-        let outputURL = Self.outputURL(forInput: inputURL, settings: settings)
         // Remove any previous output with the same name to avoid the
         // "Cannot Open" error AVAssetExportSession raises.
         try? FileManager.default.removeItem(at: outputURL)
@@ -69,6 +99,9 @@ actor CompressionService {
         exporter.outputURL = outputURL
         exporter.outputFileType = settings.fileType
         exporter.shouldOptimizeForNetworkUse = settings.optimizesForNetwork
+        if let videoComposition {
+            exporter.videoComposition = videoComposition
+        }
 
         // Spawn a polling task that publishes progress at 10 Hz.
         let progressTask = Task { @MainActor [weak exporter] in
