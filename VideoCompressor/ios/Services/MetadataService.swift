@@ -101,9 +101,18 @@ actor MetadataService {
         let outputURL = Self.cleanedURL(for: sourceURL)
         try? FileManager.default.removeItem(at: outputURL)
 
+        // File type must match the output container — passing .mp4 when
+        // outputURL ends in .mov produces a file Photos rejects with 3302.
+        let writerFileType: AVFileType = {
+            switch outputURL.pathExtension.lowercased() {
+            case "mov", "qt":  return .mov
+            case "m4v":        return .m4v
+            default:           return .mp4
+            }
+        }()
         let writer: AVAssetWriter
         do {
-            writer = try AVAssetWriter(outputURL: outputURL, fileType: .mp4)
+            writer = try AVAssetWriter(outputURL: outputURL, fileType: writerFileType)
         } catch {
             throw MetadataServiceError.writerSetupFailed(error.localizedDescription)
         }
@@ -123,17 +132,20 @@ actor MetadataService {
         // bit-identical media; the only diff vs source is the removed
         // metadata atoms.
         //
-        // Timed-metadata tracks (`.metadata` mediaType, e.g. embedded
-        // GPS streams) are intentionally dropped here. For the
-        // autoMetaGlasses preset that's the desired behaviour. If a
-        // future "preserve track-level GPS" preset is added, route
-        // those tracks through the same passthrough pattern.
+        // Timed-metadata tracks (`.metadata` mediaType — typically
+        // embedded GPS streams on iPhone video) are PRESERVED unless
+        // the user has explicitly asked to strip a category that lives
+        // there (.location or .custom). The earlier behaviour dropped
+        // these unconditionally even in autoMetaGlasses, which silently
+        // killed iPhone GPS data the user wanted to keep.
         struct PumpPair {
             let input: AVAssetWriterInput
             let output: AVAssetReaderTrackOutput
         }
+        let dropMetadataTracks = rules.stripCategories.contains(.location)
+            || rules.stripCategories.contains(.custom)
         var inputs: [PumpPair] = []
-        for track in tracks where track.mediaType == .video || track.mediaType == .audio {
+        for track in tracks where shouldKeepTrack(track, dropMetadataTracks: dropMetadataTracks) {
             let output = AVAssetReaderTrackOutput(track: track, outputSettings: nil)
             output.alwaysCopiesSampleData = false
             guard reader.canAdd(output) else {
@@ -297,15 +309,39 @@ actor MetadataService {
 
     // MARK: - File system
 
-    /// Builds an output URL like `Documents/Cleaned/<stem>_CLEAN.mp4`.
-    /// Mirrors `CompressionService.outputURL`'s shape so users can find
-    /// cleaned files in Files.app alongside compressed ones.
+    /// Builds an output URL like `Documents/Cleaned/<stem>_CLEAN.<ext>`,
+    /// preserving the source file's extension so a `.mov` stays `.mov`
+    /// (not silently re-containered to `.mp4`). Photos rejects mismatched
+    /// resource types with PHPhotosErrorDomain 3302 if we get this wrong.
     static func cleanedURL(for source: URL) -> URL {
         let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
         let dir = docs.appendingPathComponent("Cleaned", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         let stem = source.deletingPathExtension().lastPathComponent
-        return dir.appendingPathComponent("\(stem)_CLEAN.mp4")
+        let rawExt = source.pathExtension.lowercased()
+        // MetadataService is the video remux path; if extension is missing
+        // or somehow non-video, fall back to mp4 (matches AVFoundation's
+        // default container choice).
+        let ext: String
+        switch rawExt {
+        case "mov", "mp4", "m4v", "qt": ext = rawExt
+        case "":                        ext = "mp4"
+        default:                        ext = "mp4"
+        }
+        return dir.appendingPathComponent("\(stem)_CLEAN.\(ext)")
+    }
+
+    /// Whether to passthrough a given track during a strip remux. Video and
+    /// audio always pass through (they're the actual media). Timed-metadata
+    /// tracks (mediaType `.metadata`) pass through unless the rules
+    /// explicitly target a category that lives there. See the strip()
+    /// comment for why this matters for iPhone GPS streams.
+    private func shouldKeepTrack(_ track: AVAssetTrack, dropMetadataTracks: Bool) -> Bool {
+        switch track.mediaType {
+        case .video, .audio: return true
+        case .metadata:      return !dropMetadataTracks
+        default:             return false
+        }
     }
 
     // MARK: - Keyspace gather

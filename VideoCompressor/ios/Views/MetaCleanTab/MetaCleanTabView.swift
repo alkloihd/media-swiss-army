@@ -44,17 +44,20 @@ struct MetaCleanTabView: View {
                         .accessibilityIdentifier("metaCleanImportButton")
                     }
                 } else {
-                    List {
-                        ForEach(queue.items) { item in
-                            MetaCleanRowView(item: item)
-                                .contentShape(Rectangle())
-                                .onTapGesture { selectedItem = item }
-                        }
-                        .onDelete { indexSet in
-                            for offset in indexSet {
-                                queue.remove(queue.items[offset].id)
+                    VStack(spacing: 0) {
+                        List {
+                            ForEach(queue.items) { item in
+                                MetaCleanRowView(item: item)
+                                    .contentShape(Rectangle())
+                                    .onTapGesture { selectedItem = item }
+                            }
+                            .onDelete { indexSet in
+                                for offset in indexSet {
+                                    queue.remove(queue.items[offset].id)
+                                }
                             }
                         }
+                        batchControls
                     }
                 }
             }
@@ -175,6 +178,66 @@ struct MetaCleanTabView: View {
                 queue.lastImportError = .fileSystem(message: error.localizedDescription)
             }
         }
+    }
+
+    // MARK: - Batch controls (Clean All)
+
+    @ViewBuilder
+    private var batchControls: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Toggle("Replace originals in Photos", isOn: $queue.replaceOriginalsOnBatch)
+                .font(.subheadline)
+                .tint(.red)
+            Text(queue.replaceOriginalsOnBatch
+                 ? "Cleans, saves to Photos, then deletes the source asset (recoverable from Recently Deleted for 30 days)."
+                 : "Cleans in place — sources remain in Photos.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            if queue.batchProgress.isRunning {
+                VStack(alignment: .leading, spacing: 6) {
+                    ProgressView(value: queue.batchProgress.fraction)
+                    HStack {
+                        Text("Cleaning \(queue.batchProgress.current) of \(queue.batchProgress.total)")
+                            .font(.caption.monospacedDigit())
+                        Spacer()
+                        if queue.batchProgress.failed > 0 {
+                            Label("\(queue.batchProgress.failed) failed", systemImage: "exclamationmark.triangle")
+                                .font(.caption2)
+                                .foregroundStyle(.orange)
+                        }
+                        Button("Cancel") { queue.cancelBatch() }
+                            .font(.caption.weight(.semibold))
+                    }
+                    if let err = queue.batchProgress.lastError {
+                        Text(err)
+                            .font(.caption2)
+                            .foregroundStyle(.red)
+                            .lineLimit(2)
+                    }
+                }
+            } else {
+                Button {
+                    queue.cleanAll()
+                } label: {
+                    Label(
+                        queue.replaceOriginalsOnBatch
+                            ? "Clean All & Replace"
+                            : "Clean All",
+                        systemImage: "wand.and.stars"
+                    )
+                    .frame(maxWidth: .infinity)
+                    .font(.body.weight(.semibold))
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.large)
+                .disabled(queue.items.isEmpty)
+                .accessibilityIdentifier("metaCleanCleanAllButton")
+            }
+        }
+        .padding(.horizontal)
+        .padding(.vertical, 12)
+        .background(.bar)
     }
 }
 
