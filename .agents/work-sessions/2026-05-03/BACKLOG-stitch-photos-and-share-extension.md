@@ -247,3 +247,44 @@ Roughly one full day of agent time, plus user-side "open Xcode once to
 add the Share Extension target" if XcodeBuildMCP can't scaffold one
 (check via `xcodebuildmcp project-scaffolding scaffold-extension --help`
 when phase 3 starts).
+
+---
+
+## 5. Stitch UX feedback from Build 11 (live testing)
+
+User direction 2026-05-03 14:08:
+> "the interface to preview is not good i can't drag and drop the videos
+> from the end like in iMovie and that would be cool to be able to preview
+> the stitch video before rendering"
+>
+> Also: tried to stitch photos+videos together; only videos imported
+> (picker is `matching: .videos` only). Photo support is item #3.5 above.
+
+### Asks
+- **iMovie-style drag-from-end reorder** — current UI uses `List + .onMove`
+  which works via the leading-edge drag handle. iMovie lets you grab a
+  clip from anywhere and drag it freely (left/right) along the timeline.
+  Phase 3: replace with `.draggable(StitchClipID)` + `.dropDestination`
+  using a horizontal `LazyHStack` instead of vertical `List`. Native iOS
+  17+ feature.
+- **Live preview of the stitched composition before rendering** — let
+  the user scrub a horizontal timeline that plays the in-memory
+  `AVMutableComposition` via `AVPlayerViewController` BEFORE tapping
+  Export. Already free with AVFoundation: just `AVPlayer(playerItem:)`
+  with the composition. Saves them from rendering → realizing it's wrong.
+- **Background-encode survival** — current `UIBackgroundTask` only buys
+  ~30 sec of background time. For long encodes, options:
+  - Add Background Modes: Audio + play silent audio (hack but works,
+    no review hassles for media apps)
+  - Use `BGProcessingTask` (cleaner, but iOS schedules it and may delay)
+  - Show a persistent banner when an encode is running: "Keep the app
+    open — iOS will pause this if you switch apps for >30 sec"
+  Pick one in phase 3 based on real-world testing. The banner alone
+  might be enough.
+
+### Effort
+- Drag-from-end reorder: M (~half day, isolated SwiftUI work)
+- Live preview: M (~half day, AVPlayer over composition is well-trodden)
+- Background-encode banner / Audio mode: S (~2 h)
+
+Total ~1 day on top of existing phase-3 plan.
