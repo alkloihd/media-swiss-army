@@ -32,7 +32,7 @@ struct MetaCleanTabView: View {
                     ) {
                         PhotosPicker(
                             selection: $pickerItems,
-                            maxSelectionCount: 20,
+                            maxSelectionCount: 50,
                             matching: .videos,
                             preferredItemEncoding: .current
                         ) {
@@ -63,7 +63,7 @@ struct MetaCleanTabView: View {
                 ToolbarItem(placement: .topBarTrailing) {
                     PhotosPicker(
                         selection: $pickerItems,
-                        maxSelectionCount: 20,
+                        maxSelectionCount: 50,
                         matching: .videos,
                         preferredItemEncoding: .current
                     ) {

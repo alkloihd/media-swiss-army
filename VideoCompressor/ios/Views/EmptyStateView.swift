@@ -20,7 +20,7 @@ struct EmptyStateView: View {
         ) {
             PhotosPicker(
                 selection: $pickerItems,
-                maxSelectionCount: 20,
+                maxSelectionCount: 50,
                 matching: .videos,
                 preferredItemEncoding: .current
             ) {

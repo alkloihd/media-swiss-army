@@ -29,7 +29,7 @@ struct StitchTabView: View {
                     ) {
                         PhotosPicker(
                             selection: $pickerItems,
-                            maxSelectionCount: 20,
+                            maxSelectionCount: 50,
                             matching: .videos,
                             preferredItemEncoding: .current
                         ) {
@@ -49,7 +49,7 @@ struct StitchTabView: View {
                 ToolbarItem(placement: .topBarTrailing) {
                     PhotosPicker(
                         selection: $pickerItems,
-                        maxSelectionCount: 20,
+                        maxSelectionCount: 50,
                         matching: .videos,
                         preferredItemEncoding: .current
                     ) {

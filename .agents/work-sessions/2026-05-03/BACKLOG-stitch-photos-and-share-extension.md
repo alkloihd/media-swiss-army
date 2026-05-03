@@ -247,3 +247,48 @@ Roughly one full day of agent time, plus user-side "open Xcode once to
 add the Share Extension target" if XcodeBuildMCP can't scaffold one
 (check via `xcodebuildmcp project-scaffolding scaffold-extension --help`
 when phase 3 starts).
+
+---
+
+## 6. Trim editor live-preview behavior (Build 11 user spec)
+
+User direction 2026-05-03 14:14:
+> "for the stitch i guess let's add live preview of each clip when we
+> click it to edit and trim so it auto plays from the start after each
+> trim and if trimming the end it auto plays the last 2 seconds of the
+> clip on movement that should be easy right? can we auto compact
+> though after so you work more efficiently"
+
+### Behavior
+- **Tap a clip in the timeline** → editor sheet opens with an
+  `AVPlayerViewController` (or custom `AVPlayer` view) docked at the top
+  showing the clip.
+- **Drag the trim-START handle**:
+  - Player seeks to the new in-point on every drag tick
+  - When user releases, player auto-plays from the new in-point
+- **Drag the trim-END handle**:
+  - Player seeks to `(newEndPoint - 2 sec)` on every drag tick
+  - When user releases, player auto-plays the last 2 sec up to the new
+    out-point, then stops
+- "Easy" because `AVPlayer.seek(to:tolerance:)` + `play()` is two API
+  calls. The slider-to-player wiring is small.
+
+### "Auto compact" interpretation
+Two possible reads — implement both, since they're cheap:
+1. **Auto-dismiss editor on Done** — already does this in current build,
+   confirm.
+2. **Auto-apply edits live (no Done button needed)** — the parent
+   `StitchProject.updateEdits` is called continuously as the user drags,
+   not only on Done. Cancel discards a snapshot. This makes the workflow
+   "drag, see result, drag again" without modal commits.
+
+If unclear when implementing, default to interpretation #2 since it's
+the more iMovie-like flow.
+
+### Effort
+M (~half day).
+- Add `AVPlayerViewController` to TrimEditorView
+- Wire seek-on-drag via Slider's `onChange`
+- Auto-play on release via `Slider`'s editing-changed callback
+- Live-apply edits to the parent project
+- Visual: dock the player at the top of the editor sheet, sliders below
