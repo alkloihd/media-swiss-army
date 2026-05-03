@@ -13,21 +13,11 @@ struct EmptyStateView: View {
     @Binding var pickerItems: [PhotosPickerItem]
 
     var body: some View {
-        VStack(spacing: 18) {
-            Spacer(minLength: 0)
-            Image(systemName: "film.stack")
-                .font(.system(size: 56, weight: .regular))
-                .foregroundStyle(.tint)
-            VStack(spacing: 6) {
-                Text("No videos yet")
-                    .font(.title3.weight(.semibold))
-                Text("Import from your Photos library to start compressing on-device.")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 40)
-            }
-
+        CenteredEmptyState(
+            systemImage: "film.stack",
+            title: "No videos yet",
+            message: "Import from your Photos library to start compressing on-device."
+        ) {
             PhotosPicker(
                 selection: $pickerItems,
                 maxSelectionCount: 20,
@@ -40,11 +30,7 @@ struct EmptyStateView: View {
             }
             .buttonStyle(.borderedProminent)
             .accessibilityIdentifier("importVideosButton")
-
-            Spacer(minLength: 0)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .padding()
     }
 }
 

@@ -17,6 +17,7 @@ final class StitchProject: ObservableObject {
     @Published private(set) var clips: [StitchClip] = []
     @Published var exportProgress: BoundedProgress = .zero
     @Published var exportState: StitchExportState = .idle
+    @Published var lastImportError: LibraryError?
 
     private let inputsDir: URL
 

@@ -10,6 +10,8 @@ Agent identifier format: `[type/model]` — e.g. `[Claude Opus 4.7 / 1M ctx]`, `
 
 ### Added
 
+- 2026-05-03 [subagent:sonnet via Opus 4.7 lead] (PLACEHOLDER) Stitch tab shell + timeline reorder + thumbnails (commit 2 of 6).
+- 2026-05-03 [subagent:sonnet] (8147e22) Stitch model + StitchProject state (commit 1 of 6).
 - 2026-05-03 [subagent:sonnet] (4a9cbc9) Task 0 type refactors: BoundedProgress + CompressedOutput + CompressionSettings + LibraryError. Closes type-design-analyzer top-3 from {E-0503-0936}.
 - 2026-05-03 [Claude Opus 4.7 / 1M ctx] (8d88990) Phase 1 iOS MVP: SwiftUI app with VideoLibrary, CompressionService (AVAssetExportSession), 4 presets (Max / Balanced / Small / Streaming), PhotosPicker import, save-to-Photos. 11 Swift files under `VideoCompressor/ios/`.
 - 2026-05-03 [Claude Opus 4.7 / 1M ctx] (9a54f68) Phase 2 commit 1: 3-tab `TabView` shell with Stitch / MetaClean placeholders.
@@ -37,6 +39,8 @@ Agent identifier format: `[type/model]` — e.g. `[Claude Opus 4.7 / 1M ctx]`, `
 - 2026-05-03 [subagent:opus/silent-failure-hunter] Error-path audit — 2 CRIT, 5 HIGH, 6 MEDIUM, 4 LOW
 - 2026-05-03 [subagent:opus/type-design-analyzer] 12 types scored on encapsulation/invariant/usefulness/enforcement (1-5). Recommended: `BoundedProgress`, `CompressedOutput`, `CompressionSettings`, `LibraryError` refactors.
 - 2026-05-03 [subagent:opus/spec-gap-analyst] Phase-1 (~25% of spec) → spec migration plan; 5-commit phase-2 ordering.
+- 2026-05-03 [subagent:opus/code-reviewer] T0 type-refactor audit — 0 CRIT, 3 HIGH, 4 MEDIUM, 2 LOW
+- 2026-05-03 [subagent:opus/code-reviewer] Commit 1 audit (StitchClip + StitchProject) — 0 CRIT, 2 HIGH, 3 MEDIUM, 2 LOW
 
 ### Documented
 

@@ -22,7 +22,7 @@ struct ContentView: View {
                 }
                 .tag(AppTab.compress)
 
-            PlaceholderTabView(tab: .stitch)
+            StitchTabView()
                 .tabItem {
                     Label("Stitch", systemImage: AppTab.stitch.symbolName)
                 }
