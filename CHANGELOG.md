@@ -10,7 +10,7 @@ Agent identifier format: `[type/model]` — e.g. `[Claude Opus 4.7 / 1M ctx]`, `
 
 ### Added
 
-- 2026-05-03 [subagent:sonnet via Opus 4.7 lead] (PLACEHOLDER) Stitch tab shell + timeline reorder + thumbnails (commit 2 of 6).
+- 2026-05-03 [subagent:sonnet via Opus 4.7 lead] (d03d4bc) Stitch tab shell + timeline reorder + thumbnails (commit 2 of 6).
 - 2026-05-03 [subagent:sonnet] (8147e22) Stitch model + StitchProject state (commit 1 of 6).
 - 2026-05-03 [subagent:sonnet] (4a9cbc9) Task 0 type refactors: BoundedProgress + CompressedOutput + CompressionSettings + LibraryError. Closes type-design-analyzer top-3 from {E-0503-0936}.
 - 2026-05-03 [Claude Opus 4.7 / 1M ctx] (8d88990) Phase 1 iOS MVP: SwiftUI app with VideoLibrary, CompressionService (AVAssetExportSession), 4 presets (Max / Balanced / Small / Streaming), PhotosPicker import, save-to-Photos. 11 Swift files under `VideoCompressor/ios/`.
