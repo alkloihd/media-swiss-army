@@ -8,8 +8,13 @@ Agent identifier format: `[type/model]` — e.g. `[Claude Opus 4.7 / 1M ctx]`, `
 
 ## [Unreleased] — `feature/metaclean-stitch`
 
+### Reviewed
+
+- 2026-05-03 [subagent:opus/code-reviewer] Audit of d03d4bc (Stitch UI, commit 2): 1 HIGH (silent overwrite in `stageToStitchInputs`), 3 MEDIUM, 3 LOW — see AI-CHAT-LOG {E-0503-1050}.
+
 ### Added
 
+- 2026-05-03 [subagent:sonnet via Opus 4.7 lead] (3f69f2b) Per-clip editor sheet with trim/crop/rotate (commit 3 of 6).
 - 2026-05-03 [subagent:sonnet via Opus 4.7 lead] (d03d4bc) Stitch tab shell + timeline reorder + thumbnails (commit 2 of 6).
 - 2026-05-03 [subagent:sonnet] (8147e22) Stitch model + StitchProject state (commit 1 of 6).
 - 2026-05-03 [subagent:sonnet] (4a9cbc9) Task 0 type refactors: BoundedProgress + CompressedOutput + CompressionSettings + LibraryError. Closes type-design-analyzer top-3 from {E-0503-0936}.
