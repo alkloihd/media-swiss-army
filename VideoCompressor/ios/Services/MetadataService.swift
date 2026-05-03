@@ -436,6 +436,40 @@ actor MetadataService {
         }
         return rules.stripCategories.contains(tag.category)
     }
+
+    // MARK: - Auto fingerprint strip (used by Compress + Stitch flows)
+
+    /// Scans `url` for Meta-glasses fingerprint atoms. If any are present,
+    /// runs a `.autoMetaGlasses` remux pass and atomically replaces the
+    /// file at `url` with the cleaned version. The original (with the
+    /// fingerprint) is discarded.
+    ///
+    /// Returns `true` if the file was rewritten, `false` if no fingerprint
+    /// was found (file untouched). Failures are silenced and treated as
+    /// "no change" — the privacy gain matters but a failure here must not
+    /// cause the user's compression / stitch result to disappear. The URL
+    /// the caller passed in always points at a valid file on return.
+    ///
+    /// Per user direction 2026-05-03: every output of the app should be
+    /// automatically de-fingerprinted (Compress, Stitch, MetaClean), with
+    /// no user action required.
+    @discardableResult
+    func stripMetaFingerprintInPlace(at url: URL) async -> Bool {
+        do {
+            let tags = try await read(url: url)
+            guard tags.contains(where: { $0.isMetaFingerprint }) else {
+                return false
+            }
+            let result = try await strip(url: url, rules: .autoMetaGlasses) { _ in }
+            // Atomically replace the original. `replaceItemAt` handles the
+            // backup + move-into-place + cleanup dance.
+            _ = try FileManager.default.replaceItemAt(url, withItemAt: result.cleanedURL)
+            return true
+        } catch {
+            // Fail-soft. The output remains valid even if scrubbing fails.
+            return false
+        }
+    }
 }
 
 // MARK: - Pump shared state

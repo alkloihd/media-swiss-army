@@ -81,12 +81,16 @@ struct StripRules: Hashable, Sendable {
     var stripCategories: Set<MetadataCategory>
     var stripMetaFingerprintAlways: Bool
 
-    /// Default for a Meta glasses video: leave Device / Location / Time
-    /// alone (user usually wants those preserved for memories), strip the
-    /// `.custom` atoms (Meta-injected stuff), and force-strip the binary
-    /// fingerprint Comment atom no matter where it lives.
+    /// Default for a Meta glasses video: ONLY strip the binary fingerprint
+    /// Comment atom (the actual Ray-Ban / Meta AI fingerprint), leaving
+    /// every other tag (Device / Location / Time / other custom atoms)
+    /// untouched. User can opt into broader stripping via `.stripAll`.
+    ///
+    /// Per user direction 2026-05-03: "just the meta ai stuff and nothing
+    /// else but also i'd like the stitch of videos to automatically strip
+    /// of metadata as well please if it's there in the video".
     static let autoMetaGlasses = StripRules(
-        stripCategories: [.custom],
+        stripCategories: [],
         stripMetaFingerprintAlways: true
     )
 

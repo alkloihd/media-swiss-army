@@ -130,6 +130,11 @@ final class StitchProject: ObservableObject {
                 self?.exportState = .encoding(progress)
             }
 
+            // Auto-strip Meta-glasses fingerprint atoms from the stitched
+            // output so the result is privacy-clean by default. Fail-soft.
+            // Per user direction 2026-05-03.
+            await VideoLibrary.metadataServiceShared.stripMetaFingerprintInPlace(at: url)
+
             let bytes: Int64 = ((try? FileManager.default
                 .attributesOfItem(atPath: url.path)[.size]) as? NSNumber)?.int64Value ?? 0
             exportState = .finished(CompressedOutput(

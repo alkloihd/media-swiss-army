@@ -30,6 +30,12 @@ final class VideoLibrary: ObservableObject {
 
     private var activeTask: Task<Void, Never>?
     private let service = CompressionService()
+    /// Single shared MetadataService for auto-fingerprint-strip across
+    /// Compress + Stitch + (future) Share Extension paths.
+    fileprivate static let metadataService = MetadataService()
+    /// Public alias so StitchProject can call into the same instance
+    /// without exposing the fileprivate name.
+    static var metadataServiceShared: MetadataService { metadataService }
 
     init() {
         Self.markDirectoriesAsNonBackup()
@@ -185,6 +191,15 @@ final class VideoLibrary: ObservableObject {
                 try? FileManager.default.removeItem(at: outputURL)
                 return
             }
+
+            // Auto-strip Meta-glasses fingerprint atoms from the output
+            // so any user export is privacy-clean by default. Fail-soft:
+            // a failure here leaves the (still valid) compressed file
+            // alone. Per user direction 2026-05-03.
+            await Self.metadataService.stripMetaFingerprintInPlace(at: outputURL)
+            // Re-read size in case the remux changed it slightly.
+            let finalBytes: Int64 = (try? FileManager.default.attributesOfItem(atPath: outputURL.path)[.size] as? NSNumber)?.int64Value ?? bytes
+
             guard let i = videos.firstIndex(where: { $0.id == id }) else {
                 // User removed the row mid-flight; clean up orphan.
                 try? FileManager.default.removeItem(at: outputURL)
@@ -193,7 +208,7 @@ final class VideoLibrary: ObservableObject {
             videos[i].jobState = .finished
             videos[i].output = CompressedOutput(
                 url: outputURL,
-                bytes: bytes,
+                bytes: finalBytes,
                 createdAt: Date(),
                 settings: settings
             )
