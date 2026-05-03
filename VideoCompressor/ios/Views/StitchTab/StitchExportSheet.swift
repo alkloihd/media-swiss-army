@@ -98,6 +98,21 @@ struct StitchExportSheet: View {
                 Text("Building composition…")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+            case .preparing(let current, let total):
+                // Photo-bake phase — sub-second on Pro phones, can be a few
+                // seconds with many large stills. Determinate bar reads as
+                // "Preparing 3 of 8 photos" rather than a frozen spinner.
+                ProgressView(
+                    value: total > 0 ? Double(current) / Double(total) : 0
+                )
+                Text("Preparing \(current) of \(total) photo\(total == 1 ? "" : "s")…")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+                Button("Cancel Export") {
+                    project.cancelExport()
+                }
+                .font(.subheadline)
             case .encoding(let progress):
                 ProgressView(value: progress.value)
                 Text("Encoding · \(progress.percent)%")

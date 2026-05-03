@@ -106,7 +106,15 @@ enum StitchAspectMode: String, CaseIterable, Hashable, Sendable, Identifiable {
     }
 }
 
-struct StitchClip: Identifiable, Hashable, Sendable {
+// Identity-based Equatable + Hashable. Synthesised conformance would fold
+// in `Date?` and other added fields, making two semantically-equal clips
+// compare not-equal across versions of this struct. Pin to `id` (UUID) —
+// timeline ordering, dedupe sets, and dictionary keys all want
+// clip-identity, not field-equality.
+struct StitchClip: Identifiable, Sendable, Hashable {
+    static func == (lhs: StitchClip, rhs: StitchClip) -> Bool { lhs.id == rhs.id }
+    func hash(into hasher: inout Hasher) { hasher.combine(id) }
+
     let id: UUID
     let sourceURL: URL
     let displayName: String
@@ -122,6 +130,16 @@ struct StitchClip: Identifiable, Hashable, Sendable {
     /// render sideways and aspect-fit math is wrong. Defaults to `.identity`
     /// for backward compat with old call sites + tests.
     let preferredTransform: CGAffineTransform
+    /// Photos library identifier captured at import (iOS 16+). Used by
+    /// `StitchProject.sortByCreationDate()` to look up `PHAsset.creationDate`
+    /// without needing the user to re-pick. nil when the import wasn't
+    /// from Photos (drag-drop from Files, share extension, limited Photos
+    /// access without itemIdentifier permission).
+    let originalAssetID: String?
+    /// Creation date — captured on-demand by sortByCreationDate or at
+    /// import time. Used as the sort key when present; clips with nil dates
+    /// sort to the end (stable relative order preserved).
+    let creationDate: Date?
     var edits: ClipEdits
 
     init(
@@ -132,6 +150,8 @@ struct StitchClip: Identifiable, Hashable, Sendable {
         naturalSize: CGSize,
         kind: ClipKind = .video,
         preferredTransform: CGAffineTransform = .identity,
+        originalAssetID: String? = nil,
+        creationDate: Date? = nil,
         edits: ClipEdits
     ) {
         self.id = id
@@ -141,6 +161,8 @@ struct StitchClip: Identifiable, Hashable, Sendable {
         self.naturalSize = naturalSize
         self.kind = kind
         self.preferredTransform = preferredTransform
+        self.originalAssetID = originalAssetID
+        self.creationDate = creationDate
         self.edits = edits
     }
 

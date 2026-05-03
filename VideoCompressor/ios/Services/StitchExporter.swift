@@ -72,7 +72,8 @@ actor StitchExporter {
     func buildPlan(
         from clips: [StitchClip],
         aspectMode: StitchAspectMode = .auto,
-        transition: StitchTransition = .none
+        transition: StitchTransition = .none,
+        onPrepareProgress: @MainActor @Sendable @escaping (_ current: Int, _ total: Int) -> Void = { _, _ in }
     ) async throws -> Plan {
         guard !clips.isEmpty else {
             throw CompressionError.exportFailed("Stitch export requires at least one clip.")
@@ -82,6 +83,11 @@ actor StitchExporter {
         let baker = StillVideoBaker()
         var bakedClips: [StitchClip] = []
         var bakedStillURLs: [URL] = []
+        let totalStills = clips.filter { $0.kind == .still }.count
+        var stillsBaked = 0
+        if totalStills > 0 {
+            await onPrepareProgress(0, totalStills)
+        }
         for clip in clips {
             // Honour cancellation between bakes — a 10-still bake otherwise
             // wastes seconds of work after the user taps Cancel.
@@ -105,9 +111,13 @@ actor StitchExporter {
                     naturalSize: clip.naturalSize,
                     kind: .video,
                     preferredTransform: .identity,
+                    originalAssetID: clip.originalAssetID,
+                    creationDate: clip.creationDate,
                     edits: bakedEdits
                 )
                 bakedClips.append(baked)
+                stillsBaked += 1
+                await onPrepareProgress(stillsBaked, totalStills)
             } else {
                 bakedClips.append(clip)
             }
