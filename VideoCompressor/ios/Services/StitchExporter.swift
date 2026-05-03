@@ -72,16 +72,27 @@ actor StitchExporter {
         )
 
         var cursor: CMTime = .zero
-        var instructions: [AVMutableVideoCompositionInstruction] = []
+        // Per-segment records keep cursor positions so we can emit the full
+        // contiguous instructions list (closes review {E-0503-1114} C1).
+        struct Segment {
+            let clip: StitchClip
+            let composedRange: CMTimeRange
+        }
+        var segments: [Segment] = []
         var anyEdit = false
-        var firstNaturalSize: CGSize?
+        var maxNaturalSize: CGSize = .zero
         var firstFormatSubtype: FourCharCode?
+        var firstNominalFrameRate: Float?
         var allSameSize = true
         var allSameCodec = true
+        var allSameFrameRate = true
 
-        // Track each segment's own time range so layer instructions can be
-        // hung off them. Using `cursor + duration` to derive the end time.
         for clip in clips {
+            // Cooperative cancellation between clips so a 20-clip
+            // buildPlan stops promptly when the user taps Cancel
+            // (closes review {E-0503-1114} H4).
+            try Task.checkCancellation()
+
             let asset = AVURLAsset(url: clip.sourceURL)
 
             let videoTracks = try await asset.loadTracks(withMediaType: .video)
@@ -89,17 +100,20 @@ actor StitchExporter {
                 throw CompressionError.exportFailed("Clip \(clip.displayName) has no video track.")
             }
 
-            // Codec / size sniff for passthrough decision. We use the first
-            // format description for each track. Heterogeneous tracks are
-            // rare in modern iPhone footage (single CMVideoFormatDescription
-            // per file).
+            // Codec / size / fps sniff for passthrough decision. Heterogeneous
+            // format descriptions per-track are rare in modern iPhone footage.
             let formatDescriptions = try await assetVideoTrack.load(.formatDescriptions)
             let trackNaturalSize = try await assetVideoTrack.load(.naturalSize)
+            let trackFrameRate = try await assetVideoTrack.load(.nominalFrameRate)
 
-            if let firstSize = firstNaturalSize {
-                if firstSize != trackNaturalSize { allSameSize = false }
-            } else {
-                firstNaturalSize = trackNaturalSize
+            // Track the largest natural size so the render canvas accommodates
+            // every clip (closes review {E-0503-1114} H2).
+            if trackNaturalSize.width * trackNaturalSize.height
+                > maxNaturalSize.width * maxNaturalSize.height {
+                maxNaturalSize = trackNaturalSize
+            }
+            if !segments.isEmpty, trackNaturalSize != segments[0].clip.naturalSize {
+                allSameSize = false
             }
 
             if let cm = formatDescriptions.first {
@@ -111,8 +125,15 @@ actor StitchExporter {
                 }
             }
 
+            // Frame-rate homogeneity (closes review {E-0503-1114} M1). Mixed
+            // fps in a single composition track plays at the wrong speed.
+            if let firstFps = firstNominalFrameRate {
+                if abs(firstFps - trackFrameRate) > 0.5 { allSameFrameRate = false }
+            } else {
+                firstNominalFrameRate = trackFrameRate
+            }
+
             let timeRange = clip.trimmedRange
-            // Insert the trimmed slice of the source video track.
             do {
                 try videoTrack.insertTimeRange(timeRange, of: assetVideoTrack, at: cursor)
             } catch {
@@ -121,57 +142,55 @@ actor StitchExporter {
                 )
             }
 
-            // Audio is best-effort — clips without audio (e.g. screen
-            // captures with no mic) should not abort the whole stitch.
             if let audioTrack {
                 if let assetAudio = try? await asset.loadTracks(withMediaType: .audio).first {
                     try? audioTrack.insertTimeRange(timeRange, of: assetAudio, at: cursor)
                 }
             }
 
-            // Per-segment instruction only when the clip has a non-identity
-            // edit. Otherwise we leave the segment's frames untouched (this
-            // keeps the videoComposition nil for the all-identity fast path).
-            if clip.isEdited {
-                anyEdit = true
-                let segmentRange = CMTimeRange(start: cursor, duration: timeRange.duration)
-                instructions.append(buildInstruction(
-                    clip: clip,
-                    track: videoTrack,
-                    segmentRange: segmentRange
-                ))
-            }
+            let composedRange = CMTimeRange(start: cursor, duration: timeRange.duration)
+            segments.append(Segment(clip: clip, composedRange: composedRange))
+            if clip.isEdited { anyEdit = true }
 
             cursor = CMTimeAdd(cursor, timeRange.duration)
         }
 
-        // The render size is the largest natural size encountered. For mixed
-        // sizes this gives us a canvas big enough to hold any single frame
-        // (clipped clips show with letterboxing — acceptable v1 behaviour).
-        let renderSize = firstNaturalSize ?? CGSize(width: 1280, height: 720)
+        // Render size: largest natural size seen. Smaller clips letterbox
+        // inside this canvas (acceptable v1 behaviour). Phase 3 may swap to a
+        // computed tight bounding box.
+        let renderSize = maxNaturalSize == .zero
+            ? CGSize(width: 1280, height: 720)
+            : maxNaturalSize
 
-        // If no clip has edits, we still need a videoComposition only if we
-        // also need a custom renderSize (e.g. mixed sizes). For v1, when no
-        // edits are present, we skip the videoComposition entirely and let
-        // the export session use the composition's defaults — that is the
-        // path the passthrough preset relies on.
+        // When ANY clip has an edit, the videoComposition's `instructions`
+        // array must cover the full timeline contiguously and without gaps.
+        // We emit a layer instruction per segment — passthrough (no transform
+        // or crop) for unedited segments. This keeps Apple's contract happy
+        // (AVErrorInvalidVideoComposition -11841 otherwise — closes review
+        // {E-0503-1114} C1).
         let videoComposition: AVMutableVideoComposition?
         if anyEdit {
             let vc = AVMutableVideoComposition()
-            // 30 fps frame duration is a sensible canvas timebase; the
-            // actual frame timing is preserved by the underlying tracks.
-            // (The frame duration here drives the videoComposition timeline,
-            // not the source rate — important for AVAssetExportSession to
-            // accept it.)
-            vc.frameDuration = CMTime(value: 1, timescale: 30)
+            // Adopt the source frame rate when homogeneous; otherwise pick the
+            // higher rate seen so we don't drop frames. 30 is a safe default
+            // when the assets didn't report a value.
+            let fps = firstNominalFrameRate.map { max($0, 1) } ?? 30
+            vc.frameDuration = CMTime(value: 1, timescale: CMTimeScale(fps.rounded()))
             vc.renderSize = renderSize
-            vc.instructions = instructions
+            vc.instructions = segments.map { seg in
+                buildInstruction(
+                    clip: seg.clip,
+                    track: videoTrack,
+                    segmentRange: seg.composedRange
+                )
+            }
             videoComposition = vc
         } else {
             videoComposition = nil
         }
 
-        let canPassthrough = !anyEdit && allSameSize && allSameCodec
+        // Passthrough requires same size + same codec + same fps + no edits.
+        let canPassthrough = !anyEdit && allSameSize && allSameCodec && allSameFrameRate
 
         return Plan(
             composition: composition,
@@ -195,17 +214,44 @@ actor StitchExporter {
         onProgress: @MainActor @Sendable @escaping (BoundedProgress) -> Void
     ) async throws -> URL {
         if plan.canPassthrough {
-            return try await runPassthrough(
-                composition: plan.composition,
-                outputURL: outputURL,
-                optimizesForNetwork: settings.optimizesForNetwork,
-                onProgress: onProgress
-            )
+            do {
+                return try await runPassthrough(
+                    composition: plan.composition,
+                    outputURL: outputURL,
+                    optimizesForNetwork: settings.optimizesForNetwork,
+                    onProgress: onProgress
+                )
+            } catch CompressionError.cancelled {
+                throw CompressionError.cancelled
+            } catch {
+                // Passthrough is finicky — codec subtype matched but profile,
+                // colorspace, or other format-description fields can still
+                // make AVFoundation refuse the sample copy. Fall back to the
+                // re-encode path rather than surfacing an unrecoverable error
+                // to the user (closes review {E-0503-1114} H1).
+                return try await runReencode(
+                    plan: plan,
+                    settings: settings,
+                    outputURL: outputURL,
+                    onProgress: onProgress
+                )
+            }
         }
 
-        // Re-encode path. The composition is itself an AVAsset, so we can
-        // route it through CompressionService.encode and reuse all of its
-        // status/progress/cancellation logic.
+        return try await runReencode(
+            plan: plan,
+            settings: settings,
+            outputURL: outputURL,
+            onProgress: onProgress
+        )
+    }
+
+    private func runReencode(
+        plan: Plan,
+        settings: CompressionSettings,
+        outputURL: URL,
+        onProgress: @MainActor @Sendable @escaping (BoundedProgress) -> Void
+    ) async throws -> URL {
         let service = CompressionService()
         return try await service.encode(
             asset: plan.composition,
