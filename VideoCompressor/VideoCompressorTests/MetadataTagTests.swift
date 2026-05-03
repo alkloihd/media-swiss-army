@@ -16,10 +16,15 @@ final class MetadataTagTests: XCTestCase {
 
     // MARK: - StripRules factories
 
-    func testAutoMetaGlassesStripsOnlyCustom() {
+    func testAutoMetaGlassesStripsOnlyFingerprint() {
+        // Updated 2026-05-03 per user direction: autoMetaGlasses now narrowly
+        // targets only the binary Meta-glasses fingerprint atom — date,
+        // location, device info, and other custom atoms are preserved.
         let r = StripRules.autoMetaGlasses
-        XCTAssertEqual(r.stripCategories, [.custom])
-        XCTAssertTrue(r.stripMetaFingerprintAlways)
+        XCTAssertTrue(r.stripCategories.isEmpty,
+                      "autoMetaGlasses should NOT strip any category — only the fingerprint atom via stripMetaFingerprintAlways.")
+        XCTAssertTrue(r.stripMetaFingerprintAlways,
+                      "autoMetaGlasses must always strip the Meta fingerprint atom regardless of category.")
     }
 
     func testStripAllCoversEverythingExceptTechnical() {

@@ -101,6 +101,88 @@ struct CompressionSettings: Hashable, Sendable, Identifiable {
 
     /// Same ordering the picker uses today.
     static let phase1Presets: [CompressionSettings] = [.max, .balanced, .small, .streaming]
+
+    // MARK: - Phase 3 AVAssetWriter knobs
+
+    /// Smart-cap bitrate calculation per the web app's `lib/ffmpeg.js` logic.
+    /// `sourceBitrate` is in bps from `VideoMetadata.estimatedDataRate`.
+    /// Returns the encoder's target H.264/HEVC bitrate in bps, with a
+    /// per-preset floor so absurdly low bitrates on already-compact sources
+    /// don't produce unwatchable output.
+    ///
+    /// Mirrors web app's lib/ffmpeg.js capping logic:
+    ///   Max:       no cap (source bitrate)
+    ///   Balanced:  min(6 Mbps, source × 0.7), floor 1.0 Mbps
+    ///   Small:     min(3 Mbps, source × 0.4), floor 500 kbps
+    ///   Streaming: min(4 Mbps, source × 0.5), floor 750 kbps
+    func bitrate(forSourceBitrate sourceBitrate: Int64) -> Int64 {
+        // Defensive: a zero/negative source bitrate (probe failure) falls
+        // back to the named target without a source cap so we still produce
+        // something reasonable.
+        let safeSource = sourceBitrate > 0 ? sourceBitrate : Int64.max
+
+        let targetBitrate: Int64
+        let sourceCapRatio: Double
+        let floor: Int64
+        switch (resolution, quality) {
+        case (.source, .lossless):  // Max
+            targetBitrate = Int64.max
+            sourceCapRatio = 1.0
+            floor = 0
+        case (.fhd1080, .high):     // Balanced
+            targetBitrate = 6_000_000
+            sourceCapRatio = 0.7
+            floor = 1_000_000
+        case (.hd720, .balanced):   // Small
+            targetBitrate = 3_000_000
+            sourceCapRatio = 0.4
+            floor = 500_000
+        case (.sd540, .balanced):   // Streaming
+            targetBitrate = 4_000_000
+            sourceCapRatio = 0.5
+            floor = 750_000
+        default:
+            targetBitrate = 3_000_000
+            sourceCapRatio = 0.7
+            floor = 500_000
+        }
+
+        // For Max we just return the source bitrate (encoder cap parity).
+        if targetBitrate == Int64.max {
+            return safeSource == Int64.max ? 20_000_000 : safeSource
+        }
+
+        let cappedSource: Int64
+        if safeSource == Int64.max {
+            cappedSource = Int64.max
+        } else {
+            cappedSource = Int64(Double(safeSource) * sourceCapRatio)
+        }
+        let smart = min(targetBitrate, cappedSource)
+        return Swift.max(floor, smart)
+    }
+
+    /// Target output codec. HEVC for everything except Streaming, which
+    /// prefers H.264 for broad web/mobile playback compatibility.
+    var videoCodec: AVVideoCodecType {
+        switch (resolution, quality) {
+        case (.sd540, .balanced):  return .h264
+        default:                   return .hevc
+        }
+    }
+
+    /// Long-edge dimension cap. `nil` means use input naturalSize unchanged.
+    var maxOutputDimension: Int? {
+        switch resolution {
+        case .source:    return nil
+        case .uhd2160:   return 3840
+        case .qhd1440:   return 2560
+        case .fhd1080:   return 1920
+        case .hd720:     return 1280
+        case .sd540:     return 960
+        case .sd480:     return 854
+        }
+    }
 }
 
 enum Resolution: String, Hashable, Sendable, CaseIterable {
