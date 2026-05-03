@@ -6,7 +6,7 @@
 //
 
 import Testing
-@testable import VideoCompressor
+@testable import VideoCompressor_iOS
 
 struct VideoCompressorTests {
 
