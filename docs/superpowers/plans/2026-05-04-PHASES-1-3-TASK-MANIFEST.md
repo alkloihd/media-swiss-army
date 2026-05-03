@@ -21,8 +21,8 @@
 
 | ✓ | Sub-task | Comments |
 |---|---|---|
-| ☐ | Task 1: StillVideoBaker.bake returns (URL, CGSize) | |
-| ☐ | Task 2: StitchExporter.buildPlan uses bake's CGSize for naturalSize | |
+| ☑ | Task 1: StillVideoBaker.bake returns (URL, CGSize) | Combined with Task 2 atomically because the signature change intentionally breaks callers until `StitchExporter` consumes the tuple. TDD red: `test_sim` failed on `URL` lacking `url`/`size`; green: `139/139` simulator tests. |
+| ☑ | Task 2: StitchExporter.buildPlan uses bake's CGSize for naturalSize | Completed in the same commit as Task 1; `StitchClip.naturalSize` now uses the baked movie dimensions from `StillVideoBaker`. |
 | ☐ | Task 3: Cap Max preset bitrate to ≤ source bitrate | |
 | ☐ | Task 4: Add SDR AVVideoColorPropertiesKey defensive defaults | |
 | ☐ | Task 5: Clamp framerate / GOP keys for high-bitrate paths | |
@@ -131,3 +131,4 @@
 | Date | Cluster | Sub-task | What I deviated and why | Outcome |
 |---|---|---|---|---|
 | 2026-05-04 | (planning) | (n/a) | Added Cluster 0 hotfix PR after real-device testing surfaced -11841 + photo scale-fit bugs. TestFlight cap raised from ≤5 to 6 (user clarified TestFlight has no hard limit). | Pending Codex execution |
+| 2026-05-04 | 0 | preflight | Read-only plan-vs-code scan found current-code drift. Codex will preserve the Cluster 0 behavioral contract but adapt snippets: combine baker tuple + StitchExporter use atomically, use valid >=32px fixtures, update existing Max-bitrate test contract, use Swift-valid retry structure, and surface fallback/downshift state rather than DEBUG-only logging. | Captured before implementation |

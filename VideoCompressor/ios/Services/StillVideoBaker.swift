@@ -33,10 +33,11 @@ actor StillVideoBaker {
     /// the rate the rest of the stitch composition runs at.
     private let frameRate: Int32 = 30
 
-    /// Cleanly bake `still` to a temp .mov of `duration` seconds. The
-    /// returned URL is the caller's to manage — `StitchExporter.buildPlan`
-    /// tracks them and invalidates after the export finishes.
-    func bake(still sourceURL: URL, duration: Double) async throws -> URL {
+    /// Cleanly bake `still` to a temp .mov of `duration` seconds. The returned
+    /// URL is the caller's to manage. The size is the encoded movie's actual
+    /// post-orientation, post-cap dimensions, so the stitch transform math can
+    /// use the baked asset's dimensions instead of the original still metadata.
+    func bake(still sourceURL: URL, duration: Double) async throws -> (url: URL, size: CGSize) {
         guard duration > 0 else {
             throw BakeError.invalidDuration
         }
@@ -221,7 +222,7 @@ actor StillVideoBaker {
             )
         }
 
-        return outURL
+        return (url: outURL, size: CGSize(width: width, height: height))
     }
 
     // MARK: - Concurrency primitives for the pump
