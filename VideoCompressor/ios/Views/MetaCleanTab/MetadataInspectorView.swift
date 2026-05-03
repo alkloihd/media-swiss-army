@@ -6,7 +6,7 @@
 //  category. Includes a segmented mode picker (Auto / Strip All / Keep All)
 //  and a Clean toolbar button that opens MetaCleanExportSheet.
 //
-//  See `.agents/work-sessions/2026-05-03/PLAN-stitch-metaclean.md` task M3.
+//  See `.agents/work-sessions/2026-05-03/plans/PLAN-stitch-metaclean.md` task M3.
 //
 
 import SwiftUI

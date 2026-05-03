@@ -28,7 +28,7 @@ struct VideoListView: View {
                     populatedList
                 }
             }
-            .navigationTitle("Alkloihd Video Swiss-AK")
+            .navigationTitle("Compress")
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     PhotosPicker(

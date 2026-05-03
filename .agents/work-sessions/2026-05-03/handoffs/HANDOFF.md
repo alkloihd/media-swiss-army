@@ -67,15 +67,15 @@ dd6c1b6 Add XcodeBuildMCP skills + workflow config
 4. Commit 3 (per-clip editor) — `{E-0503-1101}` — 1 HIGH applied; rest deferred
 5. Commit 4 (StitchExporter) — `{E-0503-1114}` — 1 CRITICAL + 4 HIGH applied; H3 deferred
 6. Final code review (whole branch) — `{E-0503-1135}` — P0 + H1 applied; H2 + Mx deferred
-7. App Store Review readiness — `AUDIT-app-store-readiness.md` — 2 blockers applied (icon, encryption flag)
-8. CI/CD path research — `PLAN-cicd-testflight.md` — Xcode Cloud chosen
+7. App Store Review readiness — `audits/AUDIT-app-store-readiness.md` — 2 blockers applied (icon, encryption flag)
+8. CI/CD path research — `plans/PLAN-cicd-testflight.md` — Xcode Cloud chosen
 
 ### Plans + audit docs in `.agents/work-sessions/2026-05-03/`
 
-- `PLAN-stitch-metaclean.md` — the 5,007-word plan that drove phase 2 (executed)
-- `PLAN-cicd-testflight.md` — Xcode Cloud setup walkthrough (8 steps, all phone-friendly)
-- `BACKLOG-stitch-photos-and-share-extension.md` — phase-3 items (photos, share extension, live trim preview)
-- `AUDIT-app-store-readiness.md` — pre-ship blocker / pre-launch / polish breakdown
+- `plans/PLAN-stitch-metaclean.md` — the 5,007-word plan that drove phase 2 (executed)
+- `plans/PLAN-cicd-testflight.md` — Xcode Cloud setup walkthrough (8 steps, all phone-friendly)
+- `backlog-archive/BACKLOG-stitch-photos-and-share-extension.md` — phase-3 items (photos, share extension, live trim preview)
+- `audits/AUDIT-app-store-readiness.md` — pre-ship blocker / pre-launch / polish breakdown
 - `AI-CHAT-LOG.md` — full agent paper trail (all 15+ entries with agent type/model/timestamp)
 
 ### CHANGELOG.md (project root)
@@ -107,7 +107,7 @@ Maintained throughout; every commit has an entry with the agent name. See `[Unre
 
 ## Deferred to next session
 
-Backlog items the user explicitly asked for during this session, fully spec'd in `BACKLOG-stitch-photos-and-share-extension.md`:
+Backlog items the user explicitly asked for during this session, fully spec'd in `backlog-archive/BACKLOG-stitch-photos-and-share-extension.md`:
 
 1. **Photos as first-class media** (§3.5) — compress / stitch with stills / metaclean for HEIC + JPEG. ImageIO-based (CGImageSource / CGImageDestination), not UIImage. ~4 days of agent work.
 2. **iOS Share Extension** (§2) — appears in Photos share sheet, routes batches into Compress/Stitch/MetaClean. App Group plumbing. ~2 days.
@@ -128,7 +128,7 @@ Plus pre-ship audit deferrals (v1.0.1):
 
 ### Phase 1: Get the app on your phone (~30 min, all from phone)
 
-1. Open `.agents/work-sessions/2026-05-03/PLAN-cicd-testflight.md` and follow the **8 steps**.
+1. Open `.agents/work-sessions/2026-05-03/plans/PLAN-cicd-testflight.md` and follow the **8 steps**.
    - Steps 1–3: claim bundle ID, create app record, add yourself as Internal Tester (via App Store Connect web on phone)
    - Steps 4–6: connect Xcode Cloud to the GitHub repo, create the workflow
    - Steps 7–8: push the branch (or merge to `main`) to trigger first build
@@ -140,14 +140,14 @@ Plus pre-ship audit deferrals (v1.0.1):
 Paste the prompt below into a fresh Claude Code session in this repo:
 
 ```
-Continuing from session 2026-05-03 (handoff at .agents/work-sessions/2026-05-03/HANDOFF.md).
+Continuing from session 2026-05-03 (handoff at .agents/work-sessions/2026-05-03/handoffs/HANDOFF.md).
 
 Phase 2 of the iOS app shipped (3-tab Compress/Stitch/MetaClean, auto-strip Meta fingerprint, app rename to Media Swiss Army). Latest commit: 5146ac6 on branch feature/metaclean-stitch.
 
 Read first:
-- .agents/work-sessions/2026-05-03/HANDOFF.md (full session context)
-- .agents/work-sessions/2026-05-03/BACKLOG-stitch-photos-and-share-extension.md (deferred items)
-- .agents/work-sessions/2026-05-03/AUDIT-app-store-readiness.md (any v1.0.1 items)
+- .agents/work-sessions/2026-05-03/handoffs/HANDOFF.md (full session context)
+- .agents/work-sessions/2026-05-03/backlog-archive/BACKLOG-stitch-photos-and-share-extension.md (deferred items)
+- .agents/work-sessions/2026-05-03/audits/AUDIT-app-store-readiness.md (any v1.0.1 items)
 
 The user's TestFlight setup status: [tell me what they completed]
 

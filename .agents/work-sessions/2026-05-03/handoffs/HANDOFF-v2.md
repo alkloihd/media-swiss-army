@@ -163,8 +163,8 @@ PR #2 was merged earlier — Build 12 is the latest TestFlight build with
 core 3-tab functionality + auto-strip Meta + Build 11/12 bug fixes.
 
 This session picks up phase 3. Read first:
-- .agents/work-sessions/2026-05-03/HANDOFF-v2.md  (this file — full context)
-- .agents/work-sessions/2026-05-03/BACKLOG-stitch-photos-and-share-extension.md  (all 6 backlog items)
+- .agents/work-sessions/2026-05-03/handoffs/HANDOFF-v2.md  (this file — full context)
+- .agents/work-sessions/2026-05-03/backlog-archive/BACKLOG-stitch-photos-and-share-extension.md  (all 6 backlog items)
 - .agents/work-sessions/2026-05-03/AI-CHAT-LOG.md  (full session paper trail)
 
 Branch: feature/phase-3-stitch-ux-and-photos (already created and pushed)

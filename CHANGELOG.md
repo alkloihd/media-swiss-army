@@ -52,7 +52,7 @@ Agent identifier format: `[type/model]` — e.g. `[Claude Opus 4.7 / 1M ctx]`, `
 
 ### Documented
 
-- 2026-05-03 [subagent:opus/general-purpose] (gitignored) `.agents/work-sessions/2026-05-03/PLAN-stitch-metaclean.md` — 5007-word implementation plan for Stitch + MetaClean tabs (12 tasks, 6 commits, 7-row risk register).
+- 2026-05-03 [subagent:opus/general-purpose] (gitignored) `.agents/work-sessions/2026-05-03/plans/PLAN-stitch-metaclean.md` — 5007-word implementation plan for Stitch + MetaClean tabs (12 tasks, 6 commits, 7-row risk register).
 
 ### Infra / Tooling
 

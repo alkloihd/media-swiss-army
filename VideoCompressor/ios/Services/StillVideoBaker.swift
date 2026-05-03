@@ -111,14 +111,22 @@ actor StillVideoBaker {
         }
         writer.startSession(atSourceTime: .zero)
 
-        // Build a single CVPixelBuffer holding the still.
+        // Build a single CVPixelBuffer holding the still. Each early-throw
+        // path BELOW must clean up the writer + outURL (Audit-2-F2 fix —
+        // previously throwing without cancelWriting + removeItem would
+        // leak the partially-started writer + an empty .mov).
+        func bailWithError(_ err: BakeError) -> BakeError {
+            writer.cancelWriting()
+            try? FileManager.default.removeItem(at: outURL)
+            return err
+        }
         guard let pool = adaptor.pixelBufferPool else {
-            throw BakeError.writerSetupFailed("no pixel buffer pool")
+            throw bailWithError(.writerSetupFailed("no pixel buffer pool"))
         }
         var pixelBuffer: CVPixelBuffer?
         let status = CVPixelBufferPoolCreatePixelBuffer(nil, pool, &pixelBuffer)
         guard status == kCVReturnSuccess, let buffer = pixelBuffer else {
-            throw BakeError.writerSetupFailed("pixel buffer alloc failed (\(status))")
+            throw bailWithError(.writerSetupFailed("pixel buffer alloc failed (\(status))"))
         }
         CVPixelBufferLockBaseAddress(buffer, [])
         // We unlock EXPLICITLY after draw — AVAssetWriterInputPixelBufferAdaptor
@@ -128,7 +136,7 @@ actor StillVideoBaker {
         // locked IOSurface.
         guard let baseAddr = CVPixelBufferGetBaseAddress(buffer) else {
             CVPixelBufferUnlockBaseAddress(buffer, [])
-            throw BakeError.writerSetupFailed("no base address")
+            throw bailWithError(.writerSetupFailed("no base address"))
         }
         let bytesPerRow = CVPixelBufferGetBytesPerRow(buffer)
         let colorSpace = CGColorSpaceCreateDeviceRGB()
@@ -145,7 +153,7 @@ actor StillVideoBaker {
             bitmapInfo: bitmapInfo
         ) else {
             CVPixelBufferUnlockBaseAddress(buffer, [])
-            throw BakeError.writerSetupFailed("CGContext init failed")
+            throw bailWithError(.writerSetupFailed("CGContext init failed"))
         }
         context.draw(cgImage, in: CGRect(x: 0, y: 0, width: width, height: height))
         CVPixelBufferUnlockBaseAddress(buffer, [])
@@ -168,15 +176,16 @@ actor StillVideoBaker {
 
         await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
             inputRef.requestMediaDataWhenReady(on: queue) {
+                // Re-entry guard: AVFoundation may invoke this closure again
+                // AFTER we've called markAsFinished. Bail on re-entry. This
+                // check is OUTSIDE the inner while-loop (the previous version
+                // was inside the loop and short-circuited frame 2+, leaving
+                // the bake at a single frame — Audit-1-C1, 2026-05-03).
+                if counter.isDone { return }
                 while inputRef.isReadyForMoreMediaData {
-                    if counter.markDoneIfPossible() {
-                        // Already finished on a previous invocation. Defensive
-                        // guard against AVFoundation re-entering after
-                        // markAsFinished — ignore and return.
-                        return
-                    }
                     let frame = counter.value
                     if frame >= totalFrames {
+                        counter.markDone()
                         inputRef.markAsFinished()
                         if counter.tryClaimResume() { continuation.resume() }
                         return
@@ -186,12 +195,9 @@ actor StillVideoBaker {
                         timescale: CMTimeScale(self.frameRate)
                     )
                     if !adaptorRef.append(buffer, withPresentationTime: pts) {
-                        // The writer holds the actual error after a failed
-                        // append; AVAssetWriterInput itself doesn't expose
-                        // one. We capture the message here and re-fetch
-                        // writer.error after finishWriting().
                         appendFailureBox.message =
                             "append returned false at frame \(frame)"
+                        counter.markDone()
                         inputRef.markAsFinished()
                         if counter.tryClaimResume() { continuation.resume() }
                         return
@@ -245,13 +251,20 @@ actor StillVideoBaker {
             return true
         }
 
-        /// Returns true if `done` was already set BEFORE this call. Use to
-        /// short-circuit re-entrant pump invocations after markAsFinished.
-        func markDoneIfPossible() -> Bool {
+        /// Read-only check used at the top of each pump-block invocation
+        /// to short-circuit RE-ENTRY after `markAsFinished`. Reading does
+        /// NOT set `_done` — that's only set explicitly via `markDone()`
+        /// when a finish path is actually taken.
+        var isDone: Bool {
             lock.lock(); defer { lock.unlock() }
-            let wasDone = _done
+            return _done
+        }
+
+        /// Mark the bake as done. Call this once when transitioning into
+        /// a finish path (frame budget reached or append failed).
+        func markDone() {
+            lock.lock(); defer { lock.unlock() }
             _done = true
-            return wasDone
         }
     }
 

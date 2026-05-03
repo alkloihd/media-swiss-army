@@ -6,7 +6,7 @@
 //  inspection and stripping — no duration/naturalSize needed, just the
 //  source URL, scanned tags, and final clean result.
 //
-//  See `.agents/work-sessions/2026-05-03/PLAN-stitch-metaclean.md` task M3.
+//  See `.agents/work-sessions/2026-05-03/plans/PLAN-stitch-metaclean.md` task M3.
 //
 
 import Foundation

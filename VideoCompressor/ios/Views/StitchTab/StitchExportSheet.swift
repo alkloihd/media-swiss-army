@@ -212,6 +212,12 @@ struct StitchExportSheet: View {
                 try await PhotosSaver.saveVideo(at: url)
                 saveStatus = .saved
                 UINotificationFeedbackGenerator().notificationOccurred(.success)
+                // Audit-9-F2 fix: stitched output is now safely in Photos.
+                // Delete our sandbox copy from Documents/StitchOutputs/ —
+                // a 600 MB stitch otherwise sits there forever.
+                Task.detached(priority: .utility) {
+                    await CacheSweeper.shared.deleteIfInWorkingDir(url)
+                }
             } catch {
                 if !Task.isCancelled {
                     saveStatus = .saveFailed(reason: error.localizedDescription)

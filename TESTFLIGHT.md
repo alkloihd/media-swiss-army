@@ -4,7 +4,7 @@
 **Bundle ID:** `ca.nextclass.VideoCompressor`
 **Apple Developer Program:** Paid ($99/yr) — required for TestFlight + Xcode Cloud
 **Recommended CI:** **Xcode Cloud** (Apple's native CI; included free with paid membership)
-**Fallback CI:** GitHub Actions (documented in `.agents/work-sessions/2026-05-03/PLAN-cicd-testflight.md`)
+**Fallback CI:** GitHub Actions (documented in `.agents/work-sessions/2026-05-03/plans/PLAN-cicd-testflight.md`)
 
 ---
 
@@ -14,7 +14,7 @@ Xcode Cloud is Apple's CI/CD service built into App Store Connect. Your $99/yr m
 
 The full step-by-step plan (with exact App Store Connect URLs and screenshots-worth-of-detail) is at:
 
-**`.agents/work-sessions/2026-05-03/PLAN-cicd-testflight.md`**
+**`.agents/work-sessions/2026-05-03/plans/PLAN-cicd-testflight.md`**
 
 It walks through (all from `appstoreconnect.apple.com` on phone Safari):
 
@@ -43,7 +43,7 @@ External testers (up to 10,000) need a one-time Apple "Beta App Review" (~24 h).
 
 ## Fallback path: GitHub Actions
 
-Use this only if Xcode Cloud's free tier becomes a problem. Full workflow YAML, secret list, and setup steps are in **`.agents/work-sessions/2026-05-03/PLAN-cicd-testflight.md`** under "Fallback approach". Switching paths later is a one-day migration.
+Use this only if Xcode Cloud's free tier becomes a problem. Full workflow YAML, secret list, and setup steps are in **`.agents/work-sessions/2026-05-03/plans/PLAN-cicd-testflight.md`** under "Fallback approach". Switching paths later is a one-day migration.
 
 ---
 
@@ -77,7 +77,7 @@ Ignore this section if Xcode Cloud is set up. Kept here for emergency local buil
 
 Not blocking TestFlight ship; addressable in v1.0.1+:
 
-- **Photos as first-class media** — compress / stitch / metaclean for stills (HEIC/JPEG). See `.agents/work-sessions/2026-05-03/BACKLOG-stitch-photos-and-share-extension.md` §3.5.
+- **Photos as first-class media** — compress / stitch / metaclean for stills (HEIC/JPEG). See `.agents/work-sessions/2026-05-03/backlog-archive/BACKLOG-stitch-photos-and-share-extension.md` §3.5.
 - **iOS Share Extension** — receive batch from Photos share sheet directly into Compress/Stitch/MetaClean queues. See backlog §2.
 - **Live trim preview** in `TrimEditorView` — currently dual-Slider; v2 should show actual frame at trim points.
 - **Scrubbing UI state** during the auto-strip Meta-fingerprint pass (~1-3s after compression). See pre-ship audit `{E-0503-1135}` H2.

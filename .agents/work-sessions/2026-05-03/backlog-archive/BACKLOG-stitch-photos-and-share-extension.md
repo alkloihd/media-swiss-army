@@ -3,7 +3,7 @@
 **Date logged:** 2026-05-03
 **Source:** user direction during the stitch+metaclean execution session.
 
-These items are deferred from the phase-2 plan (`PLAN-stitch-metaclean.md`)
+These items are deferred from the phase-2 plan (`../plans/PLAN-stitch-metaclean.md`)
 and should be picked up in phase 3. Each is large enough to deserve its
 own plan + agent team. Note them here so they don't fall on the floor.
 
@@ -405,7 +405,7 @@ L (~1 day). Settings UI is straightforward; the live estimate calc is fast; the 
 
 ## Phase 3 commit ordering update (post-Build-12 testing feedback)
 
-Inserting items 7, 8, 9 into the existing 7-commit plan from HANDOFF-v2:
+Inserting items 7, 8, 9 into the existing 7-commit plan from `../handoffs/HANDOFF-v2.md`:
 
 | # | Commit | Source |
 |---|---|---|

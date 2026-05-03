@@ -6,7 +6,7 @@
 //  toggle (with recoverable-window note), live progress, and a final
 //  summary on completion. Fires MetaCleanQueue.clean then PhotosSaver.
 //
-//  See `.agents/work-sessions/2026-05-03/PLAN-stitch-metaclean.md` task M4.
+//  See `.agents/work-sessions/2026-05-03/plans/PLAN-stitch-metaclean.md` task M4.
 //
 
 import SwiftUI
@@ -133,6 +133,15 @@ struct MetaCleanExportSheet: View {
                         )
                         self.saveStatus = .saved
                         UINotificationFeedbackGenerator().notificationOccurred(.success)
+                        // Audit-9-F3 fix: cleaned output is now in Photos.
+                        // Delete our sandbox copies in Documents/Cleaned/
+                        // and Documents/CleanInputs/ to free space.
+                        let outputURL = metaResult.cleanedURL
+                        let inputURL = item.sourceURL
+                        Task.detached(priority: .utility) {
+                            await CacheSweeper.shared.deleteIfInWorkingDir(outputURL)
+                            await CacheSweeper.shared.deleteIfInWorkingDir(inputURL)
+                        }
                         self.onDone()
                         self.dismiss()
                     } catch {
