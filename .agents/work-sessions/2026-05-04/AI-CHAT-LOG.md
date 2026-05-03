@@ -7,3 +7,5 @@
 [2026-05-04 04:00 IST] [solo/codex/gpt-5] [FIX] Cluster 0 Tasks 4-5: Compression writer now declares SDR BT.709 color properties and clamps frame-rate/GOP hints; verified TDD red then clean-state `test_sim` 144/144 (commit 4de8181).
 [2026-05-04 00:37 SAST] [solo/codex/gpt-5] [FIX] Cluster 0 Task 6: Added one-shot -11841 downshift retry with surfaced `CompressionResult` settings/note; verified TDD red then `test_sim` 150/150 (commit 3dae342).
 [2026-05-04 00:44 SAST] [solo/codex/gpt-5] [TEST] Closed Task 6 review gap with deterministic synthetic -11841 retry tests and `runWithOneShotDownshift` seam; verified TDD red then `test_sim` 152/152.
+[2026-05-04 00:45 SAST] [solo/codex/gpt-5] [TEST] Committed Task 6 retry test seam follow-up after reviewer block; retry result shape and one-shot double-failure behavior covered (commit 6fb0a17).
+[2026-05-04 00:50 SAST] [solo/codex/gpt-5] [TEST] Final Cluster 0 verification before PR: `mcp__XcodeBuildMCP__.test_sim` passed 152/152 and `build_sim` succeeded.
