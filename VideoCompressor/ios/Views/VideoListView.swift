@@ -60,11 +60,19 @@ struct VideoListView: View {
                     get: { library.lastError != nil },
                     set: { if !$0 { library.lastError = nil } }
                 ),
-                presenting: library.lastError?.displayMessage
-            ) { _ in
+                presenting: library.lastError
+            ) { error in
+                if let url = URL(string: UIApplication.openSettingsURLString),
+                   error.recoverySuggestion != nil {
+                    Button("Open Settings") { UIApplication.shared.open(url) }
+                }
                 Button("OK", role: .cancel) {}
-            } message: { msg in
-                Text(msg)
+            } message: { error in
+                if let suggestion = error.recoverySuggestion {
+                    Text("\(error.displayMessage)\n\n\(suggestion)")
+                } else {
+                    Text(error.displayMessage)
+                }
             }
         }
         .onChange(of: pickerItems) { _, newItems in

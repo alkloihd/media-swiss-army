@@ -72,7 +72,7 @@ struct VideoMetadataLoader {
                 pixelHeight: displayHeight,
                 nominalFrameRate: frameRate,
                 codec: codecLabel,
-                estimatedDataRate: Int64(bitrate.rounded()),
+                estimatedDataRate: bitrate.isFinite ? Int64(bitrate.rounded()) : 0,
                 fileSizeBytes: fileSize
             )
         } catch let error as VideoMetadataError {

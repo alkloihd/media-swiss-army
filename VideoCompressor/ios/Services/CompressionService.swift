@@ -23,14 +23,12 @@ actor CompressionService {
     /// the app's Documents/Outputs folder so users can find their files via
     /// Files.app even before we copy to Photos.
     static func outputURL(forInput inputURL: URL, settings: CompressionSettings) -> URL {
+        // Backup-exclusion happens once at app launch in
+        // VideoLibrary.markDirectoriesAsNonBackup. Don't repeat the dance
+        // here — earlier code mutated a local URL copy without persisting.
         let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
         let outputs = docs.appendingPathComponent("Outputs", isDirectory: true)
         try? FileManager.default.createDirectory(at: outputs, withIntermediateDirectories: true)
-
-        var values = URLResourceValues()
-        values.isExcludedFromBackup = true
-        var outputsURL = outputs
-        try? outputsURL.setResourceValues(values)
 
         let stem = inputURL.deletingPathExtension().lastPathComponent
         let ext = "mp4"
@@ -70,7 +68,7 @@ actor CompressionService {
 
         exporter.outputURL = outputURL
         exporter.outputFileType = settings.fileType
-        exporter.shouldOptimizeForNetworkUse = (settings.outputSuffix == "_WEB")
+        exporter.shouldOptimizeForNetworkUse = settings.optimizesForNetwork
 
         // Spawn a polling task that publishes progress at 10 Hz.
         let progressTask = Task { @MainActor [weak exporter] in
