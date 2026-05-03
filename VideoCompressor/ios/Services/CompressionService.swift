@@ -137,6 +137,15 @@ actor CompressionService {
             throw CompressionError.cancelled
         case .failed:
             let nsErr = exporter.error as NSError?
+            // Translate the most common interruption cause into something a
+            // user can act on. -11847 (AVErrorOperationInterrupted) fires
+            // when iOS kills the export — almost always because the app was
+            // backgrounded past the ~30 s UIBackgroundTask grace window.
+            if nsErr?.code == -11847 {
+                throw CompressionError.exportFailed(
+                    "Export was interrupted because the app went to the background or the screen locked for too long. Keep the app open during long encodes (especially Stitch). On retry, the encode will resume from scratch."
+                )
+            }
             let detail = nsErr.map { "[\($0.domain) \($0.code)] \($0.localizedDescription)" } ?? "Unknown export error"
             let underlying = (nsErr?.userInfo[NSUnderlyingErrorKey] as? NSError)
                 .map { " (underlying: \($0.domain) \($0.code))" } ?? ""

@@ -371,6 +371,12 @@ actor StitchExporter {
             throw CompressionError.cancelled
         case .failed:
             let nsErr = exporter.error as NSError?
+            // Translate the most common interruption cause for the user.
+            if nsErr?.code == -11847 {
+                throw CompressionError.exportFailed(
+                    "Stitch was interrupted because the app went to the background or the screen locked for too long. Keep the app open during a stitch — iOS only allows ~30 seconds of background time."
+                )
+            }
             let detail = nsErr.map { "[\($0.domain) \($0.code)] \($0.localizedDescription)" } ?? "Unknown export error"
             throw CompressionError.exportFailed("Stitch passthrough failed: \(detail)")
         @unknown default:
