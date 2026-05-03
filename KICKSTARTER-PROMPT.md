@@ -44,11 +44,11 @@ Once Claude confirms "I've read everything; ready for the ultraplan invocation,"
 
 Save plans to docs/superpowers/plans/ with filename pattern <YYYY-MM-DD>-phase<N>.<task>-<slug>.md.
 
-My decisions on the 13 open questions from HANDOFF-TO-CLAUDE-TERMINAL.md:
+some decisions to brainstorm on decisions on the 13 open questions from HANDOFF-TO-CLAUDE-TERMINAL.md:
 
 1. App Store name: <your answer — e.g. "MetaClean: AI Glasses Data" or alternative>
 2. Pricing: <e.g. "$4.99 one-time" or "$2.99" or "freemium with $9.99 Pro IAP">
-3. Apple Small Business Program: <"already enrolled" or "will enrol now" or "skip for now">
+3. Apple Small Business Program: < "skip for now">
 4. Long-press preview placement: <"keep contextMenu overlay (default)" or "move to bottom inline editor area">
 5. Compress presets to hide behind Advanced: <e.g. "show only Balanced + Small by default" or "show all">
 6. CropEditor sliders: <"hide entirely (use aspect-ratio presets only)" or "move to Advanced" or "keep visible">
@@ -58,7 +58,7 @@ My decisions on the 13 open questions from HANDOFF-TO-CLAUDE-TERMINAL.md:
 10. Local-device iteration setup priority: <"Phase 0 — before any other work, save build minutes" or "Phase 5 (when MASTER-PLAN says)" or "skip">
 11. TestFlight cadence target: <e.g. "≤ 5 cycles total" or "≤ 3 per phase" or "no limit">
 12. Real-device testing workflow: <"USB-tethered after dev-iterate.sh lands" or "TestFlight per-PR" or "real device only at Phase 0 confirmation">
-13. iPhone tethered now: <"yes, currently plugged in" or "no, will plug in for Phase 5">
+13. iPhone tethered now: <""no, will plug in for Phase 5">
 
 Constraints (NON-NEGOTIABLE):
 - Each plan = one PR = one TestFlight cycle (when merged to main)
