@@ -223,10 +223,21 @@ final class VideoLibrary: ObservableObject {
             // efficiently encoded (typically iPhone HEVC at 1080p) the
             // output can be the SAME size or LARGER. Don't punish the user
             // with a worse file — discard and report as "already optimized".
-            // 95% threshold leaves a small win room for genuinely beneficial
-            // re-encodes that happen to add metadata bytes. Phase 3
-            // AVAssetWriter migration replaces this with true smart-cap.
-            let sourceBytes = videos.first(where: { $0.id == id })?.metadata?.fileSizeBytes ?? .max
+            //
+            // BUG FIX (Build 13 → 14): the previous fallback to Int64.max
+            // when metadata.fileSizeBytes was missing or 0 caused the guard
+            // to NEVER trip — because `Int64.max * 0.95` overflows and the
+            // `>=` check is meaningless. Also, the multi-second import path
+            // can complete the encode before VideoMetadataLoader reports
+            // the size. Now reads the source file's size DIRECTLY from disk
+            // as the source-of-truth, falling back to metadata only if disk
+            // read fails. Phase 3 AVAssetWriter migration replaces this
+            // safety net with true source-aware bitrate caps.
+            let sourceBytes: Int64 = {
+                let onDisk = (try? FileManager.default.attributesOfItem(atPath: inputURL.path)[.size] as? NSNumber)?.int64Value ?? 0
+                if onDisk > 0 { return onDisk }
+                return videos.first(where: { $0.id == id })?.metadata?.fileSizeBytes ?? 0
+            }()
             if sourceBytes > 0, finalBytes >= Int64(Double(sourceBytes) * 0.95) {
                 try? FileManager.default.removeItem(at: outputURL)
                 if let i = videos.firstIndex(where: { $0.id == id }) {
