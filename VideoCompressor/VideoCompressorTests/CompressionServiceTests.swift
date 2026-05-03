@@ -32,6 +32,21 @@ final class CompressionServiceTests: XCTestCase {
         ((try? FileManager.default.attributesOfItem(atPath: url.path)[.size]) as? NSNumber)?.int64Value ?? 0
     }
 
+    private final class AttemptRecorder: @unchecked Sendable {
+        private let lock = NSLock()
+        private var _settings: [CompressionSettings] = []
+
+        func record(_ settings: CompressionSettings) {
+            lock.lock(); defer { lock.unlock() }
+            _settings.append(settings)
+        }
+
+        var settings: [CompressionSettings] {
+            lock.lock(); defer { lock.unlock() }
+            return _settings
+        }
+    }
+
     // MARK: - Smart-cap acceptance: small preset shrinks the source
 
     func testSmallPresetProducesStrictlySmallerOutput() async throws {
@@ -212,5 +227,61 @@ final class CompressionServiceTests: XCTestCase {
                 "Encode failed: [AVFoundationErrorDomain -11847] background interruption"
             )
         )
+    }
+
+    func testSyntheticMinus11841RetryReturnsFallbackResult() async throws {
+        let input = URL(fileURLWithPath: "/tmp/synthetic-retry-source.mov")
+        let recorder = AttemptRecorder()
+
+        let result = try await CompressionService.runWithOneShotDownshift(
+            inputURL: input,
+            settings: .max,
+            onRetry: {}
+        ) { settings, outputURL, attempt in
+            recorder.record(settings)
+            if attempt == 0 {
+                throw CompressionError.exportFailed("[AVFoundationErrorDomain -11841]")
+            }
+            XCTAssertEqual(settings.id, CompressionSettings.balanced.id)
+            XCTAssertEqual(
+                outputURL.lastPathComponent,
+                CompressionService.outputURL(forInput: input, settings: .balanced).lastPathComponent
+            )
+            return outputURL
+        }
+
+        XCTAssertEqual(recorder.settings.map(\.id), [
+            CompressionSettings.max.id,
+            CompressionSettings.balanced.id,
+        ])
+        XCTAssertEqual(result.settings.id, CompressionSettings.balanced.id)
+        XCTAssertEqual(
+            result.fallbackMessage,
+            CompressionService.downshiftMessage(from: .max, to: .balanced)
+        )
+    }
+
+    func testSyntheticMinus11841RetryIsOneShot() async throws {
+        let input = URL(fileURLWithPath: "/tmp/synthetic-double-failure-source.mov")
+        let recorder = AttemptRecorder()
+
+        do {
+            _ = try await CompressionService.runWithOneShotDownshift(
+                inputURL: input,
+                settings: .max,
+                onRetry: {}
+            ) { settings, _, _ in
+                recorder.record(settings)
+                throw CompressionError.exportFailed("[AVFoundationErrorDomain -11841]")
+            }
+            XCTFail("Second -11841 should surface instead of recursively retrying.")
+        } catch CompressionError.exportFailed(let message) {
+            XCTAssertTrue(message.contains("-11841"))
+        }
+
+        XCTAssertEqual(recorder.settings.map(\.id), [
+            CompressionSettings.max.id,
+            CompressionSettings.balanced.id,
+        ])
     }
 }

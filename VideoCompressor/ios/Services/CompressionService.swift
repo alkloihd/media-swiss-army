@@ -78,15 +78,40 @@ actor CompressionService {
             throw CompressionError.noVideoTrack
         }
 
-        let outputURL = Self.outputURL(forInput: inputURL, settings: settings)
-        do {
-            let url = try await encode(
-                asset: asset,
+        return try await Self.runWithOneShotDownshift(
+            inputURL: inputURL,
+            settings: settings,
+            onRetry: {
+                onProgress(.zero)
+            }
+        ) { attemptSettings, attemptOutputURL, attempt in
+            let attemptAsset: AVAsset
+            if attempt == 0 {
+                attemptAsset = asset
+            } else {
+                attemptAsset = AVURLAsset(url: inputURL, options: [
+                    AVURLAssetPreferPreciseDurationAndTimingKey: true,
+                ])
+            }
+            return try await self.encode(
+                asset: attemptAsset,
                 videoComposition: nil,
-                settings: settings,
-                outputURL: outputURL,
+                settings: attemptSettings,
+                outputURL: attemptOutputURL,
                 onProgress: onProgress
             )
+        }
+    }
+
+    static func runWithOneShotDownshift(
+        inputURL: URL,
+        settings: CompressionSettings,
+        onRetry: @MainActor @escaping () async -> Void,
+        encodeAttempt: @escaping (_ settings: CompressionSettings, _ outputURL: URL, _ attempt: Int) async throws -> URL
+    ) async throws -> CompressionResult {
+        let outputURL = Self.outputURL(forInput: inputURL, settings: settings)
+        do {
+            let url = try await encodeAttempt(settings, outputURL, 0)
             return CompressionResult(url: url, settings: settings, fallbackMessage: nil)
         } catch {
             guard
@@ -96,19 +121,9 @@ actor CompressionService {
             else {
                 throw error
             }
-
-            await onProgress(.zero)
+            await onRetry()
             let fallbackOutputURL = Self.outputURL(forInput: inputURL, settings: fallback)
-            let retryAsset = AVURLAsset(url: inputURL, options: [
-                AVURLAssetPreferPreciseDurationAndTimingKey: true,
-            ])
-            let url = try await encode(
-                asset: retryAsset,
-                videoComposition: nil,
-                settings: fallback,
-                outputURL: fallbackOutputURL,
-                onProgress: onProgress
-            )
+            let url = try await encodeAttempt(fallback, fallbackOutputURL, 1)
             return CompressionResult(
                 url: url,
                 settings: fallback,
