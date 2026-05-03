@@ -15,6 +15,7 @@ Agent identifier format: `[type/model]` — e.g. `[Claude Opus 4.7 / 1M ctx]`, `
 
 ### Added
 
+- 2026-05-03 [subagent:opus via Opus 4.7 lead] (<commit-sha>) MetaClean model + remux strip service (commit 5 of 6). `MetadataTag` + `MetadataCategory` + `StripRules` (autoMetaGlasses / stripAll / identity factories) + `MetadataCleanResult` value types. `MetadataService` actor reads metadata across `.metadata` / `.quickTimeMetadata` / `.quickTimeUserData` / `.iTunesMetadata` keyspaces; classifies by category; flags Meta Ray-Ban fingerprint atoms. `strip(url:rules:onProgress:)` uses `AVAssetReader → AVAssetWriter` passthrough pump (`outputSettings: nil`) — pure remux, bit-identical pixels, no re-encode. Output as `_CLEAN.mp4` in `Documents/Cleaned/`.
 - 2026-05-03 [subagent:opus via Opus 4.7 lead] (79fc296) StitchExporter + export sheet (commit 4 of 6). Actor builds `AVMutableComposition` from clips, detects passthrough vs re-encode, applies per-clip `AVMutableVideoCompositionLayerInstruction` for crop/rotate. `CompressionService.encode(asset:videoComposition:settings:outputURL:onProgress:)` overload — single export pipeline shared by Compress and Stitch. `StitchExportSheet` settings picker + live progress + Save to Photos. `StitchProject.export(settings:)` replaces commit-1 stub.
 - 2026-05-03 [subagent:sonnet via Opus 4.7 lead] (3f69f2b) Per-clip editor sheet with trim/crop/rotate (commit 3 of 6).
 - 2026-05-03 [subagent:sonnet via Opus 4.7 lead] (d03d4bc) Stitch tab shell + timeline reorder + thumbnails (commit 2 of 6).
