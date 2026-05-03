@@ -52,6 +52,9 @@ struct StitchTabView: View {
                             .padding(.horizontal)
                             .padding(.top, 8)
                             .padding(.bottom, 4)
+                        transitionPicker
+                            .padding(.horizontal)
+                            .padding(.bottom, 4)
                         StitchTimelineView(
                             project: project,
                             selectedClipID: $selectedClipID
@@ -146,6 +149,42 @@ struct StitchTabView: View {
         case .portrait:  return "9:16 canvas. Landscape clips will pillarbox (black bars on top/bottom)."
         case .landscape: return "16:9 canvas. Portrait clips will pillarbox (black bars on left/right)."
         case .square:    return "1:1 canvas. Mismatched clips show with black bars."
+        }
+    }
+
+    // MARK: - Transition (FX) picker
+
+    @ViewBuilder
+    private var transitionPicker: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 8) {
+                Image(systemName: "sparkles")
+                    .foregroundStyle(.secondary)
+                Text("Transitions")
+                    .font(.subheadline.weight(.medium))
+                Spacer()
+            }
+            Picker("Transition", selection: $project.transition) {
+                ForEach(StitchTransition.allCases) { mode in
+                    Label(mode.displayName, systemImage: mode.systemImage).tag(mode)
+                }
+            }
+            .pickerStyle(.segmented)
+            Text(transitionCaption)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .accessibilityIdentifier("stitchTransitionPicker")
+    }
+
+    private var transitionCaption: String {
+        switch project.transition {
+        case .none:        return "Hard cuts between clips."
+        case .crossfade:   return "1-second crossfade — outgoing fades out as incoming fades in."
+        case .fadeToBlack: return "Half-second fade to black, then half-second fade in."
+        case .wipeLeft:    return "Right-to-left wipe over 1 second."
+        case .random:      return "Cycles through Crossfade / Fade Black / Wipe per gap (deterministic)."
         }
     }
 

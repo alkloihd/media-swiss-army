@@ -21,6 +21,48 @@ enum ClipKind: String, Sendable, Hashable {
     case still
 }
 
+/// Transitions between adjacent clips in a stitch. All effects use built-in
+/// AVFoundation APIs (no custom AVVideoCompositing class), so they're
+/// GPU-accelerated and run at near-zero CPU cost during render.
+///
+/// Cost summary at 1080p: each transition adds ~5-10% to the render time of
+/// the OVERLAPPING window (typically 1s per clip-gap), nothing during the
+/// non-transition portion.
+enum StitchTransition: String, CaseIterable, Hashable, Sendable, Identifiable {
+    case none
+    case crossfade      // both clips visible, opacities ramp opposing
+    case fadeToBlack    // clip A fades to black (0.5s), clip B fades from black (0.5s)
+    case wipeLeft       // clip A's crop shrinks rightward, clip B's grows from left
+    case random         // pick one of {crossfade, fadeToBlack, wipeLeft} per gap
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .none:        return "None"
+        case .crossfade:   return "Crossfade"
+        case .fadeToBlack: return "Fade Black"
+        case .wipeLeft:    return "Wipe"
+        case .random:      return "Random"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .none:        return "arrow.right.to.line"
+        case .crossfade:   return "circle.lefthalf.filled"
+        case .fadeToBlack: return "moonphase.first.quarter"
+        case .wipeLeft:    return "arrow.left.and.right"
+        case .random:      return "shuffle"
+        }
+    }
+
+    /// Duration of the transition in seconds. 1.0s is the standard editor
+    /// default and matches user request. Transitions are centred on the clip
+    /// boundary, i.e. they consume 0.5s of clip A's tail + 0.5s of clip B's head.
+    static let durationSeconds: Double = 1.0
+}
+
 /// Aspect-ratio canvas mode for the stitched output. `.auto` picks orientation
 /// from a majority vote across the clips (fall-back: landscape on tie). The
 /// explicit modes use canonical 1080-edge sizes. Mismatched clips render with

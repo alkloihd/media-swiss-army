@@ -23,6 +23,11 @@ final class StitchProject: ObservableObject {
     /// orientation; explicit modes pin a 9:16 / 16:9 / 1:1 canvas. Mismatched
     /// clips render with black bars rather than being cropped.
     @Published var aspectMode: StitchAspectMode = .auto
+    /// Global transition between adjacent clips. `.none` is the legacy
+    /// hard-cut behaviour; `.random` picks per-gap among the three real
+    /// effects (crossfade, fadeToBlack, wipeLeft). Render-time only —
+    /// cheap GPU compositor work, no impact on encode bitrate.
+    @Published var transition: StitchTransition = .none
     /// Per-clip undo/redo history for the inline editor. Keyed by clip ID.
     /// Lookup returns a fresh empty history if the clip is new.
     @Published private(set) var histories: [UUID: EditHistory] = [:]
@@ -72,13 +77,29 @@ final class StitchProject: ObservableObject {
     /// `StitchClip` (e.g. one pointing at a Photos library URL) cannot be
     /// used to delete user data via this path (closes review
     /// {E-0503-1032} H2).
+    ///
+    /// Split-clip safety: after `split`, both halves share `sourceURL`.
+    /// We only delete the source file when NO surviving clip still
+    /// references it. Otherwise the surviving half's playback / export
+    /// would break (CRITICAL bug surfaced in red team — May 2026).
     func remove(at offsets: IndexSet) {
         let toDelete = offsets.map { clips[$0] }
         clips.remove(atOffsets: offsets)
         let inputsPath = inputsDir.standardizedFileURL.path
+        // Also clear histories for removed clips — they can't be reached
+        // via undo/redo anymore. Avoids slow leaks across long edit sessions.
+        for clip in toDelete {
+            histories.removeValue(forKey: clip.id)
+        }
         for clip in toDelete {
             let path = clip.sourceURL.standardizedFileURL.path
             guard path.hasPrefix(inputsPath + "/") else { continue }
+            // Reference-count check: don't delete a source still in use by
+            // a surviving clip (split halves, or any future copy).
+            let stillReferenced = clips.contains { surviving in
+                surviving.sourceURL.standardizedFileURL.path == path
+            }
+            if stillReferenced { continue }
             try? FileManager.default.removeItem(at: clip.sourceURL)
         }
     }
@@ -362,8 +383,13 @@ final class StitchProject: ObservableObject {
 
         let exporter = StitchExporter()
         let aspect = self.aspectMode
+        let transition = self.transition
         do {
-            let plan = try await exporter.buildPlan(from: clipsSnapshot, aspectMode: aspect)
+            let plan = try await exporter.buildPlan(
+                from: clipsSnapshot,
+                aspectMode: aspect,
+                transition: transition
+            )
             try Task.checkCancellation()
 
             let url = try await exporter.export(

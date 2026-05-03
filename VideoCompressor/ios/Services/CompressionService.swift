@@ -95,6 +95,7 @@ actor CompressionService {
     func encode(
         asset: AVAsset,
         videoComposition: AVMutableVideoComposition?,
+        audioMix: AVMutableAudioMix? = nil,
         settings: CompressionSettings,
         outputURL: URL,
         onProgress: @MainActor @Sendable @escaping (BoundedProgress) -> Void
@@ -280,14 +281,32 @@ actor CompressionService {
         reader.add(videoReaderOutput)
 
         let audioReaderOutput: AVAssetReaderOutput?
-        if let aTrack = audioTrack {
-            let audioReadSettings: [String: Any] = [
-                AVFormatIDKey: NSNumber(value: kAudioFormatLinearPCM),
-                AVLinearPCMBitDepthKey: NSNumber(value: 16),
-                AVLinearPCMIsFloatKey: NSNumber(value: false),
-                AVLinearPCMIsBigEndianKey: NSNumber(value: false),
-                AVLinearPCMIsNonInterleaved: NSNumber(value: false),
-            ]
+        let audioReadSettings: [String: Any] = [
+            AVFormatIDKey: NSNumber(value: kAudioFormatLinearPCM),
+            AVLinearPCMBitDepthKey: NSNumber(value: 16),
+            AVLinearPCMIsFloatKey: NSNumber(value: false),
+            AVLinearPCMIsBigEndianKey: NSNumber(value: false),
+            AVLinearPCMIsNonInterleaved: NSNumber(value: false),
+        ]
+        // When the caller supplied an audio mix (stitch transitions), read
+        // ALL audio tracks through `AVAssetReaderAudioMixOutput` so the mix's
+        // volume ramps actually fire. Otherwise fall back to single-track
+        // output (legacy single-clip compress path).
+        let allAudioTracks = tracks.filter { $0.mediaType == .audio }
+        if audioMix != nil, !allAudioTracks.isEmpty {
+            let mixOut = AVAssetReaderAudioMixOutput(
+                audioTracks: allAudioTracks,
+                audioSettings: audioReadSettings
+            )
+            mixOut.audioMix = audioMix
+            mixOut.alwaysCopiesSampleData = false
+            if reader.canAdd(mixOut) {
+                reader.add(mixOut)
+                audioReaderOutput = mixOut
+            } else {
+                audioReaderOutput = nil
+            }
+        } else if let aTrack = audioTrack {
             let aOut = AVAssetReaderTrackOutput(track: aTrack, outputSettings: audioReadSettings)
             aOut.alwaysCopiesSampleData = false
             if reader.canAdd(aOut) {
