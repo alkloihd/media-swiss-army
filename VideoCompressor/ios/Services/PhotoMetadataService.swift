@@ -197,7 +197,14 @@ actor PhotoMetadataService {
         // Per Apple docs, setting a property to `kCFNull` in the dict passed
         // to `CGImageDestinationAddImageFromSource` deletes that key on the
         // destination.
-        let removeDict = buildRemoveDict(rules: rules)
+        //
+        // Surgical XMP behavior: `stripMetaFingerprintAlways` should only
+        // wipe the XMP packet when the source file actually contains Meta
+        // markers — otherwise we'd murder iPhone's date / Live Photo ID /
+        // HDR / color profile data in XMP for files that have nothing to
+        // do with Meta. The fileHasFingerprint flag below scopes the wipe.
+        let fileHasFingerprint = allTags.contains { $0.isMetaFingerprint }
+        let removeDict = buildRemoveDict(rules: rules, fileHasFingerprint: fileHasFingerprint)
 
         CGImageDestinationAddImageFromSource(
             dest, source, 0, removeDict as CFDictionary
@@ -333,7 +340,11 @@ actor PhotoMetadataService {
     /// `CGImageDestinationAddImageFromSource`. Setting a key to `kCFNull`
     /// deletes that key on the destination. We delete entire namespaces when
     /// any category they map to is requested for stripping.
-    private func buildRemoveDict(rules: StripRules) -> [CFString: Any] {
+    ///
+    /// `fileHasFingerprint` scopes the XMP wipe so iPhone-origin images
+    /// (which store dates / Live Photo / HDR / color info in XMP) don't
+    /// get nuked just because autoMetaGlasses is the default mode.
+    private func buildRemoveDict(rules: StripRules, fileHasFingerprint: Bool = false) -> [CFString: Any] {
         var dict: [CFString: Any] = [:]
 
         // Always nuke embedded thumbnails and JFIF preview when stripping
@@ -370,9 +381,13 @@ actor PhotoMetadataService {
                 dict[kCGImagePropertyTIFFDictionary] = tiffDict
             }
         }
-        if rules.stripMetaFingerprintAlways {
-            // XMP packet is where Meta stashes its provenance. Drop it —
-            // we lose any benign XMP tags too, but the user opted in.
+        if rules.stripMetaFingerprintAlways && fileHasFingerprint {
+            // XMP packet is where Meta stashes its provenance. Drop it ONLY
+            // if the file actually has Meta markers — otherwise we'd murder
+            // iPhone's Live Photo IDs, HDR gain map references, color
+            // profile, EXIF date duplicates, etc., for a file that has
+            // nothing to do with Meta. The fingerprint check at read time
+            // gates this surgically.
             dict[kCGImagePropertyXMPData] = kCFNull as Any
         }
         if rules.stripCategories.contains(.custom) {
