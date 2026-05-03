@@ -69,9 +69,9 @@ struct VideoRowView: View {
                 .progressViewStyle(.linear)
         case .running(let progress):
             VStack(alignment: .leading, spacing: 4) {
-                ProgressView(value: progress)
+                ProgressView(value: progress.value)
                     .progressViewStyle(.linear)
-                Text(String(format: "Compressing… %d%%", Int(progress * 100)))
+                Text(String(format: "Compressing… %d%%", progress.percent))
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
@@ -83,14 +83,22 @@ struct VideoRowView: View {
                     .font(.caption.weight(.medium))
                     .foregroundStyle(.secondary)
             }
-        case .failed(let message):
-            HStack(spacing: 6) {
-                Image(systemName: "exclamationmark.triangle.fill")
-                    .foregroundStyle(.red)
-                Text(message)
-                    .font(.caption2)
-                    .foregroundStyle(.red)
-                    .lineLimit(2)
+        case .failed(let error):
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 6) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.red)
+                    Text(error.displayMessage)
+                        .font(.caption2)
+                        .foregroundStyle(.red)
+                        .lineLimit(2)
+                }
+                if let suggestion = error.recoverySuggestion {
+                    Text(suggestion)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                }
             }
         case .cancelled:
             Label("Cancelled", systemImage: "xmark.circle")
@@ -112,7 +120,7 @@ struct VideoRowView: View {
     }
 
     private var savingsLine: String {
-        guard let outBytes = video.outputBytes,
+        guard let outBytes = video.output?.bytes,
               let inBytes = video.metadata?.fileSizeBytes,
               inBytes > 0 else { return "Done" }
         let saved = inBytes - outBytes

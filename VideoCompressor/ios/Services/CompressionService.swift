@@ -19,17 +19,22 @@ import Foundation
 import AVFoundation
 
 actor CompressionService {
-    /// Output URL is derived from `inputURL` + preset suffix and lives in
+    /// Output URL is derived from `inputURL` + settings suffix and lives in
     /// the app's Documents/Outputs folder so users can find their files via
     /// Files.app even before we copy to Photos.
-    static func outputURL(forInput inputURL: URL, preset: CompressionPreset) -> URL {
+    static func outputURL(forInput inputURL: URL, settings: CompressionSettings) -> URL {
         let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
         let outputs = docs.appendingPathComponent("Outputs", isDirectory: true)
         try? FileManager.default.createDirectory(at: outputs, withIntermediateDirectories: true)
 
+        var values = URLResourceValues()
+        values.isExcludedFromBackup = true
+        var outputsURL = outputs
+        try? outputsURL.setResourceValues(values)
+
         let stem = inputURL.deletingPathExtension().lastPathComponent
         let ext = "mp4"
-        let filename = "\(stem)\(preset.outputSuffix).\(ext)"
+        let filename = "\(stem)\(settings.outputSuffix).\(ext)"
         return outputs.appendingPathComponent(filename)
     }
 
@@ -37,8 +42,8 @@ actor CompressionService {
     /// Returns the output URL when complete. Throws on failure.
     func compress(
         input inputURL: URL,
-        preset: CompressionPreset,
-        onProgress: @MainActor @Sendable @escaping (Double) -> Void
+        settings: CompressionSettings,
+        onProgress: @MainActor @Sendable @escaping (BoundedProgress) -> Void
     ) async throws -> URL {
 
         let asset = AVURLAsset(url: inputURL, options: [
@@ -53,31 +58,29 @@ actor CompressionService {
 
         guard let exporter = AVAssetExportSession(
             asset: asset,
-            presetName: preset.avExportPresetName
+            presetName: settings.avExportPresetName
         ) else {
-            throw CompressionError.exporterUnavailable(preset.avExportPresetName)
+            throw CompressionError.exporterUnavailable(settings.avExportPresetName)
         }
 
-        let outputURL = Self.outputURL(forInput: inputURL, preset: preset)
+        let outputURL = Self.outputURL(forInput: inputURL, settings: settings)
         // Remove any previous output with the same name to avoid the
         // "Cannot Open" error AVAssetExportSession raises.
         try? FileManager.default.removeItem(at: outputURL)
 
         exporter.outputURL = outputURL
-        exporter.outputFileType = preset.fileType
-        exporter.shouldOptimizeForNetworkUse = (preset == .streaming)
+        exporter.outputFileType = settings.fileType
+        exporter.shouldOptimizeForNetworkUse = (settings.outputSuffix == "_WEB")
 
         // Spawn a polling task that publishes progress at 10 Hz.
         let progressTask = Task { @MainActor [weak exporter] in
             while !Task.isCancelled {
                 guard let exporter else { return }
-                onProgress(Double(exporter.progress))
+                onProgress(BoundedProgress(Double(exporter.progress)))
                 do { try await Task.sleep(nanoseconds: 100_000_000) }
                 catch { return }
             }
         }
-
-        defer { progressTask.cancel() }
 
         // Run the export. We use withTaskCancellationHandler so a cooperative
         // Task.cancel() actually stops the underlying AVAssetExportSession.
@@ -94,7 +97,7 @@ actor CompressionService {
         // Stop the poller BEFORE we emit the final 1.0 — otherwise the poller
         // can race in and overwrite with the latest exporter.progress (~0.99).
         progressTask.cancel()
-        await MainActor.run { onProgress(1.0) }
+        await MainActor.run { onProgress(.complete) }
 
         switch exporter.status {
         case .completed:
@@ -117,14 +120,14 @@ actor CompressionService {
     /// AVAssetExportSession exposes `estimatedOutputFileLength` but it
     /// requires the session to be configured; we build a transient one and
     /// query it. Returns nil if no estimate is available.
-    static func estimateOutputBytes(for inputURL: URL, preset: CompressionPreset) async -> Int64? {
+    static func estimateOutputBytes(for inputURL: URL, settings: CompressionSettings) async -> Int64? {
         let asset = AVURLAsset(url: inputURL)
         guard let exporter = AVAssetExportSession(
             asset: asset,
-            presetName: preset.avExportPresetName
+            presetName: settings.avExportPresetName
         ) else { return nil }
-        exporter.outputFileType = preset.fileType
-        exporter.outputURL = outputURL(forInput: inputURL, preset: preset)
+        exporter.outputFileType = settings.fileType
+        exporter.outputURL = outputURL(forInput: inputURL, settings: settings)
 
         // The async accessor is iOS 16+.
         if #available(iOS 16, *) {
@@ -134,7 +137,7 @@ actor CompressionService {
     }
 }
 
-enum CompressionError: Error, LocalizedError {
+enum CompressionError: Error, LocalizedError, Hashable, Sendable {
     case noVideoTrack
     case exporterUnavailable(String)
     case exportFailed(String)

@@ -9,7 +9,7 @@
 import Foundation
 import Photos
 
-enum PhotosSaverError: Error, LocalizedError {
+enum PhotosSaverError: Error, LocalizedError, Hashable, Sendable {
     case notAuthorized
     case saveFailed(String)
 

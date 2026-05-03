@@ -21,8 +21,9 @@ struct VideoFile: Identifiable, Hashable, Sendable {
 
     var metadata: VideoMetadata?
     var jobState: CompressionJobState
-    var outputURL: URL?
-    var outputBytes: Int64?
+    /// Cohesive output payload — set together when compression finishes.
+    /// Replaces the former `outputURL: URL?` + `outputBytes: Int64?` pair.
+    var output: CompressedOutput?
 
     init(
         id: UUID = UUID(),
@@ -31,8 +32,7 @@ struct VideoFile: Identifiable, Hashable, Sendable {
         importedAt: Date = Date(),
         metadata: VideoMetadata? = nil,
         jobState: CompressionJobState = .idle,
-        outputURL: URL? = nil,
-        outputBytes: Int64? = nil
+        output: CompressedOutput? = nil
     ) {
         self.id = id
         self.sourceURL = sourceURL
@@ -40,8 +40,7 @@ struct VideoFile: Identifiable, Hashable, Sendable {
         self.importedAt = importedAt
         self.metadata = metadata
         self.jobState = jobState
-        self.outputURL = outputURL
-        self.outputBytes = outputBytes
+        self.output = output
     }
 }
 
@@ -51,7 +50,7 @@ struct VideoMetadata: Hashable, Sendable {
     let pixelHeight: Int
     let nominalFrameRate: Float
     let codec: String          // e.g. "hvc1", "avc1"
-    let estimatedDataRate: Float  // bits per second
+    let estimatedDataRate: Int64  // bits per second (was Float; Float loses precision past 16.7 Mbps)
     let fileSizeBytes: Int64
 
     var resolutionLabel: String {
@@ -66,7 +65,7 @@ struct VideoMetadata: Hashable, Sendable {
     }
 
     var bitrateLabel: String {
-        let mbps = estimatedDataRate / 1_000_000
+        let mbps = Double(estimatedDataRate) / 1_000_000
         return String(format: "%.1f Mbps", mbps)
     }
 
@@ -78,9 +77,9 @@ struct VideoMetadata: Hashable, Sendable {
 enum CompressionJobState: Hashable, Sendable {
     case idle
     case queued
-    case running(progress: Double)
+    case running(progress: BoundedProgress)
     case finished
-    case failed(message: String)
+    case failed(error: LibraryError)
     case cancelled
 
     var isTerminal: Bool {
@@ -97,9 +96,17 @@ enum CompressionJobState: Hashable, Sendable {
         }
     }
 
+    /// Double value in 0.0…1.0 for ProgressView and arithmetic.
     var progress: Double {
-        if case let .running(p) = self { return p }
+        if case let .running(p) = self { return p.value }
         if case .finished = self { return 1.0 }
         return 0
+    }
+
+    /// Convenience accessor for views that only need a display string.
+    /// Returns `nil` for all non-failed states.
+    var failureMessage: String? {
+        if case let .failed(error) = self { return error.displayMessage }
+        return nil
     }
 }

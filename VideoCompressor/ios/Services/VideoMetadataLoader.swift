@@ -11,7 +11,7 @@
 import Foundation
 import AVFoundation
 
-enum VideoMetadataError: Error, LocalizedError {
+enum VideoMetadataError: Error, LocalizedError, Hashable, Sendable {
     case noVideoTrack
     case fileMissing
     case loadFailed(String)
@@ -72,7 +72,7 @@ struct VideoMetadataLoader {
                 pixelHeight: displayHeight,
                 nominalFrameRate: frameRate,
                 codec: codecLabel,
-                estimatedDataRate: bitrate,
+                estimatedDataRate: Int64(bitrate.rounded()),
                 fileSizeBytes: fileSize
             )
         } catch let error as VideoMetadataError {

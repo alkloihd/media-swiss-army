@@ -57,10 +57,10 @@ struct VideoListView: View {
             .alert(
                 "Something went wrong",
                 isPresented: Binding(
-                    get: { library.lastErrorMessage != nil },
-                    set: { if !$0 { library.lastErrorMessage = nil } }
+                    get: { library.lastError != nil },
+                    set: { if !$0 { library.lastError = nil } }
                 ),
-                presenting: library.lastErrorMessage
+                presenting: library.lastError?.displayMessage
             ) { _ in
                 Button("OK", role: .cancel) {}
             } message: { msg in
@@ -101,9 +101,9 @@ struct VideoListView: View {
                     presetSheet = true
                 } label: {
                     HStack(spacing: 8) {
-                        Image(systemName: library.selectedPreset.symbolName)
+                        Image(systemName: library.selectedSettings.symbolName)
                         VStack(alignment: .leading, spacing: 1) {
-                            Text(library.selectedPreset.title)
+                            Text(library.selectedSettings.title)
                                 .font(.subheadline.weight(.semibold))
                             Text("Preset")
                                 .font(.caption2)

@@ -14,27 +14,27 @@ struct PresetPickerView: View {
 
     var body: some View {
         NavigationStack {
-            List(CompressionPreset.allCases) { preset in
+            List(CompressionSettings.phase1Presets) { setting in
                 Button {
-                    library.selectedPreset = preset
+                    library.selectedSettings = setting
                     dismiss()
                 } label: {
                     HStack(alignment: .top, spacing: 12) {
-                        Image(systemName: preset.symbolName)
+                        Image(systemName: setting.symbolName)
                             .font(.title3)
                             .frame(width: 28)
                             .foregroundStyle(.tint)
                             .padding(.top, 2)
                         VStack(alignment: .leading, spacing: 4) {
-                            Text(preset.title)
+                            Text(setting.title)
                                 .font(.body.weight(.semibold))
                                 .foregroundStyle(.primary)
-                            Text(preset.subtitle)
+                            Text(setting.subtitle)
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
                         Spacer()
-                        if library.selectedPreset == preset {
+                        if library.selectedSettings == setting {
                             Image(systemName: "checkmark")
                                 .foregroundStyle(.tint)
                         }

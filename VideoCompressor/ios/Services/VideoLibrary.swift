@@ -22,8 +22,11 @@ import PhotosUI
 @MainActor
 final class VideoLibrary: ObservableObject {
     @Published private(set) var videos: [VideoFile] = []
-    @Published var selectedPreset: CompressionPreset = .balanced
-    @Published var lastErrorMessage: String?
+    @Published var selectedSettings: CompressionSettings = .balanced
+    @Published var lastError: LibraryError?
+
+    /// Convenience accessor for SwiftUI alert bindings.
+    var lastErrorMessage: String? { lastError?.displayMessage }
 
     private var activeTask: Task<Void, Never>?
     private let service = CompressionService()
@@ -66,7 +69,7 @@ final class VideoLibrary: ObservableObject {
                 videos.append(placeholder)
                 await loadMetadata(for: placeholder.id)
             } catch {
-                lastErrorMessage = error.localizedDescription
+                lastError = .fileSystem(message: error.localizedDescription)
             }
         }
     }
@@ -82,7 +85,7 @@ final class VideoLibrary: ObservableObject {
         let target = inputs.appendingPathComponent("\(baseName).\(ext)")
 
         // If the destination already exists (re-imported same picker item),
-        // remove it so the copy doesn't fail.
+        // remove it so the move doesn't fail.
         try? FileManager.default.removeItem(at: target)
         try FileManager.default.moveItem(at: source, to: target)
 
@@ -104,7 +107,7 @@ final class VideoLibrary: ObservableObject {
             }
         } catch {
             if let i = videos.firstIndex(where: { $0.id == id }) {
-                videos[i].jobState = .failed(message: error.localizedDescription)
+                videos[i].jobState = .failed(error: .metadata(asMetadataError(error)))
             }
         }
     }
@@ -124,7 +127,7 @@ final class VideoLibrary: ObservableObject {
     func compressAll() {
         // Cancel any in-flight task before starting a new run.
         activeTask?.cancel()
-        let preset = selectedPreset
+        let settings = selectedSettings
         let pendingIDs = videos
             .filter { !$0.jobState.isTerminal && !$0.jobState.isActive }
             .map(\.id)
@@ -132,28 +135,28 @@ final class VideoLibrary: ObservableObject {
         activeTask = Task { [weak self] in
             for id in pendingIDs {
                 guard !Task.isCancelled else { return }
-                await self?.runJob(for: id, preset: preset)
+                await self?.runJob(for: id, settings: settings)
             }
         }
     }
 
     func compress(_ id: UUID) {
         activeTask?.cancel()
-        let preset = selectedPreset
+        let settings = selectedSettings
         activeTask = Task { [weak self] in
-            await self?.runJob(for: id, preset: preset)
+            await self?.runJob(for: id, settings: settings)
         }
     }
 
-    private func runJob(for id: UUID, preset: CompressionPreset) async {
+    private func runJob(for id: UUID, settings: CompressionSettings) async {
         guard let idx = videos.firstIndex(where: { $0.id == id }) else { return }
-        videos[idx].jobState = .running(progress: 0)
+        videos[idx].jobState = .running(progress: .zero)
         let inputURL = videos[idx].sourceURL
 
         do {
             let outputURL = try await service.compress(
                 input: inputURL,
-                preset: preset
+                settings: settings
             ) { [weak self] progress in
                 guard let self else { return }
                 if let i = self.videos.firstIndex(where: { $0.id == id }) {
@@ -167,13 +170,17 @@ final class VideoLibrary: ObservableObject {
                 bytes = (attrs[.size] as? NSNumber)?.int64Value ?? 0
             } catch {
                 if let i = videos.firstIndex(where: { $0.id == id }) {
-                    videos[i].jobState = .failed(message: "Output written but unreadable: \(error.localizedDescription)")
+                    videos[i].jobState = .failed(
+                        error: .fileSystem(message: "Output written but unreadable: \(error.localizedDescription)")
+                    )
                 }
                 return
             }
             guard bytes > 0 else {
                 if let i = videos.firstIndex(where: { $0.id == id }) {
-                    videos[i].jobState = .failed(message: "Compressor produced an empty file. Try a different preset.")
+                    videos[i].jobState = .failed(
+                        error: .compression(.exportFailed("Compressor produced an empty file. Try a different preset."))
+                    )
                 }
                 try? FileManager.default.removeItem(at: outputURL)
                 return
@@ -184,15 +191,19 @@ final class VideoLibrary: ObservableObject {
                 return
             }
             videos[i].jobState = .finished
-            videos[i].outputURL = outputURL
-            videos[i].outputBytes = bytes
+            videos[i].output = CompressedOutput(
+                url: outputURL,
+                bytes: bytes,
+                createdAt: Date(),
+                settings: settings
+            )
         } catch is CancellationError {
             if let i = videos.firstIndex(where: { $0.id == id }) {
                 videos[i].jobState = .cancelled
             }
         } catch {
             if let i = videos.firstIndex(where: { $0.id == id }) {
-                videos[i].jobState = .failed(message: error.localizedDescription)
+                videos[i].jobState = .failed(error: .compression(asCompressionError(error)))
             }
         }
     }
@@ -201,12 +212,26 @@ final class VideoLibrary: ObservableObject {
 
     func saveOutputToPhotos(for id: UUID) async {
         guard let video = videos.first(where: { $0.id == id }),
-              let url = video.outputURL else { return }
+              let url = video.output?.url else { return }
         do {
             try await PhotosSaver.saveVideo(at: url)
         } catch {
-            lastErrorMessage = error.localizedDescription
+            lastError = .photos(asPhotosError(error))
         }
+    }
+
+    // MARK: - Error casting helpers
+
+    private func asMetadataError(_ error: Error) -> VideoMetadataError {
+        error as? VideoMetadataError ?? .loadFailed(error.localizedDescription)
+    }
+
+    private func asCompressionError(_ error: Error) -> CompressionError {
+        error as? CompressionError ?? .exportFailed(error.localizedDescription)
+    }
+
+    private func asPhotosError(_ error: Error) -> PhotosSaverError {
+        error as? PhotosSaverError ?? .saveFailed(error.localizedDescription)
     }
 }
 
