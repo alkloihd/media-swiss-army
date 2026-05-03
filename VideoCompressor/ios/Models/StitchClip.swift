@@ -19,26 +19,27 @@ struct StitchClip: Identifiable, Hashable, Sendable {
     let naturalSize: CGSize
     var edits: ClipEdits
 
-    /// Effective duration after trim, in seconds.
-    /// Clamped to [0, naturalDuration].
-    var trimmedDurationSeconds: Double {
-        let natural = CMTimeGetSeconds(naturalDuration)
-        let start = edits.trimStartSeconds ?? 0
-        let end = edits.trimEndSeconds ?? natural
-        return min(natural, max(0, end - start))
-    }
-
     /// The source-clip time range to insert into an AVMutableComposition.
-    /// Both ends use timescale 600 for sub-frame precision.
+    /// Both ends are clamped to [0, naturalDuration]. Uses timescale 600
+    /// (sub-frame precision; standard for AVFoundation composition work)
+    /// and rounds (rather than truncates) so non-600-timescale sources
+    /// don't lose ticks.
     var trimmedRange: CMTimeRange {
         let natural = CMTimeGetSeconds(naturalDuration)
         let start = edits.trimStartSeconds ?? 0
         let end = edits.trimEndSeconds ?? natural
-        let clampedStart = max(0, start)
+        let clampedStart = max(0, min(start, natural))
         let clampedEnd = min(natural, max(clampedStart, end))
-        let startTime = CMTimeMake(value: Int64(clampedStart * 600), timescale: 600)
-        let endTime = CMTimeMake(value: Int64(clampedEnd * 600), timescale: 600)
+        let startTime = CMTimeMakeWithSeconds(clampedStart, preferredTimescale: 600)
+        let endTime = CMTimeMakeWithSeconds(clampedEnd, preferredTimescale: 600)
         return CMTimeRangeFromTimeToTime(start: startTime, end: endTime)
+    }
+
+    /// Effective duration after trim, in seconds. Single source of truth
+    /// derived from `trimmedRange` so the timeline label and the export
+    /// composition can never disagree (closes review {E-0503-1032} H1).
+    var trimmedDurationSeconds: Double {
+        CMTimeGetSeconds(trimmedRange.duration)
     }
 
     /// Returns true if ANY field on `edits` differs from `.identity`.

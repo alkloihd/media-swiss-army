@@ -38,20 +38,24 @@ final class StitchProject: ObservableObject {
 
     // MARK: - Clip mutations
 
-    /// Appends a clip and ensures the StitchInputs/ working directory exists.
+    /// Appends a clip. The StitchInputs/ working directory is created once
+    /// in `init`; we don't recreate it here (closes review {E-0503-1032} M3).
     func append(_ clip: StitchClip) {
-        try? FileManager.default.createDirectory(
-            at: inputsDir,
-            withIntermediateDirectories: true
-        )
         clips.append(clip)
     }
 
     /// Removes clips at the given offsets and deletes their source files.
+    /// Deletion is scoped to descendants of `inputsDir` so a misconstructed
+    /// `StitchClip` (e.g. one pointing at a Photos library URL) cannot be
+    /// used to delete user data via this path (closes review
+    /// {E-0503-1032} H2).
     func remove(at offsets: IndexSet) {
         let toDelete = offsets.map { clips[$0] }
         clips.remove(atOffsets: offsets)
+        let inputsPath = inputsDir.standardizedFileURL.path
         for clip in toDelete {
+            let path = clip.sourceURL.standardizedFileURL.path
+            guard path.hasPrefix(inputsPath + "/") else { continue }
             try? FileManager.default.removeItem(at: clip.sourceURL)
         }
     }
