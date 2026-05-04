@@ -224,3 +224,11 @@ Rule: append after every cluster task/PR checkpoint before moving on.
 | Adaptation   | Kept `ClipLongPressPreview` file-private because the new sheet lives in the same file; the plan's promotion note was unnecessary.                                           |
 | Verification | `mcp__XcodeBuildMCP__.test_sim` passed `190` total: `189` passed, `1` documented simulator-fixture skip; `mcp__XcodeBuildMCP__.build_sim` succeeded.                       |
 | Watchpoints  | Manual UI inspection should confirm Preview appears first and the existing long-press preview overlay still works.                                                          |
+
+#### Task 5 — Drop Indicator Polish
+
+| Field        | Notes                                                                                                                                                                      |
+| ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Key changes  | Stitch timeline drop target now uses an 8pt accent bar, soft accent shadow, and a 12pt animated leading gutter on the target clip.                                         |
+| Verification | `mcp__XcodeBuildMCP__.test_sim` passed `190` total: `189` passed, `1` documented simulator-fixture skip; `mcp__XcodeBuildMCP__.build_sim` succeeded.                       |
+| Watchpoints  | Manual UI inspection should confirm the wider bar and neighbor push read clearly at low zoom.                                                                              |
