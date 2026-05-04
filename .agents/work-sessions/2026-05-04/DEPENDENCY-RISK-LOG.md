@@ -135,3 +135,13 @@ Rule: append after every cluster task/PR checkpoint before moving on.
 | Tests        | Added `[video, still, video]` crossfade fixture coverage with generated silent-audio video and still PNG fixtures.                                                                                                         |
 | Verification | TDD red: new test failed with 3 params on the old parity code. Green: `mcp__XcodeBuildMCP__.test_sim` passed 169/169.                                                                                                     |
 | Watchpoints  | Real-device audio perception remains pending until TestFlight/device gate clears.                                                                                                                                         |
+
+#### Task 3 — Stage Filename Collision
+
+| Field        | Notes                                                                                                                                                                                                                  |
+| ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Key changes  | `StitchTabView` staging now always prefixes staged filenames with a lowercased 6-character UUID and exposes a static test hook for staging logic.                                                                       |
+| Adaptation   | The test uses `.mov` source fixture names so suggested `clip.mov` produces `xxxxxx-clip.mov`, avoiding the plan's `.tmp` extension pitfall.                                                                             |
+| Tests        | Added `StitchProjectStageTests` for delete-then-reimport of `clip.mov`, asserting distinct UUID-prefixed staged paths even when the first staged file was deleted.                                                       |
+| Verification | TDD red: compile failed on missing `testHook_stageToStitchInputs`. Green: XcodeBuildMCP CLI `simulator test` passed 170/170 after MCP `test_sim` timed out at 120s.                                                     |
+| Watchpoints  | None beyond real-device import behavior pending behind the external device/TestFlight gate.                                                                                                                            |
