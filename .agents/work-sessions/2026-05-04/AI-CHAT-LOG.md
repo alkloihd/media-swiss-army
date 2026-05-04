@@ -81,3 +81,4 @@
 
 ---
 [2026-05-04 10:18 SAST] [solo/codex/gpt-5] [ACK] Read Claude broadcasts: continue autopilot through Cluster 5, treat TestFlight/device as externally gated, log simulator evidence and any hard `[BLOCKED]` items here, and do not edit TestFlight workflow or revert bundle identity.
+[2026-05-04 10:24 SAST] [solo/codex/gpt-5] [FIX] Cluster 2 Task 2 implemented: `StitchExporter` now records the actual composition audio track used per segment, skips silent segments in the audio mix, and groups `AVMutableAudioMixInputParameters` by track ID to avoid duplicate track params. TDD evidence: new `[video, still, video]` test failed red with 3 params, then `mcp__XcodeBuildMCP__.test_sim` passed 169/169.

@@ -125,3 +125,13 @@ Rule: append after every cluster task/PR checkpoint before moving on.
 | Tests        | Added helper tests for 10-bit/8-bit reader pixel formats, HDR BT.2020/HLG color defaults, and HEVC Main10 profile selection.                                                                                                                |
 | Verification | Initial TDD red compile failed on missing `pixelBufferDict`; `mcp__XcodeBuildMCP__.build_sim` succeeded; XcodeBuildMCP CLI `simulator test` passed 168/168 after MCP `test_sim` timed out at 120s.                                           |
 | Watchpoints  | HDR remains simulator/unit verified only. Real HDR visual round-trip on iPhone is pending because TestFlight/device verification is gated.                                                                                                  |
+
+#### Task 2 — Audio Mix Track Parity
+
+| Field        | Notes                                                                                                                                                                                                                     |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Key changes  | `StitchExporter` segment records now carry the actual inserted `audioTrack`; audio mix construction skips silent segments and groups input parameters by composition track ID instead of recomputing `i % 2` parity.       |
+| Adaptation   | The plan's previous/next-audible rewrite was not used because audio should still fade out into a still and fade in out of a still. Immediate timeline neighbors are kept for overlap windows while silent params are skipped. |
+| Tests        | Added `[video, still, video]` crossfade fixture coverage with generated silent-audio video and still PNG fixtures.                                                                                                         |
+| Verification | TDD red: new test failed with 3 params on the old parity code. Green: `mcp__XcodeBuildMCP__.test_sim` passed 169/169.                                                                                                     |
+| Watchpoints  | Real-device audio perception remains pending until TestFlight/device gate clears.                                                                                                                                         |

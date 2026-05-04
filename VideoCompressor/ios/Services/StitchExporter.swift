@@ -184,6 +184,9 @@ actor StitchExporter {
             let clip: StitchClip
             let composedRange: CMTimeRange
             let videoTrack: AVMutableCompositionTrack
+            /// The composition audio track this clip's audio actually landed on,
+            /// or nil if the clip has no audio.
+            let audioTrack: AVMutableCompositionTrack?
         }
         var segments: [Segment] = []
         var anyEdit = false
@@ -275,14 +278,27 @@ actor StitchExporter {
                 composedDuration = targetDuration
             }
 
+            var audioForSegment: AVMutableCompositionTrack?
             if let audioT {
                 if let assetAudio = try? await asset.loadTracks(withMediaType: .audio).first {
-                    try? audioT.insertTimeRange(timeRange, of: assetAudio, at: insertAt)
+                    do {
+                        try audioT.insertTimeRange(timeRange, of: assetAudio, at: insertAt)
+                        audioForSegment = audioT
+                    } catch {
+                        // Preserve the previous fail-soft audio behaviour:
+                        // video export should continue if a source audio
+                        // track cannot be inserted.
+                    }
                 }
             }
 
             let composedRange = CMTimeRange(start: insertAt, duration: composedDuration)
-            segments.append(Segment(clip: clip, composedRange: composedRange, videoTrack: videoT))
+            segments.append(Segment(
+                clip: clip,
+                composedRange: composedRange,
+                videoTrack: videoT,
+                audioTrack: audioForSegment
+            ))
             if clip.isEdited { anyEdit = true }
 
             cursor = CMTimeAdd(insertAt, composedDuration)
@@ -348,7 +364,8 @@ actor StitchExporter {
             audioMix = buildAudioMix(
                 composition: composition,
                 segments: segments.map {
-                    (clip: $0.clip, composedRange: $0.composedRange, videoTrack: $0.videoTrack)
+                    (clip: $0.clip, composedRange: $0.composedRange,
+                     videoTrack: $0.videoTrack, audioTrack: $0.audioTrack)
                 },
                 transition: transition,
                 transitionDuration: transitionDuration
@@ -370,30 +387,37 @@ actor StitchExporter {
     }
 
     /// Build the audio mix that pairs with the video transitions. For each
-    /// clip's audio track, set a constant 1.0 volume EXCEPT during the
-    /// overlap windows at its head (fade in) and tail (fade out), which use
-    /// `setVolumeRamp` to crossfade with the adjacent clip.
+    /// audible clip's audio track, set a constant 1.0 volume EXCEPT during
+    /// the overlap windows at its head (fade in) and tail (fade out), which
+    /// use `setVolumeRamp` to crossfade with the adjacent timeline segment.
     private func buildAudioMix(
         composition: AVMutableComposition,
-        segments: [(clip: StitchClip, composedRange: CMTimeRange, videoTrack: AVMutableCompositionTrack)],
+        segments: [(clip: StitchClip,
+                    composedRange: CMTimeRange,
+                    videoTrack: AVMutableCompositionTrack,
+                    audioTrack: AVMutableCompositionTrack?)],
         transition: StitchTransition,
         transitionDuration: CMTime
     ) -> AVMutableAudioMix? {
-        let audioTracks = composition.tracks(withMediaType: .audio)
-        guard !audioTracks.isEmpty, segments.count >= 2 else { return nil }
+        let audibleCount = segments.filter { $0.audioTrack != nil }.count
+        guard audibleCount > 0, segments.count >= 2 else { return nil }
 
         let mix = AVMutableAudioMix()
-        var params: [AVMutableAudioMixInputParameters] = []
+        var paramsByTrackID: [CMPersistentTrackID: AVMutableAudioMixInputParameters] = [:]
+        var orderedTrackIDs: [CMPersistentTrackID] = []
+
+        func params(for track: AVMutableCompositionTrack) -> AVMutableAudioMixInputParameters {
+            let trackID = track.trackID
+            if let existing = paramsByTrackID[trackID] { return existing }
+            let created = AVMutableAudioMixInputParameters(track: track)
+            paramsByTrackID[trackID] = created
+            orderedTrackIDs.append(trackID)
+            return created
+        }
 
         for (i, seg) in segments.enumerated() {
-            // The audio track for this segment was inserted on the same
-            // alternating A/B as the video. Find which composition audio
-            // track holds this clip's audio by matching the index parity.
-            let trackIdx = audioTracks.count == 1 ? 0 : (i % 2)
-            guard trackIdx < audioTracks.count else { continue }
-            let track = audioTracks[trackIdx]
-
-            let p = AVMutableAudioMixInputParameters(track: track)
+            guard let track = seg.audioTrack else { continue }
+            let p = params(for: track)
 
             // Default: full volume across the clip's composed range.
             p.setVolume(1.0, at: seg.composedRange.start)
@@ -459,10 +483,9 @@ actor StitchExporter {
                 }
             }
 
-            params.append(p)
         }
 
-        mix.inputParameters = params
+        mix.inputParameters = orderedTrackIDs.compactMap { paramsByTrackID[$0] }
         return mix
     }
 

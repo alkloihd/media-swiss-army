@@ -7,6 +7,12 @@
 //
 
 import XCTest
+import AVFoundation
+import AudioToolbox
+import CoreGraphics
+import CoreMedia
+import CoreVideo
+import UIKit
 @testable import VideoCompressor_iOS
 
 final class StitchTransitionTests: XCTestCase {
@@ -79,5 +85,238 @@ final class StitchTransitionTests: XCTestCase {
     func testProjectDefaultsToNone() {
         let project = StitchProject()
         XCTAssertEqual(project.transition, .none)
+    }
+
+    // MARK: - Audio mix
+
+    func testAudioMixHandlesAudioLessClipInMiddle() async throws {
+        let videoFixture = try Self.makeShortVideoFixture(withAudio: true)
+        defer { try? FileManager.default.removeItem(at: videoFixture) }
+        let stillFixture = try Self.makePNGFixture()
+        defer { try? FileManager.default.removeItem(at: stillFixture) }
+
+        let clipA = StitchClip(
+            id: UUID(),
+            sourceURL: videoFixture,
+            displayName: "A.mov",
+            naturalDuration: CMTime(seconds: 1, preferredTimescale: 600),
+            naturalSize: CGSize(width: 32, height: 32),
+            kind: .video,
+            edits: .identity
+        )
+        var stillEdits = ClipEdits.identity
+        stillEdits.stillDuration = 2.0
+        let clipB = StitchClip(
+            id: UUID(),
+            sourceURL: stillFixture,
+            displayName: "B.png",
+            naturalDuration: CMTime(seconds: 2, preferredTimescale: 600),
+            naturalSize: CGSize(width: 32, height: 32),
+            kind: .still,
+            edits: stillEdits
+        )
+        let clipC = StitchClip(
+            id: UUID(),
+            sourceURL: videoFixture,
+            displayName: "C.mov",
+            naturalDuration: CMTime(seconds: 1, preferredTimescale: 600),
+            naturalSize: CGSize(width: 32, height: 32),
+            kind: .video,
+            edits: .identity
+        )
+
+        let plan = try await StitchExporter().buildPlan(
+            from: [clipA, clipB, clipC],
+            aspectMode: .auto,
+            transition: .crossfade
+        )
+        defer {
+            for url in plan.bakedStillURLs {
+                try? FileManager.default.removeItem(at: url)
+            }
+        }
+
+        let inputs = plan.audioMix?.inputParameters ?? []
+        XCTAssertEqual(
+            inputs.count,
+            1,
+            "Only the composition track with inserted audio should get mix parameters."
+        )
+        let trackIDs = inputs.map(\.trackID)
+        XCTAssertEqual(
+            Set(trackIDs).count,
+            trackIDs.count,
+            "Audio mix must not duplicate input parameters for the same track."
+        )
+    }
+
+    private static func makePNGFixture() throws -> URL {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("stitch-fixture-\(UUID().uuidString).png")
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        format.opaque = true
+        let renderer = UIGraphicsImageRenderer(
+            size: CGSize(width: 32, height: 32),
+            format: format
+        )
+        let image = renderer.image { context in
+            UIColor.magenta.setFill()
+            context.fill(CGRect(x: 0, y: 0, width: 32, height: 32))
+        }
+        try XCTUnwrap(image.pngData()).write(to: url)
+        return url
+    }
+
+    private static func makeShortVideoFixture(withAudio: Bool) throws -> URL {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("stitch-fixture-\(UUID().uuidString).mov")
+        try? FileManager.default.removeItem(at: url)
+
+        let writer = try AVAssetWriter(outputURL: url, fileType: .mov)
+        let videoSettings: [String: Any] = [
+            AVVideoCodecKey: AVVideoCodecType.h264,
+            AVVideoWidthKey: 32,
+            AVVideoHeightKey: 32,
+        ]
+        let videoInput = AVAssetWriterInput(mediaType: .video, outputSettings: videoSettings)
+        videoInput.expectsMediaDataInRealTime = false
+        let adaptor = AVAssetWriterInputPixelBufferAdaptor(
+            assetWriterInput: videoInput,
+            sourcePixelBufferAttributes: [
+                kCVPixelBufferPixelFormatTypeKey as String:
+                    NSNumber(value: kCVPixelFormatType_32BGRA),
+                kCVPixelBufferWidthKey as String: 32,
+                kCVPixelBufferHeightKey as String: 32,
+            ]
+        )
+        guard writer.canAdd(videoInput) else { throw NSError(domain: "fixture", code: 2) }
+        writer.add(videoInput)
+
+        var audioInput: AVAssetWriterInput?
+        if withAudio {
+            let audioSettings: [String: Any] = [
+                AVFormatIDKey: NSNumber(value: kAudioFormatMPEG4AAC),
+                AVSampleRateKey: NSNumber(value: 44_100),
+                AVNumberOfChannelsKey: NSNumber(value: 2),
+                AVEncoderBitRateKey: NSNumber(value: 64_000),
+            ]
+            let input = AVAssetWriterInput(mediaType: .audio, outputSettings: audioSettings)
+            input.expectsMediaDataInRealTime = false
+            if writer.canAdd(input) {
+                writer.add(input)
+                audioInput = input
+            }
+        }
+
+        writer.startWriting()
+        writer.startSession(atSourceTime: .zero)
+
+        var pixelBuffer: CVPixelBuffer?
+        CVPixelBufferCreate(
+            kCFAllocatorDefault,
+            32,
+            32,
+            kCVPixelFormatType_32BGRA,
+            nil,
+            &pixelBuffer
+        )
+        let buffer = try XCTUnwrap(pixelBuffer)
+        CVPixelBufferLockBaseAddress(buffer, [])
+        if let base = CVPixelBufferGetBaseAddress(buffer) {
+            memset(base, 0x7F, CVPixelBufferGetDataSize(buffer))
+        }
+        CVPixelBufferUnlockBaseAddress(buffer, [])
+
+        for frame in 0..<30 {
+            let time = CMTime(value: CMTimeValue(frame), timescale: 30)
+            while !videoInput.isReadyForMoreMediaData {
+                Thread.sleep(forTimeInterval: 0.01)
+            }
+            adaptor.append(buffer, withPresentationTime: time)
+        }
+        videoInput.markAsFinished()
+
+        if let audioInput {
+            try appendSilentAudio(to: audioInput)
+        }
+
+        let sema = DispatchSemaphore(value: 0)
+        writer.finishWriting { sema.signal() }
+        sema.wait()
+        guard writer.status == .completed else {
+            throw NSError(
+                domain: "fixture",
+                code: 3,
+                userInfo: [NSLocalizedDescriptionKey:
+                    "writer finished with status \(writer.status.rawValue)"]
+            )
+        }
+        return url
+    }
+
+    private static func appendSilentAudio(to audioInput: AVAssetWriterInput) throws {
+        let sampleCount = 44_100
+        let bytesPerFrame = 4
+        let dataSize = sampleCount * bytesPerFrame
+        var blockBuffer: CMBlockBuffer?
+        CMBlockBufferCreateWithMemoryBlock(
+            allocator: kCFAllocatorDefault,
+            memoryBlock: nil,
+            blockLength: dataSize,
+            blockAllocator: nil,
+            customBlockSource: nil,
+            offsetToData: 0,
+            dataLength: dataSize,
+            flags: 0,
+            blockBufferOut: &blockBuffer
+        )
+        let block = try XCTUnwrap(blockBuffer)
+        CMBlockBufferFillDataBytes(
+            with: 0,
+            blockBuffer: block,
+            offsetIntoDestination: 0,
+            dataLength: dataSize
+        )
+
+        var asbd = AudioStreamBasicDescription(
+            mSampleRate: 44_100,
+            mFormatID: kAudioFormatLinearPCM,
+            mFormatFlags: kLinearPCMFormatFlagIsSignedInteger
+                | kLinearPCMFormatFlagIsPacked,
+            mBytesPerPacket: UInt32(bytesPerFrame),
+            mFramesPerPacket: 1,
+            mBytesPerFrame: UInt32(bytesPerFrame),
+            mChannelsPerFrame: 2,
+            mBitsPerChannel: 16,
+            mReserved: 0
+        )
+        var formatDesc: CMAudioFormatDescription?
+        CMAudioFormatDescriptionCreate(
+            allocator: kCFAllocatorDefault,
+            asbd: &asbd,
+            layoutSize: 0,
+            layout: nil,
+            magicCookieSize: 0,
+            magicCookie: nil,
+            extensions: nil,
+            formatDescriptionOut: &formatDesc
+        )
+
+        var sampleBuffer: CMSampleBuffer?
+        CMAudioSampleBufferCreateReadyWithPacketDescriptions(
+            allocator: kCFAllocatorDefault,
+            dataBuffer: block,
+            formatDescription: try XCTUnwrap(formatDesc),
+            sampleCount: sampleCount,
+            presentationTimeStamp: .zero,
+            packetDescriptions: nil,
+            sampleBufferOut: &sampleBuffer
+        )
+        while !audioInput.isReadyForMoreMediaData {
+            Thread.sleep(forTimeInterval: 0.01)
+        }
+        audioInput.append(try XCTUnwrap(sampleBuffer))
+        audioInput.markAsFinished()
     }
 }
