@@ -83,6 +83,14 @@ actor StitchExporter {
         let baker = StillVideoBaker()
         var bakedClips: [StitchClip] = []
         var bakedStillURLs: [URL] = []
+        var shouldKeepBakedStillURLs = false
+        defer {
+            if !shouldKeepBakedStillURLs {
+                for url in bakedStillURLs {
+                    try? FileManager.default.removeItem(at: url)
+                }
+            }
+        }
         let totalStills = clips.filter { $0.kind == .still }.count
         var stillsBaked = 0
         if totalStills > 0 {
@@ -349,7 +357,7 @@ actor StitchExporter {
             audioMix = nil
         }
 
-        return Plan(
+        let plan = Plan(
             composition: composition,
             videoComposition: videoComposition,
             audioMix: audioMix,
@@ -357,6 +365,8 @@ actor StitchExporter {
             canPassthrough: canPassthrough,
             bakedStillURLs: bakedStillURLs
         )
+        shouldKeepBakedStillURLs = true
+        return plan
     }
 
     /// Build the audio mix that pairs with the video transitions. For each

@@ -89,5 +89,6 @@ Rule: append after every cluster task/PR checkpoint before moving on.
 
 | Field        | Notes                                                                                           |
 | ------------ | ----------------------------------------------------------------------------------------------- |
-| Verification | `mcp__XcodeBuildMCP__.test_sim` passed 163/163; `mcp__XcodeBuildMCP__.build_sim` succeeded.     |
-| PR readiness | CHANGELOG, task manifest, dependency/risk log, and AI chat log updated before push/PR creation. |
+| Verification | `mcp__XcodeBuildMCP__.test_sim` passed 164/164 after the pre-merge review follow-up; `mcp__XcodeBuildMCP__.build_sim` succeeded. |
+| PR readiness | CHANGELOG, task manifest, dependency/risk log, and AI chat log updated before push/PR creation.                                   |
+| Review       | Pre-merge reviewer approved PR #11 with no blockers. The one residual still-bake orphan risk was fixed before merge with a regression test. |

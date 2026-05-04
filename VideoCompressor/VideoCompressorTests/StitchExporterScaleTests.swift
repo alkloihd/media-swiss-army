@@ -46,6 +46,16 @@ final class StitchExporterScaleTests: XCTestCase {
         )
     }
 
+    private func stillBakeDirectoryContents() -> Set<String> {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("StillBakes", isDirectory: true)
+        let urls = (try? FileManager.default.contentsOfDirectory(
+            at: dir,
+            includingPropertiesForKeys: nil
+        )) ?? []
+        return Set(urls.map(\.lastPathComponent))
+    }
+
     func testStillBakeRemainsOneSecondWhileCompositionUsesStillDuration() async throws {
         let source = try makeFixturePNG()
         defer { try? FileManager.default.removeItem(at: source) }
@@ -65,5 +75,35 @@ final class StitchExporterScaleTests: XCTestCase {
         let bakedDuration = try await bakedAsset.load(.duration)
         XCTAssertEqual(CMTimeGetSeconds(bakedDuration), 1.0, accuracy: 0.2)
         XCTAssertEqual(CMTimeGetSeconds(plan.composition.duration), 4.0, accuracy: 0.2)
+    }
+
+    func testBuildPlanCleansBakedStillIfLaterClipFails() async throws {
+        let source = try makeFixturePNG()
+        defer { try? FileManager.default.removeItem(at: source) }
+
+        let missingVideoURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("missing-\(UUID().uuidString.prefix(6)).mp4")
+        let badVideo = StitchClip(
+            id: UUID(),
+            sourceURL: missingVideoURL,
+            displayName: missingVideoURL.lastPathComponent,
+            naturalDuration: CMTime(seconds: 1, preferredTimescale: 600),
+            naturalSize: CGSize(width: 32, height: 48),
+            kind: .video,
+            preferredTransform: .identity,
+            edits: .identity
+        )
+
+        let before = stillBakeDirectoryContents()
+        do {
+            _ = try await StitchExporter().buildPlan(
+                from: [makeStillClip(url: source, duration: 4.0), badVideo],
+                aspectMode: .portrait
+            )
+            XCTFail("Expected buildPlan to fail on the missing video clip.")
+        } catch {
+            let after = stillBakeDirectoryContents()
+            XCTAssertEqual(after, before)
+        }
     }
 }
