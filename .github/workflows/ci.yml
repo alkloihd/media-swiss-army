@@ -60,3 +60,64 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm audit --audit-level=high
+
+  ios-tests:
+    name: iOS XCTest
+    runs-on: macos-26
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Show Xcode version
+        run: |
+          xcodebuild -version
+          xcrun --show-sdk-path --sdk iphonesimulator
+
+      - name: Select simulator
+        run: |
+          set -euo pipefail
+          xcrun simctl list devices available
+
+          if xcrun simctl list devices available | grep -q "iPhone 17 Pro"; then
+            name="iPhone 17 Pro"
+          elif xcrun simctl list devices available | grep -q "iPhone 16 Pro"; then
+            name="iPhone 16 Pro"
+          else
+            name="$(xcrun simctl list devices available | awk -F '[()]' '/iPhone .*Pro/ { gsub(/^[ \t]+|[ \t]+$/, "", $1); print $1; exit }')"
+          fi
+
+          if [ -z "$name" ]; then
+            echo "No iPhone Pro simulator available on this runner." >&2
+            exit 1
+          fi
+
+          echo "Selected simulator: $name"
+          echo "IOS_TEST_DESTINATION=platform=iOS Simulator,name=$name,OS=latest" >> "$GITHUB_ENV"
+
+      - name: Cache DerivedData
+        uses: actions/cache@v4
+        with:
+          path: ~/Library/Developer/Xcode/DerivedData
+          key: ${{ runner.os }}-derived-tests-${{ hashFiles('VideoCompressor/**/*.swift', 'VideoCompressor/**/project.pbxproj') }}
+          restore-keys: |
+            ${{ runner.os }}-derived-tests-
+
+      - name: Run XCTests
+        run: |
+          set -euo pipefail
+          mkdir -p build
+          xcodebuild test \
+            -project VideoCompressor/VideoCompressor_iOS.xcodeproj \
+            -scheme VideoCompressor_iOS \
+            -destination "$IOS_TEST_DESTINATION" \
+            -only-testing:VideoCompressor_iOSTests \
+            -resultBundlePath build/TestResults.xcresult \
+            CODE_SIGNING_ALLOWED=NO
+
+      - name: Upload test results on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-test-results
+          path: build/TestResults.xcresult
+          retention-days: 7

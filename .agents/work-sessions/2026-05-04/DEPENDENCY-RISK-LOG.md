@@ -301,3 +301,13 @@ Rule: append after every cluster task/PR checkpoint before moving on.
 | Adaptation   | Used the locked repo URL and current Media Swiss Army branding. The plan's `Section("About") { } footer:` initializer did not compile under this SDK, so the Settings row uses explicit header/footer closures. |
 | Verification | `npx prettier --check docs/privacy/index.html` passed after formatting; TDD compile-red caught the Section initializer issue; focused ReviewPrompter tests passed `9/9`; full `test_sim` passed `225/224/1`.  |
 | Watchpoints  | GitHub Pages still requires manual repo setting: Settings → Pages → Source `main` branch, `/docs` folder. Until then the in-app link opens Safari to a parseable URL that may 404.                              |
+
+#### Task 5 — PR-Side iOS CI
+
+| Field        | Notes                                                                                                                                                                                                                     |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Key changes  | Added an `iOS XCTest` job to `.github/workflows/ci.yml` so pull requests run the iOS unit test target before merge. No TestFlight workflow, signing, or bundle ID files changed.                                           |
+| Adaptation   | The plan's `VideoCompressorTests` selector and hard-coded iPhone 16 Pro runner assumption were stale. CI now uses `VideoCompressor_iOSTests` and selects iPhone 17 Pro, iPhone 16 Pro, or first available iPhone Pro.       |
+| Dependencies | Avoided `xcbeautify` so the job does not depend on weekly runner image packages. Uses raw `xcodebuild` with `set -euo pipefail`, `CODE_SIGNING_ALLOWED=NO`, DerivedData cache, and failed-result artifact upload.             |
+| Verification | `ruby` YAML parse passed; `npx prettier --check .github/workflows/ci.yml docs/privacy/index.html` passed; `xcodebuild -list` confirmed scheme/target; CI-style `test_sim` passed `225` total: `224` passed, `1` skipped. |
+| Watchpoints  | Cloud runner availability still needs PR CI proof. After the job appears green, `iOS XCTest` should be added manually as a required status check on `main` branch protection.                                               |
