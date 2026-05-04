@@ -197,3 +197,12 @@ Rule: append after every cluster task/PR checkpoint before moving on.
 | Adaptation   | Kept ASCII ellipses in user-facing strings/tests while preserving the plan's middle-dot batch label. Did not expand into broader MetaClean empty-state copy despite scout noting it, to keep Task 1 scoped.                             |
 | Verification | TDD red compile failed on missing `userFacingLabel(kind:)`; green `mcp__XcodeBuildMCP__.test_sim` passed `186` total: `185` passed, `1` documented simulator-fixture skip.                                           |
 | Watchpoints  | The remaining `print(` grep hit is inside `#if DEBUG`; acceptance allows DEBUG-only print sites.                                                                                                                      |
+
+#### Task 2 — First-Launch Onboarding
+
+| Field        | Notes                                                                                                                                                                                                                 |
+| ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Key changes  | Added pure `OnboardingGate`, 3-card paged `OnboardingView`, and `ContentView` first-launch `.fullScreenCover` gated by `@AppStorage("hasSeenOnboarding_v1")`; final button routes to MetaClean.                       |
+| Adaptation   | Updated stale `ContentView` header comments that still described Stitch/MetaClean as placeholders. Kept onboarding copy concise and app-utility focused.                                                               |
+| Verification | TDD red compile failed on missing `OnboardingGate`; green `mcp__XcodeBuildMCP__.test_sim` passed `190` total: `189` passed, `1` documented simulator-fixture skip.                                                     |
+| Watchpoints  | Fresh-install presentation and persistence still require manual simulator/device walkthrough after the full Cluster 3 PR lands.                                                                                       |

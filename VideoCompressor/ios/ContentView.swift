@@ -2,17 +2,14 @@
 //  ContentView.swift
 //  VideoCompressor
 //
-//  Root tab shell. Three tabs per the design spec
-//  (`docs/superpowers/specs/2026-04-09-ios-app-design.md` §2):
-//    1. Compress — the existing VideoListView
-//    2. Stitch — placeholder until phase 2/3 ships
-//    3. MetaClean — placeholder until phase 2/3 ships
+//  Root tab shell plus first-launch onboarding.
 //
 
 import SwiftUI
 
 struct ContentView: View {
     @State private var selectedTab: AppTab = .compress
+    @AppStorage("hasSeenOnboarding_v1") private var hasSeenOnboarding = false
 
     var body: some View {
         TabView(selection: $selectedTab) {
@@ -39,6 +36,17 @@ struct ContentView: View {
                     Label("Settings", systemImage: AppTab.settings.symbolName)
                 }
                 .tag(AppTab.settings)
+        }
+        .fullScreenCover(isPresented: Binding(
+            get: { OnboardingGate(hasSeen: hasSeenOnboarding).shouldPresent },
+            set: { if !$0 { hasSeenOnboarding = true } }
+        )) {
+            OnboardingView {
+                var gate = OnboardingGate(hasSeen: hasSeenOnboarding)
+                gate.markSeen()
+                hasSeenOnboarding = gate.hasSeen
+                selectedTab = gate.landingTab
+            }
         }
     }
 }
