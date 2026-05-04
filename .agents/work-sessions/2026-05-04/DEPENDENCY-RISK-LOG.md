@@ -92,3 +92,26 @@ Rule: append after every cluster task/PR checkpoint before moving on.
 | Verification | `mcp__XcodeBuildMCP__.test_sim` passed 164/164 after the pre-merge review follow-up; `mcp__XcodeBuildMCP__.build_sim` succeeded. |
 | PR readiness | CHANGELOG, task manifest, dependency/risk log, and AI chat log updated before push/PR creation.                                   |
 | Review       | Pre-merge reviewer approved PR #11 with no blockers. The one residual still-bake orphan risk was fixed before merge with a regression test. |
+
+### Cluster 1 — PR #11
+
+| Field                 | Notes                                                                                                                                                                                                                              |
+| --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Branch / PR           | `feat/codex-cluster1-cache-and-bake`, PR #11                                                                                                                                                                                       |
+| Merge                 | Merged to `main` as `5e57fa9` after PR CI passed and read-only pre-merge review approved with no blockers.                                                                                                                         |
+| Key changes           | Still bakes are O(1), baked URLs are pre-registered and cleaned on build-plan failure, CacheSweeper tracks managed tmp wrappers, and cancel/save/launch cleanup hooks are wired through app flows.                                  |
+| APIs changed          | `StillVideoBaker.bake(still:)` is the duration-free convenience API; `bake(still:intoPreallocated:)` supports caller-registered cleanup; `CacheSweeper` adds `sweepOnCancel`, `sweepAfterSave`, and `sweepOnLaunchTight`.          |
+| Downstream dependency | Cluster 2 must preserve still-bake tuple/cleanup behavior and avoid re-architecting the existing A/B stitch track model.                                                                                                           |
+| Verification          | Local `test_sim` passed 164/164; local `build_sim` succeeded; PR CI green; main CI green.                                                                                                                                          |
+| TestFlight status     | Run `25307940461` failed after archive during export/upload with `Error Downloading App Information`, exit 70, matching Cluster 0's external App Store Connect/app-information gate.                                               |
+| Not yet proven        | Real-device cache cleanup and still-bake speed after Photos save/cancel because no new TestFlight build has landed since the App Store Connect export gate appeared.                                                               |
+| Human inspection      | App Store Connect app/bundle/API-key access must be checked outside code. Once TestFlight export works, user should run Cluster 0 and Cluster 1 manual iPhone prompts before those clusters are marked fully done.                 |
+
+### Cluster 2 — Branch Start
+
+| Field             | Notes                                                                                                                         |
+| ----------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| Branch            | `feat/codex-cluster2-stitch-correctness` from `main` at `5e57fa9`.                                                            |
+| Baseline          | Pending fresh `mcp__XcodeBuildMCP__.test_sim` before production edits.                                                        |
+| Known dependency  | Preserve Cluster 1 `StillVideoBaker` tuple/preallocation cleanup and Cluster 0 visible compression fallback behavior.          |
+| Human/iPhone gate | Real stitch exports with audio/HDR/photo-video batches still need a successful TestFlight/device install after the export gate. |
