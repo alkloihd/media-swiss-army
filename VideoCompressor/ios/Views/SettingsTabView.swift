@@ -4,7 +4,9 @@
 //
 //  Settings tab — opt-in controls for power-user features.
 //  Sections:
+//    • What MetaClean does
 //    • Background encoding toggle (Audio Background Mode)
+//    • Performance
 //    • Storage (cache management — Phase 3 commit 4)
 //
 
@@ -21,6 +23,41 @@ struct SettingsTabView: View {
     var body: some View {
         NavigationStack {
             Form {
+                // MARK: What MetaClean does
+                Section("What MetaClean does") {
+                    Text(
+                        "MetaClean strips the hidden fingerprint that Meta AI glasses (Ray-Ban Meta, Oakley Meta) embed in every photo and video. The fingerprint is a binary marker in the file's metadata that tells anyone — Instagram, journalists, scrapers — \"this was shot on Meta hardware.\""
+                    )
+                    .font(.subheadline)
+
+                    DisclosureGroup("What gets removed") {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("The Meta fingerprint atom")
+                            Text("XMP packets tagged with the same fingerprint")
+                            Text("Optional GPS, dates, and camera info when you choose a full scrub")
+                        }
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    }
+
+                    DisclosureGroup("What stays") {
+                        Text(
+                            "Date taken. Location. Camera make and model. Live Photo identifiers. HDR gain map. Color profile. Orientation. Everything that makes your photos work properly in Photos."
+                        )
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    }
+
+                    DisclosureGroup("What MetaClean never does") {
+                        Text(
+                            "No accounts. No cloud. No analytics. No tracking. The only network calls this app makes are App Store updates handled by iOS itself."
+                        )
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    }
+                }
+                .accessibilityIdentifier("settingsWhatMetaCleanDoesSection")
+
                 // MARK: Background encoding
                 Section {
                     Toggle("Allow encoding in background", isOn: $allowBackgroundEncoding)

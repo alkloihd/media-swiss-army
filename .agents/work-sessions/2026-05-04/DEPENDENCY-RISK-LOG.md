@@ -206,3 +206,12 @@ Rule: append after every cluster task/PR checkpoint before moving on.
 | Adaptation   | Updated stale `ContentView` header comments that still described Stitch/MetaClean as placeholders. Kept onboarding copy concise and app-utility focused.                                                               |
 | Verification | TDD red compile failed on missing `OnboardingGate`; green `mcp__XcodeBuildMCP__.test_sim` passed `190` total: `189` passed, `1` documented simulator-fixture skip.                                                     |
 | Watchpoints  | Fresh-install presentation and persistence still require manual simulator/device walkthrough after the full Cluster 3 PR lands.                                                                                       |
+
+#### Task 3 — Settings MetaClean Explainer
+
+| Field        | Notes                                                                                                                                                                      |
+| ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Key changes  | Settings now starts with a "What MetaClean does" section, including disclosure groups for what gets removed, what stays, and what MetaClean never does.                     |
+| Adaptation   | Kept the section first and updated the Settings file header.                                                                                                                |
+| Verification | `mcp__XcodeBuildMCP__.test_sim` passed `190` total: `189` passed, `1` documented simulator-fixture skip; `mcp__XcodeBuildMCP__.build_sim` succeeded.                       |
+| Watchpoints  | Manual UI inspection should confirm this is visually first above the background-encoding toggle.                                                                            |
