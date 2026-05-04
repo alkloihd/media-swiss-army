@@ -117,28 +117,69 @@ final class PhotoCompressionSettingsTests: XCTestCase {
 final class PhotoMetadataServiceClassificationTests: XCTestCase {
     // Static helpers — test without spinning up an actor or hitting disk.
 
-    func testXMPFingerprintDetection() {
-        XCTAssertTrue(PhotoMetadataService.xmpContainsFingerprint("...xmp.MetaAI..."))
-        XCTAssertTrue(PhotoMetadataService.xmpContainsFingerprint("blah meta: hello"))
-        XCTAssertTrue(PhotoMetadataService.xmpContainsFingerprint("Ray-Ban Stories"))
-        XCTAssertTrue(PhotoMetadataService.xmpContainsFingerprint("Rayban marker"))
-        XCTAssertTrue(PhotoMetadataService.xmpContainsFingerprint("c2pa.ManifestStore"))
-        XCTAssertFalse(PhotoMetadataService.xmpContainsFingerprint("plain photo metadata"))
-        XCTAssertFalse(PhotoMetadataService.xmpContainsFingerprint(""))
+    func testXMPFingerprintDetection() async {
+        var hit = await PhotoMetadataService.xmpContainsFingerprint(
+            "...xmp.MetaAI...",
+            packetByteCount: 256
+        )
+        XCTAssertTrue(hit)
+
+        hit = await PhotoMetadataService.xmpContainsFingerprint(
+            "blah meta: hello",
+            packetByteCount: 256
+        )
+        XCTAssertTrue(hit)
+
+        hit = await PhotoMetadataService.xmpContainsFingerprint(
+            "Ray-Ban Stories",
+            packetByteCount: 256
+        )
+        XCTAssertTrue(hit)
+
+        hit = await PhotoMetadataService.xmpContainsFingerprint(
+            "Rayban marker",
+            packetByteCount: 256
+        )
+        XCTAssertTrue(hit)
+
+        hit = await PhotoMetadataService.xmpContainsFingerprint(
+            "c2pa.ManifestStore",
+            packetByteCount: 256
+        )
+        XCTAssertTrue(hit)
+
+        hit = await PhotoMetadataService.xmpContainsFingerprint(
+            "plain photo metadata",
+            packetByteCount: 256
+        )
+        XCTAssertFalse(hit)
+
+        hit = await PhotoMetadataService.xmpContainsFingerprint(
+            "",
+            packetByteCount: 0
+        )
+        XCTAssertFalse(hit)
     }
 
-    func testMakerAppleSoftwareFingerprintDetection() {
-        XCTAssertTrue(PhotoMetadataService.isFingerprintTag(
+    func testMakerAppleSoftwareFingerprintDetection() async {
+        var hit = await PhotoMetadataService.isFingerprintTag(
             namespace: "MakerApple", key: "Software", value: "Meta capture v1.2"
-        ))
-        XCTAssertTrue(PhotoMetadataService.isFingerprintTag(
+        )
+        XCTAssertTrue(hit)
+
+        hit = await PhotoMetadataService.isFingerprintTag(
             namespace: "MakerApple", key: "software", value: "Ray-Ban Stories"
-        ))
-        XCTAssertFalse(PhotoMetadataService.isFingerprintTag(
+        )
+        XCTAssertTrue(hit)
+
+        hit = await PhotoMetadataService.isFingerprintTag(
             namespace: "MakerApple", key: "Software", value: "iPhone 15 Pro"
-        ))
-        XCTAssertFalse(PhotoMetadataService.isFingerprintTag(
+        )
+        XCTAssertFalse(hit)
+
+        hit = await PhotoMetadataService.isFingerprintTag(
             namespace: "TIFF", key: "Software", value: "Meta"
-        ))
+        )
+        XCTAssertFalse(hit)
     }
 }

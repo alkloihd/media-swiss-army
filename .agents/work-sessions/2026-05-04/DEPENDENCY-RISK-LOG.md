@@ -311,3 +311,61 @@ Rule: append after every cluster task/PR checkpoint before moving on.
 | Dependencies | Avoided `xcbeautify` so the job does not depend on weekly runner image packages. Uses raw `xcodebuild` with `set -euo pipefail`, `CODE_SIGNING_ALLOWED=NO`, DerivedData cache, and failed-result artifact upload.             |
 | Verification | `ruby` YAML parse passed; `npx prettier --check .github/workflows/ci.yml docs/privacy/index.html` passed; `xcodebuild -list` confirmed scheme/target; CI-style `test_sim` passed `225` total: `224` passed, `1` skipped. |
 | Watchpoints  | Cloud runner availability still needs PR CI proof. After the job appears green, `iOS XCTest` should be added manually as a required status check on `main` branch protection.                                               |
+
+### Cluster 5 — Branch Start
+
+| Field       | Notes                                                                                                                                                                                 |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Branch      | `feat/codex-cluster5-meta-marker-registry` from `main@96f420f`.                                                                                                                      |
+| Baseline    | `mcp__XcodeBuildMCP__.test_sim` passed `225` total: `224` passed, `1` documented simulator-fixture skip.                                                                              |
+| Scope       | Replace hard-coded Meta-glasses markers with a bundled JSON registry and async detector lookups while preserving legacy detection, no network, and no strip-path changes.              |
+| Agent scan  | Read-only scouts dispatched for resource bundling/async cascade, detector semantics, and implementation-quality risks.                                                                |
+| Watchpoints | Preserve current bare `meta` behavior for binary video atoms and MakerApple Software; do not add bare `meta` to XMP; do not touch `strip(...)`, networking, analytics, or TestFlight. |
+
+#### Task 1 — Bundled MetaMarkers JSON
+
+| Field        | Notes                                                                                                                                                                                        |
+| ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Key changes  | Added `VideoCompressor/ios/Resources/MetaMarkers.json` and `MetaMarkerRegistryTests.testBundleContainsMetaMarkersJSON` to prove the resource is copied into the hosted app bundle.          |
+| Adaptation   | Scout review found the plan JSON would regress current detection by omitting bare `meta` from binary atoms/MakerApple. JSON preserves that legacy behavior but still excludes bare `meta` from XMP. |
+| Verification | TDD red failed 1/1 because resource was absent; `clean` succeeded; focused bundle test passed `1/1`; `npx prettier --check VideoCompressor/ios/Resources/MetaMarkers.json` passed after formatting. |
+| Watchpoints  | Bundle auto-inclusion is currently proven by the focused hosted test. If future resource tests fail on CI, inspect filesystem-synchronized group behavior before editing `project.pbxproj`.  |
+
+#### Task 2 — MetaMarkerRegistry Actor
+
+| Field        | Notes                                                                                                                                                                                                    |
+| ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Key changes  | Added `MetaMarkerRegistry` actor with `shared`, bundled JSON load, actor memoization, `parseOrFallback(data:)`, strict legacy fallback, and helper accessors for binary atoms, XMP, MakerApple, guards. |
+| Adaptation   | Fallback preserves current legacy `meta` / Ray-Ban detection semantics while excluding new Oakley/device-hint literals so JSON-vs-fallback remains observable in tests.                                  |
+| Verification | TDD red compile failed on missing `MetaMarkerRegistry`; focused registry tests passed `6/6`; full `test_sim` passed `231` total: `230` passed, `1` documented simulator-fixture skip.                 |
+| Watchpoints  | `MetaMarkerRegistry.shared` caches the first load; tests that exercise parse failures use static `parseOrFallback(data:)` rather than mutating shared actor state. No network or strip paths touched.      |
+
+#### Task 3 — MetadataService Registry Wire-In
+
+| Field        | Notes                                                                                                                                                                                                            |
+| ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Key changes  | `MetadataService.isMetaGlassesFingerprint` is now async, loads binary atom markers from `MetaMarkerRegistry`, and applies source-type plus min-length guards. `classify` passes `isBinarySource` and byte count. |
+| Adaptation   | Because legacy detection included bare `meta`, Task 3 tests intentionally prove binary bare `meta` still triggers only when the source is binary and the payload is large enough.                                |
+| Tests        | Added false-positive/user-typed rejection, large binary bare-`meta`, short-payload min-length, user-typed real marker rejection, legacy Ray-Ban, and non-comment key rejection tests.                              |
+| Verification | TDD red failed on old detector signature; focused registry + metadata tag tests passed `26/26`; full `test_sim` passed `237` total: `236` passed, `1` documented simulator-fixture skip.                         |
+| Watchpoints  | Only video detection/classification changed; `MetadataService.strip` and stripping predicates were not edited.                                                                                                    |
+
+#### Task 4 — PhotoMetadataService Registry Wire-In
+
+| Field        | Notes                                                                                                                                                                                                                  |
+| ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Key changes  | `PhotoMetadataService.xmpContainsFingerprint` and `isFingerprintTag` now read XMP/MakerApple markers from `MetaMarkerRegistry`; `makeTag` and its callers became async; XMP uses the min-length guard.                 |
+| Adaptation   | Used explicit `let hit = await ...` test style instead of async autoclosure helpers to avoid XCTest autoclosure/async compile issues. Preserved all existing PhotoMedia assertions.                                    |
+| Tests        | Added XMP registry marker, XMP min-length rejection, Oakley Meta MakerApple detection, and iPhone MakerApple rejection. Upgraded 7 XMP + 4 MakerApple existing calls to async.                                           |
+| Verification | TDD red failed on old XMP signature; async cascade grep was completed; focused registry + photo classification tests passed `18/18`; full `test_sim` passed `241` total: `240` passed, `1` documented simulator skip. |
+| Watchpoints  | Only still-photo detection/classification changed; `PhotoMetadataService.strip`, `buildRemoveDict`, and ImageIO write/remove logic were not edited.                                                                     |
+
+#### Task 5 — Comprehensive Registry Tests And Review Fixes
+
+| Field        | Notes                                                                                                                                                                                                                                                                                    |
+| ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Key changes  | Added remaining Task 5 registry coverage for device model hints, Oakley MakerApple coverage, binary atom category coverage, false-positive guard parsing, and actor cache equality. Added review-driven regressions for string-backed Ray-Ban descriptions and XMP `meta ai` / `meta wearable` markers. |
+| Review fix   | Initial reviewer found non-binary comment/description guard rejected legacy string-backed `Ray-Ban` values and the JSON omitted two planned XMP markers. Codex watched those three tests fail, then allowed only trusted Ray-Ban-family string markers and restored the two XMP markers without adding bare `meta` to XMP.     |
+| Verification | Focused registry tests passed `24/24`; full XcodeBuildMCP `test_sim` passed `249` total: `248` passed, `1` documented simulator-fixture skip; `build_sim` succeeded. Follow-up reviewer reported no blocking findings.                                                                 |
+| Sweep        | No new `URLSession`, analytics, third-party SDK, package dependency, or remote-refresh path found. Diff grep showed no edits to `MetadataService.strip`, `PhotoMetadataService.strip`, `buildRemoveDict`, writer metadata, or ImageIO remove/write logic beyond unchanged context.        |
+| Watchpoints  | Tests intentionally cover detector helper semantics rather than brittle generated QuickTime fixture metadata branch loading. If future regressions appear in `classify(_:)`, add an AVMetadataItem fixture seam or robust generated media fixture rather than weakening these focused tests.                                  |

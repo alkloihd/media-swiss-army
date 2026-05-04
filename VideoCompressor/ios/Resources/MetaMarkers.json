@@ -1,0 +1,54 @@
+{
+  "schemaVersion": 1,
+  "version": 1,
+  "lastUpdated": "2026-05-04",
+  "deviceFamily": "Meta wearables (Ray-Ban Meta, Oakley Meta, future)",
+
+  "binaryAtomMarkers": {
+    "comment": [
+      "ray-ban",
+      "rayban",
+      "ray ban",
+      "meta",
+      "meta wearable",
+      "meta ai",
+      "captured with meta"
+    ],
+    "description": [
+      "ray-ban",
+      "rayban",
+      "ray ban",
+      "meta",
+      "meta wearable",
+      "captured with meta",
+      "shot with meta"
+    ]
+  },
+
+  "xmpFingerprints": [
+    "xmp.metaai",
+    "meta:",
+    "ray-ban",
+    "rayban",
+    "meta wearable",
+    "meta ai",
+    "c2pa",
+    "manifeststore"
+  ],
+
+  "makerAppleSoftware": [
+    "meta",
+    "ray-ban",
+    "rayban",
+    "Ray-Ban Stories",
+    "Ray-Ban Meta",
+    "Oakley Meta"
+  ],
+
+  "deviceModelHints": ["RB-1", "RB-2", "OM-1"],
+
+  "falsePositiveGuards": {
+    "rejectIfMarkerInUserTypedText": ["comment", "description"],
+    "minimumMarkerLengthBytes": 8
+  }
+}

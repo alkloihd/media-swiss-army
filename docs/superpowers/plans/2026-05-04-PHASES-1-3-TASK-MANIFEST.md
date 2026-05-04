@@ -107,11 +107,11 @@
 
 | ✓   | Sub-task                                                     | Comments |
 | --- | ------------------------------------------------------------ | -------- |
-| ☐   | Task 1: Resource JSON schema + bundled MetaMarkers.json      |          |
-| ☐   | Task 2: Registry actor + binaryAtomMarkers / xmpFingerprints |          |
-| ☐   | Task 3: MetadataService wire-in + false-positive guards      |          |
-| ☐   | Task 4: PhotoMetadataService wire-in                         |          |
-| ☐   | Task 5: Registry tests (unit + integration)                  |          |
+| ☑   | Task 1: Resource JSON schema + bundled MetaMarkers.json      | Added bundled `VideoCompressor/ios/Resources/MetaMarkers.json` and resource-presence test. Adapted the plan JSON to preserve current binary video atom and MakerApple legacy bare-`meta` detection while keeping bare `meta` out of XMP. TDD red: resource missing; green after `clean`, focused bundle test passed 1/1; Prettier check passed. |
+| ☑   | Task 2: Registry actor + binaryAtomMarkers / xmpFingerprints | Added `MetaMarkerRegistry` actor with bundled load, memoization, validated `parseOrFallback(data:)`, strict legacy fallback, and helper accessors for video/XMP/MakerApple/guards. Adapted fallback to preserve current legacy `meta`/Ray-Ban detection while excluding new Oakley/device-hint literals. TDD red: missing `MetaMarkerRegistry`; green focused registry tests passed 6/6, full `test_sim` passed 231 total, 230 passed, 1 documented skip. |
+| ☑   | Task 3: MetadataService wire-in + false-positive guards      | Wired `MetadataService.isMetaGlassesFingerprint` to `MetaMarkerRegistry`, made it async, and threaded `isBinarySource`/`atomByteCount` from `classify`. Added tests for user-typed false-positive rejection, large binary bare-`meta` trigger, min-length guard, Ray-Ban regression, and key scope. Updated 5 existing `MetadataTagTests` call sites to async with unchanged assertions. Focused tests passed 26/26; full `test_sim` passed 237 total, 236 passed, 1 documented skip. |
+| ☑   | Task 4: PhotoMetadataService wire-in                         | Wired still-photo XMP and MakerApple detection to `MetaMarkerRegistry`; `xmpContainsFingerprint` and `isFingerprintTag` are async, `makeTag` cascades async, and XMP applies `minimumMarkerLengthBytes`. Added tests for XMP registry marker, XMP min-length, Oakley Meta, and iPhone rejection; upgraded 11 existing `PhotoMediaTests` assertions to async with same expected behavior. Focused tests passed 18/18; full `test_sim` passed 241 total, 240 passed, 1 documented skip. |
+| ☑   | Task 5: Registry tests (unit + integration)                  | Added Task 5 category/cache tests plus review-driven regressions for string-backed Ray-Ban descriptions and XMP `meta ai` / `meta wearable` markers. Focused registry tests passed 24/24; full `test_sim` passed 249 total, 248 passed, 1 documented skip; `build_sim` succeeded. |
 | ☐   | Task 6: Push, PR, CI, merge → TestFlight #5                  |          |
 
 ---

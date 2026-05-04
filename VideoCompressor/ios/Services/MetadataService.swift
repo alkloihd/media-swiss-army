@@ -409,11 +409,15 @@ actor MetadataService {
         // the user.
         let value: String
         var decodedTextForMatching: String?
+        var isBinarySource = false
+        var atomByteCount: Int?
         if let s = (try? await item.load(.stringValue)) ?? nil {
             value = s
             decodedTextForMatching = s
         } else if let d = (try? await item.load(.dataValue)) ?? nil {
             value = "<binary, \(d.count) bytes>"
+            isBinarySource = true
+            atomByteCount = d.count
             // Try UTF-8 then ASCII-tolerant decode for fingerprint match.
             if let utf8 = String(data: d, encoding: .utf8) {
                 decodedTextForMatching = utf8
@@ -435,9 +439,11 @@ actor MetadataService {
             value = "(unreadable)"
         }
         let category = Self.categoryFor(key: key)
-        let isFingerprint = Self.isMetaGlassesFingerprint(
+        let isFingerprint = await Self.isMetaGlassesFingerprint(
             key: key,
-            decodedText: decodedTextForMatching
+            decodedText: decodedTextForMatching,
+            isBinarySource: isBinarySource,
+            atomByteCount: atomByteCount
         )
         return MetadataTag(
             id: UUID(),
@@ -473,21 +479,47 @@ actor MetadataService {
         return last.replacingOccurrences(of: "-", with: " ").capitalized
     }
 
-    /// Web app fingerprint detection (commits `a3ad413`, `be6e360`):
-    /// Meta Ray-Ban glasses leave a "Comment" or "Description" atom —
-    /// often binary-typed despite containing printable ASCII — with
-    /// marker bytes "Ray-Ban", "Rayban", or "Meta".
-    ///
-    /// `decodedText` is the UTF-8 / ASCII decode of the atom's bytes
-    /// when `stringValue` was nil. The display `value` (e.g. "<binary,
-    /// 32 bytes>") is NOT what we match against — that placeholder
-    /// would never contain the marker and `autoMetaGlasses` would
-    /// silently no-op against the very files it's named for.
-    static func isMetaGlassesFingerprint(key: String, decodedText: String?) -> Bool {
-        let k = key.lowercased()
-        guard k.contains("comment") || k.contains("description") else { return false }
+    /// Registry-backed Meta-glasses fingerprint detection. The web-app
+    /// fix in commits `a3ad413` / `be6e360` established that Meta
+    /// Ray-Ban glasses write printable marker bytes into binary
+    /// Comment/Description atoms; this keeps that path while rejecting
+    /// user-typed text fields that happen to contain words like "meta".
+    static func isMetaGlassesFingerprint(
+        key: String,
+        decodedText: String?,
+        isBinarySource: Bool,
+        atomByteCount: Int?
+    ) async -> Bool {
         guard let text = decodedText?.lowercased() else { return false }
-        return text.contains("ray-ban") || text.contains("rayban") || text.contains("meta")
+
+        let registry = MetaMarkerRegistry.shared
+        let markers = await registry.markersForBinaryAtom(key: key)
+        guard !markers.isEmpty else { return false }
+        let matchedMarkers = markers
+            .map { $0.lowercased() }
+            .filter { text.contains($0) }
+        guard !matchedMarkers.isEmpty else { return false }
+
+        let guards = await registry.guards()
+        let loweredKey = key.lowercased()
+        if !isBinarySource {
+            for suffix in guards.rejectIfMarkerInUserTypedText
+                where loweredKey.contains(suffix.lowercased()) {
+                return matchedMarkers.contains(where: Self.isTrustedStringBackedMarker)
+            }
+        }
+
+        if isBinarySource,
+           let atomByteCount,
+           atomByteCount < guards.minimumMarkerLengthBytes {
+            return false
+        }
+
+        return true
+    }
+
+    private static func isTrustedStringBackedMarker(_ marker: String) -> Bool {
+        marker == "ray-ban" || marker == "rayban" || marker == "ray ban"
     }
 
     private func shouldStrip(tag: MetadataTag, rules: StripRules) -> Bool {

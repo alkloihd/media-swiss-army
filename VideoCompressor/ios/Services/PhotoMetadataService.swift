@@ -79,7 +79,7 @@ actor PhotoMetadataService {
             // Skip nested dicts here — handled below per-namespace.
             if rawValue is [CFString: Any] || rawValue is [String: Any] { continue }
             if rawValue is Data { continue } // XMPData handled below
-            let tag = makeTag(
+            let tag = await makeTag(
                 namespace: nil,
                 key: keyString,
                 value: stringify(rawValue)
@@ -104,7 +104,7 @@ actor PhotoMetadataService {
             for (rawKey, rawValue) in dict {
                 let keyString = (rawKey as String)
                 if rawValue is [CFString: Any] { continue }
-                let tag = makeTag(
+                let tag = await makeTag(
                     namespace: ns.prefix,
                     key: keyString,
                     value: stringify(rawValue)
@@ -120,7 +120,10 @@ actor PhotoMetadataService {
             let decoded = String(data: xmpData, encoding: .utf8)
                 ?? String(data: xmpData, encoding: .ascii)
                 ?? ""
-            let isFingerprint = Self.xmpContainsFingerprint(decoded)
+            let isFingerprint = await Self.xmpContainsFingerprint(
+                decoded,
+                packetByteCount: xmpData.count
+            )
             let preview = "<XMP packet, \(xmpData.count) bytes>"
             tags.append(MetadataTag(
                 id: UUID(),
@@ -272,11 +275,11 @@ actor PhotoMetadataService {
 
     /// Map a key + namespace into a `MetadataTag` with category + fingerprint
     /// flag.
-    private func makeTag(namespace: String?, key: String, value: String) -> MetadataTag {
+    private func makeTag(namespace: String?, key: String, value: String) async -> MetadataTag {
         let fullKey = namespace.map { "\($0).\(key)" } ?? key
         let category = Self.categoryFor(namespace: namespace, key: key)
         let display = Self.displayNameFor(namespace: namespace, key: key)
-        let isFp = Self.isFingerprintTag(namespace: namespace, key: key, value: value)
+        let isFp = await Self.isFingerprintTag(namespace: namespace, key: key, value: value)
         return MetadataTag(
             id: UUID(),
             key: fullKey,
@@ -310,30 +313,30 @@ actor PhotoMetadataService {
         return key
     }
 
-    /// Fingerprint detection for stills:
-    ///   - XMP packet contents containing "xmp.MetaAI", "meta:", "RayBan",
-    ///     "Ray-Ban", "c2pa", or "ManifestStore" markers
-    ///   - MakerApple `Software` value containing "Meta" or "Ray-Ban"
-    static func isFingerprintTag(namespace: String?, key: String, value: String) -> Bool {
+    /// Fingerprint detection for stills' MakerApple → Software value.
+    static func isFingerprintTag(namespace: String?, key: String, value: String) async -> Bool {
+        guard namespace == "MakerApple",
+              key.lowercased().contains("software")
+        else { return false }
+
         let v = value.lowercased()
-        if namespace == "MakerApple" {
-            if key.lowercased().contains("software") {
-                if v.contains("meta") || v.contains("ray-ban") || v.contains("rayban") {
-                    return true
-                }
-            }
+        let needles = await MetaMarkerRegistry.shared.makerAppleSoftwareList()
+        for needle in needles where v.contains(needle.lowercased()) {
+            return true
         }
         return false
     }
 
-    static func xmpContainsFingerprint(_ packet: String) -> Bool {
+    static func xmpContainsFingerprint(_ packet: String, packetByteCount: Int) async -> Bool {
+        let guards = await MetaMarkerRegistry.shared.guards()
+        guard packetByteCount >= guards.minimumMarkerLengthBytes else { return false }
+
         let p = packet.lowercased()
-        return p.contains("xmp.metaai")
-            || p.contains("meta:")
-            || p.contains("ray-ban")
-            || p.contains("rayban")
-            || p.contains("c2pa")
-            || p.contains("manifeststore")
+        let needles = await MetaMarkerRegistry.shared.xmpFingerprintList()
+        for needle in needles where p.contains(needle.lowercased()) {
+            return true
+        }
+        return false
     }
 
     /// Predicate matching MetadataService.shouldStrip exactly.
