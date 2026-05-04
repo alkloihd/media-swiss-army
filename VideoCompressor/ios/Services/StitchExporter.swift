@@ -32,6 +32,7 @@
 
 import Foundation
 import UIKit
+import os
 @preconcurrency import AVFoundation
 import CoreMedia
 import CoreGraphics
@@ -41,16 +42,19 @@ struct StitchExportResult: Hashable, Sendable {
     let settings: CompressionSettings
     let fallbackMessage: String?
 
-    /// Combine an additional note into this result. If both are non-nil
-    /// they are joined with " " — keeps stitched-with-multiple-fallbacks
-    /// messages readable. Nil-safe both ways.
+    /// Combine an additional note into this result. When both are non-nil
+    /// they are joined with two newlines so the export sheet renders each
+    /// fallback as its own paragraph — keeps the case where transition,
+    /// downshift, AND HDR fallbacks all fired (worst-case three sentences)
+    /// readable instead of producing a single wall of text. Nil-safe both
+    /// ways. (Re-audit 6 finding.)
     func merging(note: String?) -> StitchExportResult {
         let combined: String?
         switch (fallbackMessage, note) {
         case (nil, nil):           combined = nil
         case (let m?, nil):        combined = m
         case (nil, let n?):        combined = n
-        case (let m?, let n?):     combined = "\(m) \(n)"
+        case (let m?, let n?):     combined = "\(m)\n\n\(n)"
         }
         return StitchExportResult(url: url, settings: settings, fallbackMessage: combined)
     }
@@ -560,18 +564,37 @@ actor StitchExporter {
     /// which drops the encode pipeline to SDR per
     /// `CompressionService.canEncodeHDR(...)`.
     static func hdrFallbackNoteIfNeeded(plan: Plan) async -> String? {
+        let log = Logger(
+            subsystem: Bundle.main.bundleIdentifier ?? "ca.nextclass.VideoCompressor",
+            category: "StitchExporter.hdrScan"
+        )
         for clip in plan.sourceClips {
             // Baked stills are synthetic 8-bit output of StillVideoBaker, so
             // their format descriptions never report HDR. Only original-
             // source clips can carry 10-bit metadata.
             if clip.kind == .still { continue }
             let asset = AVURLAsset(url: clip.sourceURL)
-            guard let track = try? await asset.loadTracks(withMediaType: .video).first,
-                  let fds = try? await track.load(.formatDescriptions),
-                  CompressionService.is10Bit(formatDescriptions: fds) else {
+            guard let tracks = try? await asset.loadTracks(withMediaType: .video) else {
+                // Re-audit catch (LOW): silent `try?` previously swallowed
+                // post-buildPlan asset-load failures, leaving the user with
+                // no HDR note even when one was warranted. Log so support
+                // can correlate "washed-out HDR" reports with this branch.
+                log.debug("post-export HDR scan: tracks failed to load for \(clip.displayName, privacy: .public)")
                 continue
             }
-            return "Stitched in standard dynamic range. Your HDR clips were tone-mapped — full HDR stitch is coming in a future update."
+            guard let track = tracks.first,
+                  let fds = try? await track.load(.formatDescriptions) else {
+                log.debug("post-export HDR scan: format descriptions failed to load for \(clip.displayName, privacy: .public)")
+                continue
+            }
+            guard CompressionService.is10Bit(formatDescriptions: fds) else {
+                continue
+            }
+            // Re-audit catch (Audit 1, MEDIUM): the prior copy claimed
+            // "tone-mapped" — but `colorProperties` only swaps BT.2020/HLG
+            // metadata for BT.709 metadata; there is no Rec.2020→Rec.709
+            // luminance-aware mapping pass. Use accurate copy.
+            return "Stitched in standard dynamic range. HDR clips were rendered with an approximate SDR conversion — colors may differ from the source. Full HDR stitch is coming in a future update."
         }
         return nil
     }

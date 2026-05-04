@@ -22,6 +22,7 @@ struct StitchTabView: View {
     @State private var showStartOverConfirmation = false
     @State private var sortBanner: String = ""
     @State private var sortBannerVisible: Bool = false
+    @State private var sortBannerDismissTask: Task<Void, Never>?
     /// Drives the inline ClipEditorInlinePanel below the timeline. nil when
     /// no clip is being edited. Tapping a timeline tile sets it; tapping
     /// the same tile again or the panel's X button clears it.
@@ -109,11 +110,19 @@ struct StitchTabView: View {
                                         // the user knows why their timeline
                                         // didn't fully re-order.
                                         if outcome.unresolvedCount > 0 {
+                                            // Re-audit 6 finding: cancel any
+                                            // existing dismiss task before
+                                            // starting a new one so a fast
+                                            // re-tap doesn't leave a stale
+                                            // sleeper firing mid-display.
+                                            sortBannerDismissTask?.cancel()
                                             sortBanner = "Couldn't read date for \(outcome.unresolvedCount) clip\(outcome.unresolvedCount == 1 ? "" : "s") — those moved to the end."
                                             sortBannerVisible = true
-                                            Task {
+                                            sortBannerDismissTask = Task {
                                                 try? await Task.sleep(for: .seconds(3))
-                                                sortBannerVisible = false
+                                                if !Task.isCancelled {
+                                                    sortBannerVisible = false
+                                                }
                                             }
                                         }
                                     }

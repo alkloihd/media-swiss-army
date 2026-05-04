@@ -12,6 +12,7 @@ import Combine
 import SwiftUI
 import AVFoundation
 import UIKit
+import os
 
 @MainActor
 final class StitchProject: ObservableObject {
@@ -129,6 +130,14 @@ final class StitchProject: ObservableObject {
             _ = await task.value
             exportTask = nil
         }
+        // Re-audit 6 finding: prior version left aspectMode/transition
+        // pinned from the previous project, so users who exported portrait
+        // + crossfade once and then "Started Over" got unexpected
+        // pillarboxing on landscape clips. Reset to factory defaults so
+        // the next project starts at a known state.
+        aspectMode = .auto
+        transition = .none
+        lastImportError = nil
         guard !clips.isEmpty || exportState != .idle else { return }
         let allOffsets = IndexSet(integersIn: 0..<clips.count)
         if !allOffsets.isEmpty {
@@ -598,13 +607,21 @@ final class StitchProject: ObservableObject {
 
     /// Free space (bytes) on the volume containing Documents/. Returns 0
     /// when the resource value can't be read — caller should treat 0 as
-    /// "unknown, skip the preflight check".
+    /// "unknown, skip the preflight check". Logs a warning when the read
+    /// fails so support can correlate later "no space left" reports with
+    /// the preflight having silently bypassed (re-audit 1 follow-up).
     static func freeDiskBytesForOutput() -> Int64 {
+        let log = Logger(
+            subsystem: Bundle.main.bundleIdentifier ?? "ca.nextclass.VideoCompressor",
+            category: "StitchProject.preflight"
+        )
         guard let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else {
+            log.warning("Documents directory unavailable; preflight will skip")
             return 0
         }
         guard let values = try? docs.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey]),
               let bytes = values.volumeAvailableCapacityForImportantUsage else {
+            log.warning("volumeAvailableCapacityForImportantUsage unreadable; preflight will skip and any mid-encode out-of-space failure will surface as raw NSError")
             return 0
         }
         return bytes

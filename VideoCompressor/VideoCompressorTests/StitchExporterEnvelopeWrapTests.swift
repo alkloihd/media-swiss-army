@@ -147,7 +147,9 @@ final class StitchExporterEnvelopeWrapTests: XCTestCase {
         let url = URL(fileURLWithPath: "/tmp/x.mp4")
         let r = StitchExportResult(url: url, settings: .small, fallbackMessage: "first.")
         let merged = r.merging(note: "second.")
-        XCTAssertEqual(merged.fallbackMessage, "first. second.")
+        // Joined with paragraph break so the export sheet renders each
+        // fallback as its own line instead of a wall of text.
+        XCTAssertEqual(merged.fallbackMessage, "first.\n\nsecond.")
     }
 
     func testMergingNilNotePreservesExisting() {
