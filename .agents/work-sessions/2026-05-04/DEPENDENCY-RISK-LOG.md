@@ -272,3 +272,12 @@ Rule: append after every cluster task/PR checkpoint before moving on.
 | Tests        | Added `PrivacyManifestTests` to load the hosted app bundle manifest, parse the plist, assert no tracking, and pin all three required-reason API categories.                                             |
 | Verification | TDD red failed 3/3 because the manifest was missing from the app bundle; `plutil -lint` passed; `clean` succeeded; focused tests passed 3/3; full `test_sim` passed `208` total: `207` passed, `1` skip. |
 | Watchpoints  | Simulator app-bundle test proves local bundling, but App Store Connect privacy-manifest acceptance is still verified by the next TestFlight/App Store Connect build details.                           |
+
+#### Task 2 — Photos Auth Gate
+
+| Field        | Notes                                                                                                                                                                                             |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Key changes  | `StitchClipFetcher.creationDate` and `creationDates` now gate Photos metadata lookup on passive `.readWrite` authorization and return `nil` / `[:]` unless status is `.authorized` or `.limited`. |
+| Adaptation   | Added the missing batch `.restricted` test so all three denied-status states are covered across both fetch paths. Used `authorizationStatus`, not `requestAuthorization`, to avoid any Stitch prompt. |
+| Verification | TDD red compile failed on missing `authStatusProvider`; focused auth tests passed `6/6`; full `test_sim` passed `214` total: `213` passed, `1` documented simulator-fixture skip.                  |
+| Watchpoints  | Authorized/limited behavior still depends on real Photos library availability; tests prove denied-state short-circuiting and compile compatibility of defaulted production parameters.              |
