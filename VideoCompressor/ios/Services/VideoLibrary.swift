@@ -20,6 +20,28 @@ import SwiftUI
 import PhotosUI
 import UIKit
 
+/// Result of a batch save-to-Photos pass. Drives the single end-of-batch
+/// toast in MetaCleanTabView.
+struct SaveBatchResult: Equatable, Sendable {
+    let saved: Int
+    let failed: Int
+    let kind: MediaKind
+    let at: Date
+
+    var displayMessage: String {
+        let noun = kind == .still ? "photo" : "video"
+        let nounPlural = kind == .still ? "photos" : "videos"
+        let savedPart = saved == 1
+            ? "Saved 1 \(noun) to your library"
+            : "Saved \(saved) \(nounPlural) to your library"
+
+        if failed > 0 {
+            return "\(savedPart) · \(failed) failed to save"
+        }
+        return savedPart
+    }
+}
+
 @MainActor
 final class VideoLibrary: ObservableObject {
     @Published private(set) var videos: [VideoFile] = []
@@ -28,6 +50,10 @@ final class VideoLibrary: ObservableObject {
     /// which one to display based on the current selection's media kinds.
     @Published var selectedPhotoSettings: PhotoCompressionSettings = .balanced
     @Published var lastError: LibraryError?
+    /// Single end-of-batch save toast. Batch flows publish through this
+    /// shared library object so individual per-file toasts collapse into one
+    /// user-facing result.
+    @Published var lastSaveBatch: SaveBatchResult?
 
     /// Convenience accessor for SwiftUI alert bindings.
     var lastErrorMessage: String? { lastError?.displayMessage }
@@ -49,6 +75,16 @@ final class VideoLibrary: ObservableObject {
 
     init() {
         Self.markDirectoriesAsNonBackup()
+    }
+
+    func notifySaveBatchCompleted(saved: Int, failed: Int, kind: MediaKind) {
+        notifySaveBatchCompleted(
+            SaveBatchResult(saved: saved, failed: failed, kind: kind, at: Date())
+        )
+    }
+
+    func notifySaveBatchCompleted(_ result: SaveBatchResult) {
+        lastSaveBatch = result
     }
 
     private static func markDirectoriesAsNonBackup() {

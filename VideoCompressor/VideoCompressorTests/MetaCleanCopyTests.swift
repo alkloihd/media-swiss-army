@@ -46,6 +46,18 @@ final class MetaCleanCopyTests: XCTestCase {
         XCTAssertEqual(p.userFacingLabel(kind: .still), "Cleaning your photos · 3 of 8")
     }
 
+    func testBatchLabelDoesNotShowZeroAtStart() {
+        let p = BatchCleanProgress(
+            current: 0,
+            total: 8,
+            failed: 0,
+            perItem: .zero,
+            isRunning: true,
+            lastError: nil
+        )
+        XCTAssertEqual(p.userFacingLabel(kind: .still), "Cleaning your photos · 1 of 8")
+    }
+
     func testTerminalLabelPrefersPastTense() {
         let p = BatchCleanProgress(
             current: 8,

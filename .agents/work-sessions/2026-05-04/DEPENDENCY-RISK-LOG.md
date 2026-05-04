@@ -232,3 +232,13 @@ Rule: append after every cluster task/PR checkpoint before moving on.
 | Key changes  | Stitch timeline drop target now uses an 8pt accent bar, soft accent shadow, and a 12pt animated leading gutter on the target clip.                                         |
 | Verification | `mcp__XcodeBuildMCP__.test_sim` passed `190` total: `189` passed, `1` documented simulator-fixture skip; `mcp__XcodeBuildMCP__.build_sim` succeeded.                       |
 | Watchpoints  | Manual UI inspection should confirm the wider bar and neighbor push read clearly at low zoom.                                                                              |
+
+#### Task 6 — Faster Batch MetaClean + Single Save Toast
+
+| Field        | Notes                                                                                                                                                                                                 |
+| ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Key changes  | MetaClean batch clean now uses `MetaCleanQueue.batchConcurrency` for bounded metadata-strip concurrency, publishes a single `SaveBatchResult` through `VideoLibrary`, and shows one bottom toast after batch save completion. |
+| Adaptation   | Kept Photos save/delete serial in the TaskGroup result drain instead of running `PHPhotoLibrary.performChanges` in child tasks; routed completion through a `cleanAll` callback instead of a static weak global sink. |
+| Tests        | Added `MetaCleanQueueConcurrencyTests` for concurrency policy, completed-count progress fraction, and save-batch display copy.                                                                          |
+| Verification | TDD red compile failed on missing `MetaCleanQueue.batchConcurrency` and `SaveBatchResult`; focused label-start red/green then passed 12/12; full `mcp__XcodeBuildMCP__.test_sim` passed `198` total: `197` passed, `1` skip; `build_sim` succeeded. |
+| Watchpoints  | Real-device MetaClean batch timing and Photos delete-confirmation UX still need TestFlight/iPhone inspection; current confidence is simulator/build plus static diff review until device testing is available. |
