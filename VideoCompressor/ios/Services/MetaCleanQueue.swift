@@ -371,6 +371,9 @@ extension MetaCleanQueue {
                 at: Date()
             ))
         }
+        if savedCount > 0 {
+            ReviewPrompter.shared.recordSuccessesAndMaybePrompt(savedCount)
+        }
         onAllDone()
     }
 

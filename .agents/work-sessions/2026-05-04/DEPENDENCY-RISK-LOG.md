@@ -282,3 +282,13 @@ Rule: append after every cluster task/PR checkpoint before moving on.
 | Review fix   | A reviewer noted fake asset IDs did not prove denied states skip fetch. Added defaulted fetch-provider seams plus tests proving denied no-fetch and authorized/limited fetch continuation.             |
 | Verification | TDD red compile failed on missing `authStatusProvider`, then missing fetch provider seam; focused auth tests passed `8/8`; full `test_sim` passed `216` total: `215` passed, `1` documented skip. |
 | Watchpoints  | Real Photos authorized/limited behavior still depends on the device library, but tests now prove the gate calls or skips the fetch seam before Photos API access.                                  |
+
+#### Task 3 — Review Prompt
+
+| Field        | Notes                                                                                                                                                                                                         |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Key changes  | Added `ReviewPrompter` with UserDefaults-backed success count, per-version lock, iOS 18 `AppStore.requestReview(in:)`, and `SKStoreReviewController` fallback for older SDK paths.                            |
+| Adaptation   | Prompt credit is recorded after actual Photos save success, not metadata-strip success. Single saves count after `MetaCleanExportSheet` save succeeds; batch replace counts `savedCount` once after the batch. |
+| Tests        | Added pure eligibility and injected recorder tests for threshold, same-version lock, new-version re-prompt, non-positive count ignore, and count persistence.                                                   |
+| Verification | TDD red failed on missing `ReviewPrompter`, then actor-isolated default closures; focused ReviewPrompter tests passed `9/9`; full `test_sim` passed `225` total: `224` passed, `1` documented skip.            |
+| Watchpoints  | Actual system review UI cannot be forced by unit tests and may be rate-limited by iOS; tests cover the app-side eligibility and request trigger path.                                                           |

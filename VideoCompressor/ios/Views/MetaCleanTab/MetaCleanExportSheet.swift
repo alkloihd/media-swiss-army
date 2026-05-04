@@ -147,6 +147,7 @@ struct MetaCleanExportSheet: View {
                         }
                         self.onDone()
                         self.dismiss()
+                        ReviewPrompter.shared.recordSuccessesAndMaybePrompt()
                     } catch {
                         self.saveStatus = .saveFailed(reason: error.localizedDescription)
                         UINotificationFeedbackGenerator().notificationOccurred(.error)
