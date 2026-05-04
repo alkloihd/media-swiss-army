@@ -65,3 +65,12 @@ Rule: append after every cluster task/PR checkpoint before moving on.
 | Tests        | Added `StillVideoBakerTests` and `StitchExporterScaleTests`; updated `StitchAspectRatioTests` for the new API.                                                                                                       |
 | Verification | TDD compile-red on missing `bake(still:)`, then `mcp__XcodeBuildMCP__.test_sim` passed 155/155.                                                                                                                      |
 | Watchpoints  | Focused reviewer agent timed out; rely on green tests and later PR review/CI.                                                                                                                                        |
+
+#### Task 2 — CacheSweeper Lifecycle APIs
+
+| Field        | Notes                                                                                                                                                                                                          |
+| ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Key changes  | `CacheSweeper` now tracks managed tmp outputs, adds `sweepOnCancel`, delayed `sweepAfterSave`, `sweepOnLaunchTight`, and includes managed tmp in totals/breakdown.                                             |
+| Tests        | Added `CacheSweeperTests` for safe Documents deletion, outside-file preservation, cancel cleanup, nil cancel, short-delay save sweep, `StillBakes` cleanup, `PhotoClean-*` wrapper cleanup, and tmp breakdown. |
+| Verification | TDD compile-red on missing APIs, then `mcp__XcodeBuildMCP__.test_sim` passed 163/163.                                                                                                                          |
+| Watchpoints  | Worker and focused reviewer agents timed out; rely on tests plus later PR review/CI.                                                                                                                           |
