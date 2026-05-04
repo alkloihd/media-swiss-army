@@ -11,6 +11,7 @@
 
 import XCTest
 import AVFoundation
+import VideoToolbox
 @testable import VideoCompressor_iOS
 
 final class CompressionServiceTests: XCTestCase {
@@ -157,6 +158,60 @@ final class CompressionServiceTests: XCTestCase {
         XCTAssertEqual(
             props[AVVideoYCbCrMatrixKey] as? String,
             AVVideoYCbCrMatrix_ITU_R_709_2
+        )
+    }
+
+    func testEncoderChoosesHDRPixelFormatFor10BitSource() {
+        let pf = CompressionService.pixelBufferDict(forIs10Bit: true)
+        let raw = pf[kCVPixelBufferPixelFormatTypeKey as String] as? NSNumber
+        XCTAssertEqual(
+            raw?.uint32Value,
+            kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange,
+            "10-bit source must select 10-bit pixel format."
+        )
+    }
+
+    func testEncoderChoosesSDRPixelFormatFor8BitSource() {
+        let pf = CompressionService.pixelBufferDict(forIs10Bit: false)
+        let raw = pf[kCVPixelBufferPixelFormatTypeKey as String] as? NSNumber
+        XCTAssertEqual(
+            raw?.uint32Value,
+            kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange,
+            "8-bit source must keep 8-bit pixel format."
+        )
+    }
+
+    func testHDRColorPropertiesDefaultToBT2020HLG() {
+        let props = CompressionService.colorProperties(
+            formatDescriptions: [],
+            is10Bit: true
+        )
+        XCTAssertEqual(
+            props[AVVideoColorPrimariesKey] as? String,
+            AVVideoColorPrimaries_ITU_R_2020
+        )
+        XCTAssertEqual(
+            props[AVVideoTransferFunctionKey] as? String,
+            AVVideoTransferFunction_ITU_R_2100_HLG
+        )
+        XCTAssertEqual(
+            props[AVVideoYCbCrMatrixKey] as? String,
+            AVVideoYCbCrMatrix_ITU_R_2020
+        )
+    }
+
+    func testHEVCProfileUsesMain10For10BitSource() {
+        XCTAssertEqual(
+            CompressionService.profileLevel(for: .hevc, is10Bit: true),
+            kVTProfileLevel_HEVC_Main10_AutoLevel as String
+        )
+        XCTAssertEqual(
+            CompressionService.profileLevel(for: .hevc, is10Bit: false),
+            kVTProfileLevel_HEVC_Main_AutoLevel as String
+        )
+        XCTAssertEqual(
+            CompressionService.profileLevel(for: .h264, is10Bit: true),
+            AVVideoProfileLevelH264HighAutoLevel
         )
     }
 

@@ -372,15 +372,24 @@ struct StitchTabView: View {
                 }
             }
         }
+        await Self.finalizeImportOrdering(project: project)
     }
 
-    /// Moves the picker-staged temp file into `StitchInputs/`. If a file
-    /// with the same name already exists (because an earlier-imported clip
-    /// is still in the project and references that path), append a UUID
-    /// suffix instead of overwriting — overwriting would leave the prior
-    /// in-memory `StitchClip` with a dangling URL (closes review
-    /// {E-0503-1050} HIGH-1).
+    /// Moves the picker-staged temp file into `StitchInputs/`.
     private func stageToStitchInputs(
+        source: URL,
+        suggestedName: String?,
+        into dir: URL
+    ) throws -> URL {
+        try Self.stageToStitchInputs(
+            source: source,
+            suggestedName: suggestedName,
+            into: dir
+        )
+    }
+
+    /// Static so tests can invoke staging without instantiating SwiftUI state.
+    static func stageToStitchInputs(
         source: URL,
         suggestedName: String?,
         into dir: URL
@@ -389,12 +398,8 @@ struct StitchTabView: View {
         let base = (suggestedName ?? "clip-\(UUID().uuidString.prefix(8))")
             .replacingOccurrences(of: "/", with: "_")
             .deletingSuffix(".\(ext)")
-        var target = dir.appendingPathComponent("\(base).\(ext)")
-
-        if FileManager.default.fileExists(atPath: target.path) {
-            let suffix = UUID().uuidString.prefix(6)
-            target = dir.appendingPathComponent("\(base)-\(suffix).\(ext)")
-        }
+        let prefix = UUID().uuidString.prefix(6).lowercased()
+        let target = dir.appendingPathComponent("\(prefix)-\(base).\(ext)")
         try FileManager.default.moveItem(at: source, to: target)
 
         // Clean up the Picks-* wrapper directory left by VideoTransferable.
@@ -403,6 +408,30 @@ struct StitchTabView: View {
             try? FileManager.default.removeItem(at: parent)
         }
         return target
+    }
+
+    static func testHook_stageToStitchInputs(
+        source: URL,
+        suggestedName: String?,
+        into dir: URL
+    ) throws -> URL {
+        try stageToStitchInputs(
+            source: source,
+            suggestedName: suggestedName,
+            into: dir
+        )
+    }
+
+    @discardableResult
+    @MainActor
+    static func finalizeImportOrdering(project: StitchProject) async -> Bool {
+        await project.sortByCreationDateAsync()
+    }
+
+    @discardableResult
+    @MainActor
+    static func testHook_finalizeImportOrdering(project: StitchProject) async -> Bool {
+        await finalizeImportOrdering(project: project)
     }
 }
 

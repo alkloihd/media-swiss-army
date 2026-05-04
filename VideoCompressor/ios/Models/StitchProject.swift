@@ -489,7 +489,7 @@ final class StitchProject: ObservableObject {
                 }
             }
 
-            let url = try await exporter.export(
+            let result = try await exporter.export(
                 plan: plan,
                 settings: settings,
                 outputURL: outputURL
@@ -501,15 +501,16 @@ final class StitchProject: ObservableObject {
             // Auto-strip Meta-glasses fingerprint atoms from the stitched
             // output so the result is privacy-clean by default. Fail-soft.
             // Per user direction 2026-05-03.
-            await VideoLibrary.metadataServiceShared.stripMetaFingerprintInPlace(at: url)
+            await VideoLibrary.metadataServiceShared.stripMetaFingerprintInPlace(at: result.url)
 
             let bytes: Int64 = ((try? FileManager.default
-                .attributesOfItem(atPath: url.path)[.size]) as? NSNumber)?.int64Value ?? 0
+                .attributesOfItem(atPath: result.url.path)[.size]) as? NSNumber)?.int64Value ?? 0
             exportState = .finished(CompressedOutput(
-                url: url,
+                url: result.url,
                 bytes: bytes,
                 createdAt: Date(),
-                settings: settings
+                settings: result.settings,
+                note: result.fallbackMessage
             ))
         } catch is CancellationError {
             exportState = .cancelled

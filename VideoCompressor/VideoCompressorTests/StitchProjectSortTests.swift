@@ -98,4 +98,20 @@ final class StitchProjectSortTests: XCTestCase {
         XCTAssertFalse(changed)
         XCTAssertEqual(project.clips.count, 1)
     }
+
+    func testImportFinalizationAutoSortsOldestFirst() async {
+        let project = StitchProject()
+        let old = makeClip(name: "Old", date: Date(timeIntervalSince1970: 1_000_000))
+        let mid = makeClip(name: "Mid", date: Date(timeIntervalSince1970: 2_000_000))
+        let newest = makeClip(name: "Newest", date: Date(timeIntervalSince1970: 3_000_000))
+
+        project.append(newest)
+        project.append(mid)
+        project.append(old)
+
+        let changed = await StitchTabView.testHook_finalizeImportOrdering(project: project)
+
+        XCTAssertTrue(changed)
+        XCTAssertEqual(project.clips.map(\.id), [old.id, mid.id, newest.id])
+    }
 }

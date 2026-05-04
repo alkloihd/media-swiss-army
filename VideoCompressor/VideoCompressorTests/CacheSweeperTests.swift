@@ -63,6 +63,20 @@ final class CacheSweeperTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: sentinel.path))
     }
 
+    func testSweepAfterSaveForStitchOutputPreservesStitchInputs() async throws {
+        let output = try makeSentinel(in: "StitchOutputs")
+        let input = try makeSentinel(in: "StitchInputs")
+        defer { try? FileManager.default.removeItem(at: input) }
+
+        await CacheSweeper.shared.sweepAfterSave(output, delay: .milliseconds(1))
+
+        XCTAssertFalse(FileManager.default.fileExists(atPath: output.path))
+        XCTAssertTrue(
+            FileManager.default.fileExists(atPath: input.path),
+            "Saving a stitch output must not delete staged inputs needed for another render."
+        )
+    }
+
     func testClearAllRemovesStillBakesTmpDir() async throws {
         let bakes = FileManager.default.temporaryDirectory
             .appendingPathComponent("StillBakes", isDirectory: true)
