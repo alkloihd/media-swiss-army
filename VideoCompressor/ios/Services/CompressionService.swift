@@ -170,7 +170,28 @@ actor CompressionService {
         let estimatedDataRate = try await videoTrack.load(.estimatedDataRate)
         let assetDuration = try await asset.load(.duration)
         let formatDescriptions = (try? await videoTrack.load(.formatDescriptions)) ?? []
-        let is10Bit = Self.is10Bit(formatDescriptions: formatDescriptions)
+        let sourceIs10Bit = Self.is10Bit(formatDescriptions: formatDescriptions)
+        // The HDR encode pipeline is only valid when ALL three preconditions
+        // hold:
+        //   1. Source is 10-bit (AVFoundation reports >= 10 bpc).
+        //   2. Output codec supports 10-bit. H.264 High AutoLevel is 8-bit
+        //      only on the iPhone HW encoder; Streaming preset (H.264) on
+        //      an HDR source previously surfaced -11841 because the writer
+        //      was configured for 10-bit pixel buffers + BT.2020 over an
+        //      8-bit-only encoder profile.
+        //   3. There is no AVMutableVideoComposition. Compositions render
+        //      8-bit BT.709 frames by default (we do not override the
+        //      composition's colorPrimaries / transferFunction / matrix),
+        //      so a writer declared HDR over an SDR composition produced
+        //      a 10-bit-vs-8-bit mismatch and -11841 at finishWriting().
+        // Falling back to SDR (8-bit BT.709) when any precondition fails
+        // keeps the (reader pixel format, writer color, writer profile)
+        // tuple internally consistent. See DIAG-11841-real-root-cause.md.
+        let is10Bit = Self.canEncodeHDR(
+            sourceIs10Bit: sourceIs10Bit,
+            codec: settings.videoCodec,
+            hasVideoComposition: videoComposition != nil
+        )
         let videoColorProperties = Self.colorProperties(
             formatDescriptions: formatDescriptions,
             is10Bit: is10Bit
@@ -594,6 +615,21 @@ actor CompressionService {
             ) as? NSNumber
             return (bitsPerComponent?.intValue ?? 8) >= 10
         }
+    }
+
+    /// Returns true iff the encode pipeline can safely run as HDR — i.e.
+    /// the three preconditions documented in `encode(...)` are all
+    /// satisfied. Exposed as a pure static so tests can verify the gate
+    /// without spinning up a real `AVAssetReader`.
+    static func canEncodeHDR(
+        sourceIs10Bit: Bool,
+        codec: AVVideoCodecType,
+        hasVideoComposition: Bool
+    ) -> Bool {
+        guard sourceIs10Bit else { return false }
+        guard codec == .hevc else { return false }   // H.264 High = 8-bit
+        guard !hasVideoComposition else { return false }   // composition emits 8-bit BT.709
+        return true
     }
 
     /// Maps source bit-depth to the pixel-buffer dictionary the reader
