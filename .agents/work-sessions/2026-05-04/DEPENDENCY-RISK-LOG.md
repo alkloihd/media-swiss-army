@@ -253,3 +253,22 @@ Rule: append after every cluster task/PR checkpoint before moving on.
 | Verification | TDD red compile failed on missing `CropEditorView.cropRect`/preset enum; focused crop tests passed 7/7; `mcp__XcodeBuildMCP__.clean` succeeded; full `test_sim` passed `205` total: `204` passed, `1` skip; `build_sim` succeeded. |
 | UI evidence  | Simulator launched, onboarding completed, Settings Advanced collapsed/expanded correctly in `snapshot_ui`; screenshot saved at `/var/folders/4v/3fctbw5j65gcbzcbhrsg33y40000gq/T/screenshot_optimized_de88d7dd-a934-48de-a5aa-2bfe202f5d14.jpg`. |
 | Watchpoints  | Need real media loaded in Stitch to visually confirm inline crop preset placement with video/still previews; simulator shut down before further tap-through, but build/test coverage is green.           |
+
+### Cluster 4 — Branch Start
+
+| Field       | Notes                                                                                                                                                                              |
+| ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Branch      | `feat/codex-cluster4-appstore-hardening` from `main@d5c108d`, with append-only Cluster 3 merge/TestFlight log commits carried locally on the feature branch.                      |
+| Baseline    | `mcp__XcodeBuildMCP__.test_sim` passed `205` total: `204` passed, `1` documented simulator-fixture skip.                                                                           |
+| Scope       | App Store hardening: privacy manifest, Photos read auth gate, review prompt, privacy policy/settings link, and PR-side iOS XCTest CI.                                               |
+| Agent scan  | Read-only scouts dispatched for privacy manifest/policy/CI, Photos auth gate, and review prompt integration.                                                                       |
+| Watchpoints | Do not edit TestFlight workflow or bundle identity. Review prompt should count user-visible clean/save success, not metadata-strip-only success. CI job must avoid masking failures. |
+
+#### Task 1 — Privacy Manifest
+
+| Field        | Notes                                                                                                                                                                                                  |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Key changes  | Added `VideoCompressor/ios/PrivacyInfo.xcprivacy` with UserDefaults `CA92.1`, FileTimestamp `C617.1`, DiskSpace `E174.1`, `NSPrivacyTracking=false`, empty tracking domains, and empty collected data. |
+| Tests        | Added `PrivacyManifestTests` to load the hosted app bundle manifest, parse the plist, assert no tracking, and pin all three required-reason API categories.                                             |
+| Verification | TDD red failed 3/3 because the manifest was missing from the app bundle; `plutil -lint` passed; `clean` succeeded; focused tests passed 3/3; full `test_sim` passed `208` total: `207` passed, `1` skip. |
+| Watchpoints  | Simulator app-bundle test proves local bundling, but App Store Connect privacy-manifest acceptance is still verified by the next TestFlight/App Store Connect build details.                           |

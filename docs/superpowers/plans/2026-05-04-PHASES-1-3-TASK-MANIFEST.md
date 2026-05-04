@@ -90,7 +90,7 @@
 
 | ✓   | Sub-task                                         | Comments |
 | --- | ------------------------------------------------ | -------- |
-| ☐   | Task 1: Privacy manifest (TASK-34)               |          |
+| ☑   | Task 1: Privacy manifest (TASK-34)               | Added bundled `PrivacyInfo.xcprivacy` with UserDefaults `CA92.1`, FileTimestamp `C617.1`, DiskSpace `E174.1`, no tracking, no domains, and no collected data. Added manifest parser tests. TDD red: manifest missing from app bundle; green after `clean`, `plutil -lint` OK, focused tests passed 3/3, full `test_sim` passed 208 total, 207 passed, 1 documented skip. |
 | ☐   | Task 2: Photos auth gate (TASK-35)               |          |
 | ☐   | Task 3: Apple-specific CI checks (TASK-18)       |          |
 | ☐   | Task 4: Privacy policy on GitHub Pages (TASK-07) |          |
