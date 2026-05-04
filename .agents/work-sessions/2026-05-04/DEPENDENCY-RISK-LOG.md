@@ -112,6 +112,16 @@ Rule: append after every cluster task/PR checkpoint before moving on.
 | Field             | Notes                                                                                                                         |
 | ----------------- | ----------------------------------------------------------------------------------------------------------------------------- |
 | Branch            | `feat/codex-cluster2-stitch-correctness` from `main` at `5e57fa9`.                                                            |
-| Baseline          | Pending fresh `mcp__XcodeBuildMCP__.test_sim` before production edits.                                                        |
+| Baseline          | Fresh `mcp__XcodeBuildMCP__.test_sim` passed 164/164 before production edits.                                                  |
 | Known dependency  | Preserve Cluster 1 `StillVideoBaker` tuple/preallocation cleanup and Cluster 0 visible compression fallback behavior.          |
 | Human/iPhone gate | Real stitch exports with audio/HDR/photo-video batches still need a successful TestFlight/device install after the export gate. |
+
+#### Task 1 — HDR Pixel Format + Color Properties
+
+| Field        | Notes                                                                                                                                                                                                                                      |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Key changes  | `CompressionService` now loads source format descriptions before writer setup, detects 10-bit sources, requests 10-bit reader pixel buffers, preserves HDR color properties with BT.2020/HLG defaults, and uses HEVC Main10 for 10-bit HEVC. |
+| Adaptation   | Plan snippets were stale because Cluster 0 already added SDR color properties and the writer settings moved. Detection was moved before `profileLevel`/writer settings, and the existing `AVVideoProfileLevelKey` path is reused.          |
+| Tests        | Added helper tests for 10-bit/8-bit reader pixel formats, HDR BT.2020/HLG color defaults, and HEVC Main10 profile selection.                                                                                                                |
+| Verification | Initial TDD red compile failed on missing `pixelBufferDict`; `mcp__XcodeBuildMCP__.build_sim` succeeded; XcodeBuildMCP CLI `simulator test` passed 168/168 after MCP `test_sim` timed out at 120s.                                           |
+| Watchpoints  | HDR remains simulator/unit verified only. Real HDR visual round-trip on iPhone is pending because TestFlight/device verification is gated.                                                                                                  |

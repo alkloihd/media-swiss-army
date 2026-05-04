@@ -169,6 +169,12 @@ actor CompressionService {
         let nominalFrameRate = try await videoTrack.load(.nominalFrameRate)
         let estimatedDataRate = try await videoTrack.load(.estimatedDataRate)
         let assetDuration = try await asset.load(.duration)
+        let formatDescriptions = (try? await videoTrack.load(.formatDescriptions)) ?? []
+        let is10Bit = Self.is10Bit(formatDescriptions: formatDescriptions)
+        let videoColorProperties = Self.colorProperties(
+            formatDescriptions: formatDescriptions,
+            is10Bit: is10Bit
+        )
 
         // Apply the preferred transform to figure out the rendered size.
         // For a portrait iPhone clip naturalSize is landscape (1920×1080)
@@ -218,12 +224,10 @@ actor CompressionService {
         let frameRate = Self.clamp(frameRate: nominalFrameRate)
         let gop = Self.clamp(gop: Int(frameRate.rounded()) * 2)
 
-        let profileLevel: String = {
-            if settings.videoCodec == .h264 {
-                return AVVideoProfileLevelH264HighAutoLevel
-            }
-            return kVTProfileLevel_HEVC_Main_AutoLevel as String
-        }()
+        let profileLevel = Self.profileLevel(
+            for: settings.videoCodec,
+            is10Bit: is10Bit
+        )
 
         var compressionProps: [String: Any] = [
             AVVideoAverageBitRateKey: NSNumber(value: targetBitrate),
@@ -244,7 +248,7 @@ actor CompressionService {
             AVVideoWidthKey: NSNumber(value: targetWidth),
             AVVideoHeightKey: NSNumber(value: targetHeight),
             AVVideoCompressionPropertiesKey: compressionProps,
-            AVVideoColorPropertiesKey: Self.sdrColorProperties(),
+            AVVideoColorPropertiesKey: videoColorProperties,
         ]
 
         let videoInput = AVAssetWriterInput(
@@ -302,10 +306,7 @@ actor CompressionService {
             throw CompressionError.exportFailed("Could not create reader: \(error.localizedDescription)")
         }
 
-        let pixelFormat: [String: Any] = [
-            kCVPixelBufferPixelFormatTypeKey as String:
-                NSNumber(value: kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange),
-        ]
+        let pixelFormat = Self.pixelBufferDict(forIs10Bit: is10Bit)
 
         let videoReaderOutput: AVAssetReaderOutput
         if let vc = videoComposition {
@@ -583,6 +584,71 @@ actor CompressionService {
         // Round to nearest even, minimum 2.
         let n = max(v, 2)
         return n.isMultiple(of: 2) ? n : n - 1
+    }
+
+    static func is10Bit(formatDescriptions: [CMFormatDescription]) -> Bool {
+        formatDescriptions.contains { fd in
+            let bitsPerComponent = CMFormatDescriptionGetExtension(
+                fd,
+                extensionKey: kCMFormatDescriptionExtension_BitsPerComponent
+            ) as? NSNumber
+            return (bitsPerComponent?.intValue ?? 8) >= 10
+        }
+    }
+
+    /// Maps source bit-depth to the pixel-buffer dictionary the reader
+    /// receives. Exposed for testability — see CompressionServiceTests.
+    static func pixelBufferDict(forIs10Bit is10Bit: Bool) -> [String: Any] {
+        let pixelFormatType = is10Bit
+            ? kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange
+            : kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange
+        return [
+            kCVPixelBufferPixelFormatTypeKey as String:
+                NSNumber(value: pixelFormatType),
+        ]
+    }
+
+    static func colorProperties(
+        formatDescriptions: [CMFormatDescription],
+        is10Bit: Bool
+    ) -> [String: Any] {
+        guard is10Bit else { return sdrColorProperties() }
+
+        let fd = formatDescriptions.first
+        let colorPrimaries = fd.flatMap {
+            CMFormatDescriptionGetExtension(
+                $0,
+                extensionKey: kCMFormatDescriptionExtension_ColorPrimaries
+            ) as? String
+        } ?? AVVideoColorPrimaries_ITU_R_2020
+        let transferFunction = fd.flatMap {
+            CMFormatDescriptionGetExtension(
+                $0,
+                extensionKey: kCMFormatDescriptionExtension_TransferFunction
+            ) as? String
+        } ?? AVVideoTransferFunction_ITU_R_2100_HLG
+        let yCbCrMatrix = fd.flatMap {
+            CMFormatDescriptionGetExtension(
+                $0,
+                extensionKey: kCMFormatDescriptionExtension_YCbCrMatrix
+            ) as? String
+        } ?? AVVideoYCbCrMatrix_ITU_R_2020
+
+        return [
+            AVVideoColorPrimariesKey: colorPrimaries,
+            AVVideoTransferFunctionKey: transferFunction,
+            AVVideoYCbCrMatrixKey: yCbCrMatrix,
+        ]
+    }
+
+    static func profileLevel(for codec: AVVideoCodecType, is10Bit: Bool) -> String {
+        if codec == .h264 {
+            return AVVideoProfileLevelH264HighAutoLevel
+        }
+        if is10Bit {
+            return kVTProfileLevel_HEVC_Main10_AutoLevel as String
+        }
+        return kVTProfileLevel_HEVC_Main_AutoLevel as String
     }
 
     static func sdrColorProperties() -> [String: Any] {
