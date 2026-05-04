@@ -74,3 +74,13 @@ Rule: append after every cluster task/PR checkpoint before moving on.
 | Tests        | Added `CacheSweeperTests` for safe Documents deletion, outside-file preservation, cancel cleanup, nil cancel, short-delay save sweep, `StillBakes` cleanup, `PhotoClean-*` wrapper cleanup, and tmp breakdown. |
 | Verification | TDD compile-red on missing APIs, then `mcp__XcodeBuildMCP__.test_sim` passed 163/163.                                                                                                                          |
 | Watchpoints  | Worker and focused reviewer agents timed out; rely on tests plus later PR review/CI.                                                                                                                           |
+
+#### Task 3 — Cleanup Hook Wiring
+
+| Field        | Notes                                                                                                                                                                                                                                   |
+| ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Key changes  | Cancel/failure cleanup now routes through `CacheSweeper.sweepOnCancel` in compression, stitch passthrough, video metadata strip, photo metadata strip, and photo compression paths. Save-success cleanup now uses delayed sweep hooks. |
+| Adaptation   | Current code saves MetaClean and Stitch outputs to Photos from `MetaCleanExportSheet` and `StitchExportSheet`, not from `MetaCleanQueue.runClean` or `StitchProject.runExport`. Delayed sweeps were wired at the actual save sites.     |
+| Tests        | Existing Cluster 1 cache lifecycle tests plus full simulator suite.                                                                                                                                                                     |
+| Verification | `mcp__XcodeBuildMCP__.test_sim` passed 163/163 after integration.                                                                                                                                                                       |
+| Watchpoints  | Focused Task 3 review agent timed out and was closed. Static grep/diff pass found hooks at actual save-success sites; rely on green tests plus final PR review/CI.                                                                     |

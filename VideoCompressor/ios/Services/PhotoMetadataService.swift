@@ -190,6 +190,7 @@ actor PhotoMetadataService {
         guard let dest = CGImageDestinationCreateWithURL(
             tmpOut as CFURL, utiString, 1, nil
         ) else {
+            await CacheSweeper.shared.sweepOnCancel(predictedOutputURL: tmpOut)
             throw PhotoMetadataServiceError.destinationFailed("CGImageDestinationCreateWithURL nil")
         }
 
@@ -210,36 +211,42 @@ actor PhotoMetadataService {
             dest, source, 0, removeDict as CFDictionary
         )
 
-        try Task.checkCancellation()
-        await MainActor.run { onProgress(BoundedProgress(0.5)) }
-
-        guard CGImageDestinationFinalize(dest) else {
-            throw PhotoMetadataServiceError.writeFailed("CGImageDestinationFinalize false")
-        }
-
-        // Atomic replace at the original URL. `replaceItemAt` handles the
-        // backup + move-into-place + cleanup.
-        let replaced: URL
         do {
-            replaced = try FileManager.default.replaceItemAt(sourceURL, withItemAt: tmpOut) ?? sourceURL
+            try Task.checkCancellation()
+            await MainActor.run { onProgress(BoundedProgress(0.5)) }
+
+            guard CGImageDestinationFinalize(dest) else {
+                throw PhotoMetadataServiceError.writeFailed("CGImageDestinationFinalize false")
+            }
+
+            // Atomic replace at the original URL. `replaceItemAt` handles the
+            // backup + move-into-place + cleanup.
+            let replaced = try FileManager.default.replaceItemAt(sourceURL, withItemAt: tmpOut) ?? sourceURL
+
+            // Best-effort cleanup of the temp dir wrapper.
+            await CacheSweeper.shared.sweepOnCancel(predictedOutputURL: tmpOut)
+
+            let bytes: Int64 = (try? FileManager.default
+                .attributesOfItem(atPath: replaced.path)[.size] as? NSNumber)?.int64Value ?? 0
+
+            await MainActor.run { onProgress(.complete) }
+
+            return MetadataCleanResult(
+                cleanedURL: replaced,
+                bytes: bytes,
+                tagsStripped: stripped,
+                tagsKept: kept
+            )
         } catch {
+            await CacheSweeper.shared.sweepOnCancel(predictedOutputURL: tmpOut)
+            if error is CancellationError {
+                throw error
+            }
+            if error is PhotoMetadataServiceError {
+                throw error
+            }
             throw PhotoMetadataServiceError.writeFailed(error.localizedDescription)
         }
-
-        // Best-effort cleanup of the temp dir wrapper.
-        try? FileManager.default.removeItem(at: tmpDir)
-
-        let bytes: Int64 = (try? FileManager.default
-            .attributesOfItem(atPath: replaced.path)[.size] as? NSNumber)?.int64Value ?? 0
-
-        await MainActor.run { onProgress(.complete) }
-
-        return MetadataCleanResult(
-            cleanedURL: replaced,
-            bytes: bytes,
-            tagsStripped: stripped,
-            tagsKept: kept
-        )
     }
 
     // MARK: - Auto-fingerprint helper (parity with MetadataService)

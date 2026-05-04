@@ -213,10 +213,10 @@ struct StitchExportSheet: View {
                 saveStatus = .saved
                 UINotificationFeedbackGenerator().notificationOccurred(.success)
                 // Audit-9-F2 fix: stitched output is now safely in Photos.
-                // Delete our sandbox copy from Documents/StitchOutputs/ —
-                // a 600 MB stitch otherwise sits there forever.
+                // Keep the sandbox copy briefly for immediate share/retry
+                // flows, then sweep it from Documents/StitchOutputs/.
                 Task.detached(priority: .utility) {
-                    await CacheSweeper.shared.deleteIfInWorkingDir(url)
+                    await CacheSweeper.shared.sweepAfterSave(url)
                 }
             } catch {
                 if !Task.isCancelled {

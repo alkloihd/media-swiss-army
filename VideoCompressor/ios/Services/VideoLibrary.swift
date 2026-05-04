@@ -466,18 +466,17 @@ final class VideoLibrary: ObservableObject {
             }
             UINotificationFeedbackGenerator().notificationOccurred(.success)
 
-            // Opportunistic delete: the compressed output is now safely in the
-            // Photos library. Delete BOTH:
-            //   1. Sandbox copy of the source in Inputs/ (we already had this
-            //      file in Photos)
-            //   2. Our compressed-output copy in Outputs/ (now duplicated in
-            //      Photos — was leaking; user-reported, Audit-9-F1).
-            // The Photos library originals are never touched.
+            // Opportunistic cleanup: the compressed output is now safely in
+            // Photos, but keep the sandbox output briefly so immediate share /
+            // retry flows still have a file handle. The source copy is only
+            // our staged Inputs/ file, so it can be removed right away when it
+            // is still inside a managed working dir. Photos originals are
+            // never touched by this path.
             let sourceURL = video.sourceURL
             let outputURL = url
             Task.detached(priority: .utility) {
                 await CacheSweeper.shared.deleteIfInWorkingDir(sourceURL)
-                await CacheSweeper.shared.deleteIfInWorkingDir(outputURL)
+                await CacheSweeper.shared.sweepAfterSave(outputURL)
             }
         } catch {
             if let i = videos.firstIndex(where: { $0.id == id }) {

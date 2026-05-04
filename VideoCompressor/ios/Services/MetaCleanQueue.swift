@@ -254,6 +254,12 @@ extension MetaCleanQueue {
                             cleanedURL: result.cleanedURL,
                             originalAssetID: assetID
                         )
+                        let outputURL = result.cleanedURL
+                        let inputURL = item.sourceURL
+                        Task.detached(priority: .utility) {
+                            await CacheSweeper.shared.sweepAfterSave(outputURL)
+                            await CacheSweeper.shared.deleteIfInWorkingDir(inputURL)
+                        }
                     } catch {
                         batchProgress.failed += 1
                         batchProgress.lastError = error.localizedDescription

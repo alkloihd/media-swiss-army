@@ -10,10 +10,11 @@ struct VideoCompressorApp: App {
     @StateObject private var library = VideoLibrary()
 
     init() {
-        // Sweep files older than 7 days at launch. Task.detached so startup
-        // is not blocked — filesystem enumeration runs off the main thread.
+        // Tight launch hygiene for app-owned working files. Task.detached so
+        // startup is not blocked — filesystem enumeration runs off the main
+        // thread.
         Task.detached(priority: .utility) {
-            await CacheSweeper.shared.sweepOnLaunch(daysOld: 7)
+            await CacheSweeper.shared.sweepOnLaunchTight()
         }
     }
 

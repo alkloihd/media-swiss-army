@@ -99,7 +99,7 @@ actor MetadataService {
         }
 
         let outputURL = Self.cleanedURL(for: sourceURL)
-        try? FileManager.default.removeItem(at: outputURL)
+        await CacheSweeper.shared.sweepOnCancel(predictedOutputURL: outputURL)
 
         // File type must match the output container — passing .mp4 when
         // outputURL ends in .mov produces a file Photos rejects with 3302.
@@ -302,12 +302,13 @@ actor MetadataService {
 
         if Task.isCancelled {
             writer.cancelWriting()
-            try? FileManager.default.removeItem(at: outputURL)
+            await CacheSweeper.shared.sweepOnCancel(predictedOutputURL: outputURL)
             throw MetadataServiceError.cancelled
         }
 
         await writer.finishWriting()
         if writer.status != .completed {
+            await CacheSweeper.shared.sweepOnCancel(predictedOutputURL: outputURL)
             let detail = writer.error?.localizedDescription
                 ?? "Writer ended with status \(writer.status.rawValue)"
             throw MetadataServiceError.writeFailed(detail)

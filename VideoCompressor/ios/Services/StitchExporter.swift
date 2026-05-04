@@ -964,10 +964,10 @@ actor StitchExporter {
         case .cancelled:
             // Audit-7-C1 fix: clean up the partial output file. The
             // re-encode path already does this; passthrough did not.
-            try? FileManager.default.removeItem(at: outputURL)
+            await CacheSweeper.shared.sweepOnCancel(predictedOutputURL: outputURL)
             throw CompressionError.cancelled
         case .failed:
-            try? FileManager.default.removeItem(at: outputURL)
+            await CacheSweeper.shared.sweepOnCancel(predictedOutputURL: outputURL)
             let nsErr = exporter.error as NSError?
             // Translate the most common interruption cause for the user.
             if nsErr?.code == -11847 {
@@ -978,7 +978,7 @@ actor StitchExporter {
             let detail = nsErr.map { "[\($0.domain) \($0.code)] \($0.localizedDescription)" } ?? "Unknown export error"
             throw CompressionError.exportFailed("Stitch passthrough failed: \(detail)")
         @unknown default:
-            try? FileManager.default.removeItem(at: outputURL)
+            await CacheSweeper.shared.sweepOnCancel(predictedOutputURL: outputURL)
             throw CompressionError.exportFailed("Stitch passthrough reached non-terminal state.")
         }
     }

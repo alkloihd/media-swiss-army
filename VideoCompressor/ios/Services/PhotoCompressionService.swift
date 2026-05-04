@@ -116,7 +116,7 @@ actor PhotoCompressionService {
         // compress flow's file-naming convention; the `_BAL.heic` etc. suffix
         // comes from the settings).
         let outputURL = Self.outputURL(for: input, settings: settings)
-        try? FileManager.default.removeItem(at: outputURL)
+        await CacheSweeper.shared.sweepOnCancel(predictedOutputURL: outputURL)
 
         guard let dest = CGImageDestinationCreateWithURL(
             outputURL as CFURL,
@@ -124,6 +124,7 @@ actor PhotoCompressionService {
             1,
             nil
         ) else {
+            await CacheSweeper.shared.sweepOnCancel(predictedOutputURL: outputURL)
             throw PhotoCompressionError.destinationFailed(
                 "CGImageDestinationCreateWithURL nil for \(settings.outputFormat.fileExtension)"
             )
@@ -145,16 +146,21 @@ actor PhotoCompressionService {
 
         CGImageDestinationAddImage(dest, cgImage, imageProps as CFDictionary)
 
-        try Task.checkCancellation()
+        do {
+            try Task.checkCancellation()
 
-        guard CGImageDestinationFinalize(dest) else {
-            throw PhotoCompressionError.writeFailed(
-                "CGImageDestinationFinalize returned false"
-            )
+            guard CGImageDestinationFinalize(dest) else {
+                throw PhotoCompressionError.writeFailed(
+                    "CGImageDestinationFinalize returned false"
+                )
+            }
+
+            await MainActor.run { onProgress(BoundedProgress(1.0)) }
+            return outputURL
+        } catch {
+            await CacheSweeper.shared.sweepOnCancel(predictedOutputURL: outputURL)
+            throw error
         }
-
-        await MainActor.run { onProgress(BoundedProgress(1.0)) }
-        return outputURL
     }
 
     /// Output path: same parent as `CompressionService` (Documents/Outputs)
