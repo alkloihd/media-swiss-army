@@ -59,7 +59,7 @@
 | ☑   | Task 3: Stage filename collision (always UUID-prefix)                | Added a static staging test hook and changed staging to always lowercased 6-char UUID prefix. Test adapted to use `.mov` source files so suggested `clip.mov` stages as `xxxxxx-clip.mov`. TDD red compile-failed on missing hook; green XcodeBuildMCP CLI `simulator test` passed `170/170` after MCP timeout. |
 | ☑   | Task 4: Auto-sort imports oldest-first (Bug 3 / DIAG-sort-direction) | Added a tested `finalizeImportOrdering` seam and called it after `importClips` completes, instead of only testing `sortByCreationDateAsync()` directly. TDD red compile-failed on missing hook; green XcodeBuildMCP CLI `simulator test` passed `171/171` after MCP timeout. |
 | ☑   | Task 4.5: Device Stitch -11841 + re-render gate                      | Added after TestFlight real-device report on `main@936cafb`. Stitch re-encode now retries `-11841` with stitch-specific downshift, `Small -> Streaming`, and transition exports rebuild without transitions before preset retry if the transition composition is rejected. Finished Stitch exports now expose `Export Again`, stale swept outputs no longer offer Save, and fallback notes surface in the sheet. Verification: `build_sim` succeeded; `test_sim` passed `182` total (`181` passed, `1` documented simulator-fixture skip). |
-| ☐   | Task 5: Push, PR, CI, merge → TestFlight #2                          |          |
+| ☑   | Task 5: Push, PR, CI, merge → TestFlight #2                          | PR #13 merged to `main` as `1d886cc`; PR checks passed. TestFlight workflow run `25317235711` succeeded in 2m59s. Real iPhone confirmation for the original Stitch encoder/report remains pending after the user installs the TestFlight build. |
 
 ---
 
