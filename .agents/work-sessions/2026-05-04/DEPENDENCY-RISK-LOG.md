@@ -145,3 +145,13 @@ Rule: append after every cluster task/PR checkpoint before moving on.
 | Tests        | Added `StitchProjectStageTests` for delete-then-reimport of `clip.mov`, asserting distinct UUID-prefixed staged paths even when the first staged file was deleted.                                                       |
 | Verification | TDD red: compile failed on missing `testHook_stageToStitchInputs`. Green: XcodeBuildMCP CLI `simulator test` passed 170/170 after MCP `test_sim` timed out at 120s.                                                     |
 | Watchpoints  | None beyond real-device import behavior pending behind the external device/TestFlight gate.                                                                                                                            |
+
+#### Task 4 — Import Auto-Sort Oldest First
+
+| Field        | Notes                                                                                                                                                                                            |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Key changes  | `StitchTabView.importClips` now calls `finalizeImportOrdering(project:)` after the import loop, which runs `sortByCreationDateAsync()` so PhotosPicker newest-first delivery becomes oldest-first. |
+| Adaptation   | Added a small tested import-finalization seam instead of only testing `sortByCreationDateAsync()` directly; this proves the production import path calls the sorter.                              |
+| Tests        | Added `StitchProjectSortTests.testImportFinalizationAutoSortsOldestFirst` using newest-first clips with explicit dates.                                                                           |
+| Verification | TDD red: compile failed on missing `testHook_finalizeImportOrdering`. Green: XcodeBuildMCP CLI `simulator test` passed 171/171 after MCP `test_sim` timed out at 120s.                            |
+| Watchpoints  | Real PhotosPicker import ordering remains simulator-unit verified; real-device timeline inspection is pending behind the external device/TestFlight gate.                                         |

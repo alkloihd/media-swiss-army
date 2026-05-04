@@ -372,6 +372,7 @@ struct StitchTabView: View {
                 }
             }
         }
+        await Self.finalizeImportOrdering(project: project)
     }
 
     /// Moves the picker-staged temp file into `StitchInputs/`.
@@ -419,6 +420,18 @@ struct StitchTabView: View {
             suggestedName: suggestedName,
             into: dir
         )
+    }
+
+    @discardableResult
+    @MainActor
+    static func finalizeImportOrdering(project: StitchProject) async -> Bool {
+        await project.sortByCreationDateAsync()
+    }
+
+    @discardableResult
+    @MainActor
+    static func testHook_finalizeImportOrdering(project: StitchProject) async -> Bool {
+        await finalizeImportOrdering(project: project)
     }
 }
 
