@@ -19,6 +19,7 @@ struct StitchTabView: View {
     @StateObject private var project = StitchProject()
     @State private var pickerItems: [PhotosPickerItem] = []
     @State private var showExportSheet = false
+    @State private var showStartOverConfirmation = false
     /// Drives the inline ClipEditorInlinePanel below the timeline. nil when
     /// no clip is being edited. Tapping a timeline tile sets it; tapping
     /// the same tile again or the panel's X button clears it.
@@ -88,27 +89,47 @@ struct StitchTabView: View {
                     .accessibilityIdentifier("stitchAddButton")
                 }
                 ToolbarItem(placement: .topBarTrailing) {
-                    if project.clips.count >= 2 {
+                    if !project.clips.isEmpty {
                         Menu {
-                            Button {
-                                Task {
-                                    let changed = await project.sortByCreationDateAsync()
-                                    if changed {
-                                        Haptics.tapMedium()
-                                    } else {
-                                        Haptics.notifyWarning()
+                            if project.clips.count >= 2 {
+                                Button {
+                                    Task {
+                                        let changed = await project.sortByCreationDateAsync()
+                                        if changed {
+                                            Haptics.tapMedium()
+                                        } else {
+                                            Haptics.notifyWarning()
+                                        }
                                     }
+                                } label: {
+                                    Label("Sort by Date Taken", systemImage: "calendar")
                                 }
+                            }
+                            Button(role: .destructive) {
+                                showStartOverConfirmation = true
                             } label: {
-                                Label("Sort by Date Taken", systemImage: "calendar")
+                                Label("Start Over", systemImage: "arrow.counterclockwise.circle")
                             }
                         } label: {
-                            Image(systemName: "arrow.up.arrow.down.circle")
+                            Image(systemName: "ellipsis.circle")
                                 .imageScale(.large)
                         }
                         .accessibilityIdentifier("stitchSortMenu")
                     }
                 }
+            }
+            .confirmationDialog(
+                "Clear all \(project.clips.count) clip\(project.clips.count == 1 ? "" : "s") and start over?",
+                isPresented: $showStartOverConfirmation,
+                titleVisibility: .visible
+            ) {
+                Button("Start Over", role: .destructive) {
+                    project.clearAll()
+                    Haptics.notifyWarning()
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("This deletes the staged clips from the app's storage. Files in your Photos library are untouched.")
             }
             .safeAreaInset(edge: .bottom) {
                 if !project.clips.isEmpty {

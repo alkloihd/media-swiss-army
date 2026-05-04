@@ -109,6 +109,21 @@ final class StitchProject: ObservableObject {
         clips.move(fromOffsets: src, toOffset: dst)
     }
 
+    /// Wipes the entire project: removes every clip and its on-disk source
+    /// file (scoped to `inputsDir`, same safety semantics as `remove(at:)`),
+    /// resets export state to `.idle`, clears edit histories. Idempotent —
+    /// calling on an empty project is a no-op. Used by the "Start Over"
+    /// toolbar action and the post-save "Done — start a new project" CTA.
+    func clearAll() {
+        guard !clips.isEmpty || exportState != .idle else { return }
+        let allOffsets = IndexSet(integersIn: 0..<clips.count)
+        if !allOffsets.isEmpty {
+            remove(at: allOffsets)
+        }
+        histories.removeAll()
+        exportState = .idle
+    }
+
     /// Inserts a clip immediately after the given index. Used by the
     /// "Duplicate" context-menu action so the duplicate sits next to its
     /// source in the timeline. The duplicate's `sourceURL` typically

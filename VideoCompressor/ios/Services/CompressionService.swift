@@ -692,13 +692,20 @@ enum CompressionError: Error, LocalizedError, Hashable, Sendable {
     case exporterUnavailable(String)
     case exportFailed(String)
     case cancelled
+    /// All retry attempts in the stitch fallback chain failed with the
+    /// device's hardware encoder rejecting the configuration. Surfaced
+    /// instead of raw `AVFoundationErrorDomain -11841` so the user gets a
+    /// recovery hint rather than an opaque error code. Carries a friendly,
+    /// pre-formatted message that the UI renders inline.
+    case encoderEnvelopeRejected(message: String)
 
     var errorDescription: String? {
         switch self {
-        case .noVideoTrack:               return "Source file has no video track."
-        case .exporterUnavailable(let p): return "AVAssetExportSession does not support preset \(p) on this device."
-        case .exportFailed(let msg):      return "Compression failed: \(msg)"
-        case .cancelled:                  return "Compression was cancelled."
+        case .noVideoTrack:                     return "Source file has no video track."
+        case .exporterUnavailable(let p):       return "AVAssetExportSession does not support preset \(p) on this device."
+        case .exportFailed(let msg):            return "Compression failed: \(msg)"
+        case .cancelled:                        return "Compression was cancelled."
+        case .encoderEnvelopeRejected(let msg): return msg
         }
     }
 }
