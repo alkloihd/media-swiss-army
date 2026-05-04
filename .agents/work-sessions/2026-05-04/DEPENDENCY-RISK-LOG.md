@@ -84,3 +84,10 @@ Rule: append after every cluster task/PR checkpoint before moving on.
 | Tests        | Existing Cluster 1 cache lifecycle tests plus full simulator suite.                                                                                                                                                                     |
 | Verification | `mcp__XcodeBuildMCP__.test_sim` passed 163/163 after integration.                                                                                                                                                                       |
 | Watchpoints  | Focused Task 3 review agent timed out and was closed. Static grep/diff pass found hooks at actual save-success sites; rely on green tests plus final PR review/CI.                                                                     |
+
+#### Final Local Verification
+
+| Field        | Notes                                                                                           |
+| ------------ | ----------------------------------------------------------------------------------------------- |
+| Verification | `mcp__XcodeBuildMCP__.test_sim` passed 163/163; `mcp__XcodeBuildMCP__.build_sim` succeeded.     |
+| PR readiness | CHANGELOG, task manifest, dependency/risk log, and AI chat log updated before push/PR creation. |
