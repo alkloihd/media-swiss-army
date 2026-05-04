@@ -349,3 +349,13 @@ Rule: append after every cluster task/PR checkpoint before moving on.
 | Tests        | Added false-positive/user-typed rejection, large binary bare-`meta`, short-payload min-length, user-typed real marker rejection, legacy Ray-Ban, and non-comment key rejection tests.                              |
 | Verification | TDD red failed on old detector signature; focused registry + metadata tag tests passed `26/26`; full `test_sim` passed `237` total: `236` passed, `1` documented simulator-fixture skip.                         |
 | Watchpoints  | Only video detection/classification changed; `MetadataService.strip` and stripping predicates were not edited.                                                                                                    |
+
+#### Task 4 — PhotoMetadataService Registry Wire-In
+
+| Field        | Notes                                                                                                                                                                                                                  |
+| ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Key changes  | `PhotoMetadataService.xmpContainsFingerprint` and `isFingerprintTag` now read XMP/MakerApple markers from `MetaMarkerRegistry`; `makeTag` and its callers became async; XMP uses the min-length guard.                 |
+| Adaptation   | Used explicit `let hit = await ...` test style instead of async autoclosure helpers to avoid XCTest autoclosure/async compile issues. Preserved all existing PhotoMedia assertions.                                    |
+| Tests        | Added XMP registry marker, XMP min-length rejection, Oakley Meta MakerApple detection, and iPhone MakerApple rejection. Upgraded 7 XMP + 4 MakerApple existing calls to async.                                           |
+| Verification | TDD red failed on old XMP signature; async cascade grep was completed; focused registry + photo classification tests passed `18/18`; full `test_sim` passed `241` total: `240` passed, `1` documented simulator skip. |
+| Watchpoints  | Only still-photo detection/classification changed; `PhotoMetadataService.strip`, `buildRemoveDict`, and ImageIO write/remove logic were not edited.                                                                     |

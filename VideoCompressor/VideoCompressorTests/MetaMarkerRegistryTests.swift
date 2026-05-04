@@ -143,4 +143,42 @@ final class MetaMarkerRegistryTests: XCTestCase {
 
         XCTAssertFalse(hit, "Detector only matches comment/description atoms.")
     }
+
+    func testXMPFingerprintTriggersOnRegistryMarker() async {
+        let hit = await PhotoMetadataService.xmpContainsFingerprint(
+            "<x:xmpmeta>...xmp.MetaAI...</x:xmpmeta>",
+            packetByteCount: 256
+        )
+
+        XCTAssertTrue(hit)
+    }
+
+    func testXMPFingerprintRejectsBelowMinimumLength() async {
+        let hit = await PhotoMetadataService.xmpContainsFingerprint(
+            "meta:",
+            packetByteCount: 5
+        )
+
+        XCTAssertFalse(hit, "Tiny XMP packets below the minimum length must not trigger.")
+    }
+
+    func testMakerAppleSoftwareDetectsOakleyMeta() async {
+        let hit = await PhotoMetadataService.isFingerprintTag(
+            namespace: "MakerApple",
+            key: "Software",
+            value: "Oakley Meta v1.0"
+        )
+
+        XCTAssertTrue(hit, "Oakley Meta must be detected via registry expansion.")
+    }
+
+    func testMakerAppleSoftwareRejectsIPhone() async {
+        let hit = await PhotoMetadataService.isFingerprintTag(
+            namespace: "MakerApple",
+            key: "Software",
+            value: "iPhone 15 Pro"
+        )
+
+        XCTAssertFalse(hit)
+    }
 }
