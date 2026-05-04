@@ -23,6 +23,33 @@ enum StitchClipFetcher {
         PHPhotoLibrary.authorizationStatus(for: .readWrite)
     }
 
+    static let liveAssetCreationDateProvider: @Sendable (String) async -> Date? = { assetID in
+        await Task.detached(priority: .userInitiated) {
+            let result = PHAsset.fetchAssets(
+                withLocalIdentifiers: [assetID],
+                options: nil
+            )
+            guard let asset = result.firstObject else { return nil as Date? }
+            return asset.creationDate
+        }.value
+    }
+
+    static let liveAssetCreationDatesProvider: @Sendable ([String]) async -> [String: Date] = { assetIDs in
+        await Task.detached(priority: .userInitiated) {
+            let result = PHAsset.fetchAssets(
+                withLocalIdentifiers: assetIDs,
+                options: nil
+            )
+            var out: [String: Date] = [:]
+            result.enumerateObjects { asset, _, _ in
+                if let date = asset.creationDate {
+                    out[asset.localIdentifier] = date
+                }
+            }
+            return out
+        }.value
+    }
+
     private static func authorizedToRead(
         _ provider: @Sendable () -> PHAuthorizationStatus
     ) -> Bool {
@@ -39,21 +66,12 @@ enum StitchClipFetcher {
     /// - any other Photos error
     static func creationDate(
         forAssetID assetID: String?,
-        authStatusProvider: @Sendable () -> PHAuthorizationStatus = liveAuthStatusProvider
+        authStatusProvider: @Sendable () -> PHAuthorizationStatus = liveAuthStatusProvider,
+        assetCreationDateProvider: @Sendable (String) async -> Date? = liveAssetCreationDateProvider
     ) async -> Date? {
         guard let assetID = assetID else { return nil }
         guard authorizedToRead(authStatusProvider) else { return nil }
-        // PHAsset.fetchAssets is synchronous — wrap in a detached Task so we
-        // don't block the import flow's main-actor context for assets that
-        // are slow to materialise on first access.
-        return await Task.detached(priority: .userInitiated) {
-            let result = PHAsset.fetchAssets(
-                withLocalIdentifiers: [assetID],
-                options: nil
-            )
-            guard let asset = result.firstObject else { return nil as Date? }
-            return asset.creationDate
-        }.value
+        return await assetCreationDateProvider(assetID)
     }
 
     /// BATCH variant — single Photos fetch resolves N asset IDs in one go.
@@ -64,23 +82,12 @@ enum StitchClipFetcher {
     /// .authorized or .limited.
     static func creationDates(
         forAssetIDs assetIDs: [String],
-        authStatusProvider: @Sendable () -> PHAuthorizationStatus = liveAuthStatusProvider
+        authStatusProvider: @Sendable () -> PHAuthorizationStatus = liveAuthStatusProvider,
+        assetCreationDatesProvider: @Sendable ([String]) async -> [String: Date] = liveAssetCreationDatesProvider
     ) async -> [String: Date] {
         let unique = Array(Set(assetIDs.filter { !$0.isEmpty }))
         guard !unique.isEmpty else { return [:] }
         guard authorizedToRead(authStatusProvider) else { return [:] }
-        return await Task.detached(priority: .userInitiated) {
-            let result = PHAsset.fetchAssets(
-                withLocalIdentifiers: unique,
-                options: nil
-            )
-            var out: [String: Date] = [:]
-            result.enumerateObjects { asset, _, _ in
-                if let date = asset.creationDate {
-                    out[asset.localIdentifier] = date
-                }
-            }
-            return out
-        }.value
+        return await assetCreationDatesProvider(unique)
     }
 }
