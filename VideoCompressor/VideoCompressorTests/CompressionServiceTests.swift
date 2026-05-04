@@ -32,6 +32,21 @@ final class CompressionServiceTests: XCTestCase {
         ((try? FileManager.default.attributesOfItem(atPath: url.path)[.size]) as? NSNumber)?.int64Value ?? 0
     }
 
+    private final class AttemptRecorder: @unchecked Sendable {
+        private let lock = NSLock()
+        private var _settings: [CompressionSettings] = []
+
+        func record(_ settings: CompressionSettings) {
+            lock.lock(); defer { lock.unlock() }
+            _settings.append(settings)
+        }
+
+        var settings: [CompressionSettings] {
+            lock.lock(); defer { lock.unlock() }
+            return _settings
+        }
+    }
+
     // MARK: - Smart-cap acceptance: small preset shrinks the source
 
     func testSmallPresetProducesStrictlySmallerOutput() async throws {
@@ -40,14 +55,16 @@ final class CompressionServiceTests: XCTestCase {
         XCTAssertGreaterThan(srcSize, 0, "Fixture must have non-zero size.")
 
         let service = CompressionService()
-        let outURL = try await service.compress(
+        let result = try await service.compress(
             input: input,
             settings: .small,
             onProgress: { _ in }
         )
-        defer { try? FileManager.default.removeItem(at: outURL) }
+        defer { try? FileManager.default.removeItem(at: result.url) }
+        XCTAssertEqual(result.settings.id, CompressionSettings.small.id)
+        XCTAssertNil(result.fallbackMessage)
 
-        let outSize = sourceBytes(outURL)
+        let outSize = sourceBytes(result.url)
         XCTAssertGreaterThan(outSize, 0, "Output should exist and be non-empty.")
         XCTAssertLessThan(
             outSize, srcSize,
@@ -55,26 +72,28 @@ final class CompressionServiceTests: XCTestCase {
         )
     }
 
-    // MARK: - Max preset round-trips at roughly source bitrate
+    // MARK: - Max preset stays close to source quality under the capped target
 
     func testMaxPresetPreservesSourceBitrate() async throws {
         let input = try requireFixture()
         let srcSize = sourceBytes(input)
 
         let service = CompressionService()
-        let outURL = try await service.compress(
+        let result = try await service.compress(
             input: input,
             settings: .max,
             onProgress: { _ in }
         )
-        defer { try? FileManager.default.removeItem(at: outURL) }
+        defer { try? FileManager.default.removeItem(at: result.url) }
+        XCTAssertEqual(result.settings.id, CompressionSettings.max.id)
+        XCTAssertNil(result.fallbackMessage)
 
-        let outSize = sourceBytes(outURL)
+        let outSize = sourceBytes(result.url)
         XCTAssertGreaterThan(outSize, 0)
-        // Max preset re-encodes at source bitrate, but switches H.264 → HEVC,
-        // which is ~30-50% more efficient at equal quality. So the output is
-        // expected to be smaller. We just assert it's reasonable: within 2×
-        // either direction of source size to catch absurd outliers.
+        // Max preset re-encodes near source quality with a 90%-of-source
+        // target cap, and switches H.264 → HEVC, which is more efficient at
+        // equal quality. The output is expected to be smaller; we just assert
+        // it's reasonable to catch absurd outliers.
         XCTAssertLessThan(outSize, srcSize * 2, "Max output should not balloon vs source.")
         XCTAssertGreaterThan(outSize, srcSize / 4, "Max output should not collapse.")
     }
@@ -121,5 +140,148 @@ final class CompressionServiceTests: XCTestCase {
             FileManager.default.fileExists(atPath: predicted.path),
             "Cancelled encode must not leave an output file at \(predicted.path)."
         )
+    }
+
+    // MARK: - Cluster 0 writer safety settings
+
+    func testSDRColorPropertiesShape() {
+        let props = CompressionService.sdrColorProperties()
+        XCTAssertEqual(
+            props[AVVideoColorPrimariesKey] as? String,
+            AVVideoColorPrimaries_ITU_R_709_2
+        )
+        XCTAssertEqual(
+            props[AVVideoTransferFunctionKey] as? String,
+            AVVideoTransferFunction_ITU_R_709_2
+        )
+        XCTAssertEqual(
+            props[AVVideoYCbCrMatrixKey] as? String,
+            AVVideoYCbCrMatrix_ITU_R_709_2
+        )
+    }
+
+    func testFrameRateClampedToMax120() {
+        XCTAssertEqual(CompressionService.clamp(frameRate: 30), 30)
+        XCTAssertEqual(CompressionService.clamp(frameRate: 60), 60)
+        XCTAssertEqual(CompressionService.clamp(frameRate: 120), 120)
+        XCTAssertEqual(
+            CompressionService.clamp(frameRate: 240), 120,
+            "240 fps slow-mo must clamp to 120."
+        )
+        XCTAssertEqual(
+            CompressionService.clamp(frameRate: 0), 30,
+            "Zero/missing nominalFrameRate must default to 30."
+        )
+    }
+
+    func testGopClampedToMax60() {
+        XCTAssertEqual(CompressionService.clamp(gop: 60), 60)
+        XCTAssertEqual(
+            CompressionService.clamp(gop: 240), 60,
+            "Slow-mo GOP must clamp to 60."
+        )
+        XCTAssertEqual(
+            CompressionService.clamp(gop: 1), 2,
+            "GOP must be at least 2."
+        )
+    }
+
+    // MARK: - Cluster 0 downshift retry
+
+    func testDownshiftTableMaxToBalanced() {
+        let next = CompressionService.downshift(from: .max)
+        XCTAssertEqual(next?.id, CompressionSettings.balanced.id, "Max must downshift to Balanced.")
+    }
+
+    func testDownshiftTableBalancedToSmall() {
+        let next = CompressionService.downshift(from: .balanced)
+        XCTAssertEqual(next?.id, CompressionSettings.small.id, "Balanced must downshift to Small.")
+    }
+
+    func testDownshiftTableStreamingToSmall() {
+        let next = CompressionService.downshift(from: .streaming)
+        XCTAssertEqual(next?.id, CompressionSettings.small.id, "Streaming must downshift to Small.")
+    }
+
+    func testDownshiftTableSmallReturnsNil() {
+        XCTAssertNil(
+            CompressionService.downshift(from: .small),
+            "Small is the safest preset and has no further fallback."
+        )
+    }
+
+    func testDownshiftMessageNamesOriginalAndFallbackPresets() {
+        let message = CompressionService.downshiftMessage(from: .max, to: .balanced)
+        XCTAssertTrue(message.contains(CompressionSettings.max.title))
+        XCTAssertTrue(message.contains(CompressionSettings.balanced.title))
+    }
+
+    func testEncoderEnvelopeRejectionDetectionRecognizesMinus11841() {
+        XCTAssertTrue(
+            CompressionService.isEncoderEnvelopeRejectionMessage(
+                "Encode failed: [AVFoundationErrorDomain -11841] Operation Stopped"
+            )
+        )
+        XCTAssertFalse(
+            CompressionService.isEncoderEnvelopeRejectionMessage(
+                "Encode failed: [AVFoundationErrorDomain -11847] background interruption"
+            )
+        )
+    }
+
+    func testSyntheticMinus11841RetryReturnsFallbackResult() async throws {
+        let input = URL(fileURLWithPath: "/tmp/synthetic-retry-source.mov")
+        let recorder = AttemptRecorder()
+
+        let result = try await CompressionService.runWithOneShotDownshift(
+            inputURL: input,
+            settings: .max,
+            onRetry: {}
+        ) { settings, outputURL, attempt in
+            recorder.record(settings)
+            if attempt == 0 {
+                throw CompressionError.exportFailed("[AVFoundationErrorDomain -11841]")
+            }
+            XCTAssertEqual(settings.id, CompressionSettings.balanced.id)
+            XCTAssertEqual(
+                outputURL.lastPathComponent,
+                CompressionService.outputURL(forInput: input, settings: .balanced).lastPathComponent
+            )
+            return outputURL
+        }
+
+        XCTAssertEqual(recorder.settings.map(\.id), [
+            CompressionSettings.max.id,
+            CompressionSettings.balanced.id,
+        ])
+        XCTAssertEqual(result.settings.id, CompressionSettings.balanced.id)
+        XCTAssertEqual(
+            result.fallbackMessage,
+            CompressionService.downshiftMessage(from: .max, to: .balanced)
+        )
+    }
+
+    func testSyntheticMinus11841RetryIsOneShot() async throws {
+        let input = URL(fileURLWithPath: "/tmp/synthetic-double-failure-source.mov")
+        let recorder = AttemptRecorder()
+
+        do {
+            _ = try await CompressionService.runWithOneShotDownshift(
+                inputURL: input,
+                settings: .max,
+                onRetry: {}
+            ) { settings, _, _ in
+                recorder.record(settings)
+                throw CompressionError.exportFailed("[AVFoundationErrorDomain -11841]")
+            }
+            XCTFail("Second -11841 should surface instead of recursively retrying.")
+        } catch CompressionError.exportFailed(let message) {
+            XCTAssertTrue(message.contains("-11841"))
+        }
+
+        XCTAssertEqual(recorder.settings.map(\.id), [
+            CompressionSettings.max.id,
+            CompressionSettings.balanced.id,
+        ])
     }
 }

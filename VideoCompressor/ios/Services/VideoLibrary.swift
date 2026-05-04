@@ -266,7 +266,7 @@ final class VideoLibrary: ObservableObject {
         let perJobService = CompressionService()
 
         do {
-            let outputURL = try await perJobService.compress(
+            let result = try await perJobService.compress(
                 input: inputURL,
                 settings: settings
             ) { [weak self] progress in
@@ -275,6 +275,7 @@ final class VideoLibrary: ObservableObject {
                     self.videos[i].jobState = .running(progress: progress)
                 }
             }
+            let outputURL = result.url
 
             let bytes: Int64
             do {
@@ -347,7 +348,8 @@ final class VideoLibrary: ObservableObject {
                 url: outputURL,
                 bytes: finalBytes,
                 createdAt: Date(),
-                settings: settings
+                settings: result.settings,
+                note: result.fallbackMessage
             )
         } catch is CancellationError {
             if let i = videos.firstIndex(where: { $0.id == id }) {

@@ -17,6 +17,21 @@ struct CompressedOutput: Hashable, Sendable {
     /// video-only. Photo outputs carry their settings indirectly via the
     /// filename suffix; the row UI doesn't need this field for savings calc.
     let settings: CompressionSettings?
+    let note: String?
+
+    init(
+        url: URL,
+        bytes: Int64,
+        createdAt: Date,
+        settings: CompressionSettings?,
+        note: String? = nil
+    ) {
+        self.url = url
+        self.bytes = bytes
+        self.createdAt = createdAt
+        self.settings = settings
+        self.note = note
+    }
 
     var sizeLabel: String {
         ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)

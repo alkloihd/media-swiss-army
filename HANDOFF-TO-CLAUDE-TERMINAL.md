@@ -32,7 +32,7 @@ A SwiftUI + AVFoundation iOS 17+ app with **four tabs**: Compress / Stitch / Met
 - App Store name (planned): `MetaClean: AI Glasses Data`
 - Min iOS: 17.0
 
-**Repo:** `https://github.com/alkloihd/video-compressor-FUCKMETA`
+**Repo:** `https://github.com/alkloihd/media-swiss-army`
 **Default branch:** `main`
 **Local path:** `/Users/rishaal/CODING/CODED TOOLS/VIDEO COMPRESSOR/`
 

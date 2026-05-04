@@ -111,14 +111,14 @@ struct CompressionSettings: Hashable, Sendable, Identifiable {
     /// don't produce unwatchable output.
     ///
     /// Mirrors web app's lib/ffmpeg.js capping logic:
-    ///   Max:       no cap (source bitrate)
+    ///   Max:       min(50 Mbps, source × 0.9)
     ///   Balanced:  min(6 Mbps, source × 0.7), floor 1.0 Mbps
     ///   Small:     min(3 Mbps, source × 0.4), floor 500 kbps
     ///   Streaming: min(4 Mbps, source × 0.5), floor 750 kbps
     func bitrate(forSourceBitrate sourceBitrate: Int64) -> Int64 {
-        // Defensive: a zero/negative source bitrate (probe failure) falls
-        // back to the named target without a source cap so we still produce
-        // something reasonable.
+        // Defensive: a zero/negative source bitrate (probe failure) uses a
+        // preset-specific fallback path so we still produce something
+        // reasonable.
         let safeSource = sourceBitrate > 0 ? sourceBitrate : Int64.max
 
         let targetBitrate: Int64
@@ -126,8 +126,8 @@ struct CompressionSettings: Hashable, Sendable, Identifiable {
         let floor: Int64
         switch (resolution, quality) {
         case (.source, .lossless):  // Max
-            targetBitrate = Int64.max
-            sourceCapRatio = 1.0
+            targetBitrate = 50_000_000
+            sourceCapRatio = 0.9
             floor = 0
         case (.fhd1080, .high):     // Balanced
             targetBitrate = 6_000_000
@@ -147,7 +147,7 @@ struct CompressionSettings: Hashable, Sendable, Identifiable {
             floor = 500_000
         }
 
-        // For Max we just return the source bitrate (encoder cap parity).
+        // Legacy escape hatch for any future uncapped preset.
         if targetBitrate == Int64.max {
             return safeSource == Int64.max ? 20_000_000 : safeSource
         }
@@ -159,7 +159,12 @@ struct CompressionSettings: Hashable, Sendable, Identifiable {
             cappedSource = Int64(Double(safeSource) * sourceCapRatio)
         }
         let smart = min(targetBitrate, cappedSource)
-        return Swift.max(floor, smart)
+        let result = Swift.max(floor, smart)
+
+        if resolution == .source && quality == .lossless && safeSource == Int64.max {
+            return 30_000_000
+        }
+        return result
     }
 
     /// Target output codec. HEVC for everything except Streaming, which

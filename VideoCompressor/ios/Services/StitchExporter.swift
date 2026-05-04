@@ -95,20 +95,20 @@ actor StitchExporter {
             if clip.kind == .still {
                 let stillDuration = clip.edits.stillDuration ?? 3.0
                 let clamped = min(10.0, max(1.0, stillDuration))
-                let bakedURL = try await baker.bake(
+                let bakeResult = try await baker.bake(
                     still: clip.sourceURL,
                     duration: clamped
                 )
-                bakedStillURLs.append(bakedURL)
+                bakedStillURLs.append(bakeResult.url)
                 var bakedEdits = clip.edits
                 bakedEdits.trimStartSeconds = 0
                 bakedEdits.trimEndSeconds = clamped
                 let baked = StitchClip(
                     id: clip.id,
-                    sourceURL: bakedURL,
+                    sourceURL: bakeResult.url,
                     displayName: clip.displayName,
                     naturalDuration: CMTime(seconds: clamped, preferredTimescale: 600),
-                    naturalSize: clip.naturalSize,
+                    naturalSize: bakeResult.size,
                     kind: .video,
                     preferredTransform: .identity,
                     originalAssetID: clip.originalAssetID,

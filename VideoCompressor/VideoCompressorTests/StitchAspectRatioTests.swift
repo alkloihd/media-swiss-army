@@ -12,8 +12,10 @@
 //
 
 import XCTest
+import AVFoundation
 import CoreGraphics
 import CoreMedia
+import UIKit
 @testable import VideoCompressor_iOS
 
 final class StitchAspectRatioTests: XCTestCase {
@@ -271,5 +273,37 @@ final class StitchAspectRatioTests: XCTestCase {
                 )
             }
         }
+    }
+
+    // MARK: - Still bake sizing
+
+    func testStillVideoBakerReturnsActualBakedSize() async throws {
+        let tmpURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("still-bake-size-\(UUID().uuidString).png")
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        format.opaque = true
+        let renderer = UIGraphicsImageRenderer(
+            size: CGSize(width: 32, height: 48),
+            format: format
+        )
+        let image = renderer.image { context in
+            UIColor.green.setFill()
+            context.fill(CGRect(x: 0, y: 0, width: 32, height: 48))
+        }
+        try XCTUnwrap(image.pngData()).write(to: tmpURL)
+        defer { try? FileManager.default.removeItem(at: tmpURL) }
+
+        let baker = StillVideoBaker()
+        let result = try await baker.bake(still: tmpURL, duration: 1.0)
+        defer { try? FileManager.default.removeItem(at: result.url) }
+
+        let asset = AVURLAsset(url: result.url)
+        let tracks = try await asset.loadTracks(withMediaType: .video)
+        let track = try XCTUnwrap(tracks.first)
+        let actual = try await track.load(.naturalSize)
+
+        XCTAssertEqual(result.size.width, actual.width, accuracy: 0.5)
+        XCTAssertEqual(result.size.height, actual.height, accuracy: 0.5)
     }
 }

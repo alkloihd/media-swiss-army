@@ -713,7 +713,7 @@ The backlog folder is your task list. `AUDIT-CONSOLIDATED-FINDINGS.md` is the sy
 | Bundle ID | `com.alkloihd.videocompressor` |
 | Home-screen name | `Media Swiss Army` |
 | App Store name (planned) | `MetaClean: AI Glasses Data` |
-| GitHub repo | `alkloihd/video-compressor-FUCKMETA` |
+| GitHub repo | `alkloihd/media-swiss-army` |
 | Default branch | `main` |
 | Min iOS | 17.0 |
 | Xcode project | `VideoCompressor/VideoCompressor_iOS.xcodeproj` |

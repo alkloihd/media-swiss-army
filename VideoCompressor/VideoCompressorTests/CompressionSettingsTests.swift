@@ -5,7 +5,7 @@
 //  Pins the smart-cap bitrate math + codec/dimension mapping for the
 //  Phase 3 AVAssetWriter migration. Mirrors lib/ffmpeg.js:
 //
-//    Max:       source bitrate (no cap), no floor
+//    Max:       min(50 Mbps, source × 0.9), no floor
 //    Balanced:  min(6 Mbps, source × 0.7), floor 1 Mbps
 //    Small:     min(3 Mbps, source × 0.4), floor 500 kbps
 //    Streaming: min(4 Mbps, source × 0.5), floor 750 kbps
@@ -19,11 +19,54 @@ final class CompressionSettingsTests: XCTestCase {
 
     // MARK: - bitrate(forSourceBitrate:)
 
-    func testMaxReturnsSourceBitrate() {
-        // Max preset: no cap. Output bitrate equals source.
-        XCTAssertEqual(CompressionSettings.max.bitrate(forSourceBitrate: 1_000_000), 1_000_000)
-        XCTAssertEqual(CompressionSettings.max.bitrate(forSourceBitrate: 6_000_000), 6_000_000)
-        XCTAssertEqual(CompressionSettings.max.bitrate(forSourceBitrate: 50_000_000), 50_000_000)
+    func testMaxAppliesSourceRatioAndCeiling() {
+        // Max preset preserves quality while staying under source bitrate and
+        // below the empirically unsafe VideoToolbox envelope.
+        XCTAssertEqual(CompressionSettings.max.bitrate(forSourceBitrate: 1_000_000), 900_000)
+        XCTAssertEqual(CompressionSettings.max.bitrate(forSourceBitrate: 6_000_000), 5_400_000)
+        XCTAssertEqual(CompressionSettings.max.bitrate(forSourceBitrate: 50_000_000), 45_000_000)
+        XCTAssertEqual(CompressionSettings.max.bitrate(forSourceBitrate: 100_000_000), 50_000_000)
+    }
+
+    func testMaxPresetBitrateRespectsSourceCap() {
+        let high = CompressionSettings.max.bitrate(forSourceBitrate: 100_000_000)
+        XCTAssertLessThanOrEqual(
+            high, 50_000_000,
+            "Max preset must cap at 50 Mbps for high-bitrate sources; got \(high) bps."
+        )
+
+        let mid = CompressionSettings.max.bitrate(forSourceBitrate: 30_000_000)
+        XCTAssertLessThanOrEqual(
+            mid, 27_000_000 + 100,
+            "Max preset must cap at source×0.9 when below absolute ceiling; got \(mid) bps."
+        )
+        XCTAssertLessThanOrEqual(
+            mid, 30_000_000,
+            "Max preset must never exceed source bitrate; got \(mid) bps."
+        )
+
+        let unknown = CompressionSettings.max.bitrate(forSourceBitrate: 0)
+        XCTAssertLessThanOrEqual(
+            unknown, 30_000_000,
+            "Max preset probe-failure fallback must be <= 30 Mbps; got \(unknown) bps."
+        )
+    }
+
+    func testMaxPresetBitrateNeverExceedsSource() {
+        for source in [
+            1_000_000, 5_000_000, 10_000_000, 25_000_000,
+            60_000_000, 200_000_000,
+        ] as [Int64] {
+            let result = CompressionSettings.max.bitrate(forSourceBitrate: source)
+            XCTAssertLessThanOrEqual(
+                result, source,
+                "Max bitrate (\(result)) must never exceed source (\(source))."
+            )
+            XCTAssertLessThanOrEqual(
+                result, 50_000_000,
+                "Max bitrate (\(result)) must not exceed absolute 50 Mbps ceiling."
+            )
+        }
     }
 
     func testBalancedSmartCap() {

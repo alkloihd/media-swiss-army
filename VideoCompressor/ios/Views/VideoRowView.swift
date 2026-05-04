@@ -101,12 +101,24 @@ struct VideoRowView: View {
                     .foregroundStyle(.secondary)
             }
         case .finished:
-            HStack(spacing: 6) {
-                Image(systemName: "checkmark.seal.fill")
-                    .foregroundStyle(.green)
-                Text(savingsLine)
-                    .font(.caption.weight(.medium))
-                    .foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 6) {
+                    Image(systemName: "checkmark.seal.fill")
+                        .foregroundStyle(.green)
+                    Text(savingsLine)
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(.secondary)
+                }
+                if let note = video.output?.note {
+                    HStack(spacing: 6) {
+                        Image(systemName: "arrow.triangle.2.circlepath")
+                            .foregroundStyle(.blue)
+                        Text(note)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(2)
+                    }
+                }
             }
         case .skipped(let reason):
             HStack(spacing: 6) {
