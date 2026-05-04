@@ -25,7 +25,16 @@
     ]
   },
 
-  "xmpFingerprints": ["xmp.metaai", "meta:", "ray-ban", "rayban", "c2pa", "manifeststore"],
+  "xmpFingerprints": [
+    "xmp.metaai",
+    "meta:",
+    "ray-ban",
+    "rayban",
+    "meta wearable",
+    "meta ai",
+    "c2pa",
+    "manifeststore"
+  ],
 
   "makerAppleSoftware": [
     "meta",

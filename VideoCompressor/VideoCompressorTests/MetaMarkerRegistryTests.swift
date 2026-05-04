@@ -133,6 +133,17 @@ final class MetaMarkerRegistryTests: XCTestCase {
         XCTAssertTrue(hit)
     }
 
+    func testStringBackedLegacyRayBanDescriptionStillTriggers() async {
+        let hit = await MetadataService.isMetaGlassesFingerprint(
+            key: "com.apple.quicktime.description",
+            decodedText: "Ray-Ban Stories",
+            isBinarySource: false,
+            atomByteCount: nil
+        )
+
+        XCTAssertTrue(hit, "String-backed legacy Ray-Ban tags must still trigger.")
+    }
+
     func testRegistryRejectsKeyOutsideCommentDescription() async {
         let hit = await MetadataService.isMetaGlassesFingerprint(
             key: "com.apple.quicktime.location.ISO6709",
@@ -147,6 +158,24 @@ final class MetaMarkerRegistryTests: XCTestCase {
     func testXMPFingerprintTriggersOnRegistryMarker() async {
         let hit = await PhotoMetadataService.xmpContainsFingerprint(
             "<x:xmpmeta>...xmp.MetaAI...</x:xmpmeta>",
+            packetByteCount: 256
+        )
+
+        XCTAssertTrue(hit)
+    }
+
+    func testXMPFingerprintTriggersOnMetaAiMarker() async {
+        let hit = await PhotoMetadataService.xmpContainsFingerprint(
+            "<x:xmpmeta>Meta AI capture marker</x:xmpmeta>",
+            packetByteCount: 256
+        )
+
+        XCTAssertTrue(hit)
+    }
+
+    func testXMPFingerprintTriggersOnMetaWearableMarker() async {
+        let hit = await PhotoMetadataService.xmpContainsFingerprint(
+            "<x:xmpmeta>Meta wearable capture marker</x:xmpmeta>",
             packetByteCount: 256
         )
 
@@ -180,5 +209,47 @@ final class MetaMarkerRegistryTests: XCTestCase {
         )
 
         XCTAssertFalse(hit)
+    }
+
+    // MARK: - Task 5 - category coverage + Oakley regression
+
+    func testRegistryExposesDeviceModelHints() async {
+        let markers = await MetaMarkerRegistry.shared.load()
+
+        XCTAssertTrue(markers.deviceModelHints.contains("RB-1"))
+        XCTAssertTrue(markers.deviceModelHints.contains("RB-2"))
+        XCTAssertTrue(markers.deviceModelHints.contains("OM-1"))
+    }
+
+    func testRegistryHasOakleyInMakerAppleSoftware() async {
+        let markers = await MetaMarkerRegistry.shared.load()
+
+        XCTAssertTrue(
+            markers.makerAppleSoftware.contains(where: { $0.lowercased() == "oakley meta" }),
+            "Oakley Meta must be in the bundled registry's makerAppleSoftware list."
+        )
+    }
+
+    func testBinaryAtomMarkersCoverCommentAndDescription() async {
+        let markers = await MetaMarkerRegistry.shared.load()
+
+        XCTAssertNotNil(markers.binaryAtomMarkers["comment"])
+        XCTAssertNotNil(markers.binaryAtomMarkers["description"])
+        XCTAssertTrue(markers.binaryAtomMarkers["comment"]?.contains("ray-ban") ?? false)
+    }
+
+    func testGuardsAreParsedFromJSON() async {
+        let guards = await MetaMarkerRegistry.shared.guards()
+
+        XCTAssertEqual(guards.minimumMarkerLengthBytes, 8)
+        XCTAssertTrue(guards.rejectIfMarkerInUserTypedText.contains("comment"))
+        XCTAssertTrue(guards.rejectIfMarkerInUserTypedText.contains("description"))
+    }
+
+    func testRegistryIsCachedAcrossLoads() async {
+        let firstLoad = await MetaMarkerRegistry.shared.load()
+        let secondLoad = await MetaMarkerRegistry.shared.load()
+
+        XCTAssertEqual(firstLoad, secondLoad)
     }
 }

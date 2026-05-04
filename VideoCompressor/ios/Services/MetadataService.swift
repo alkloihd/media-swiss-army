@@ -495,13 +495,17 @@ actor MetadataService {
         let registry = MetaMarkerRegistry.shared
         let markers = await registry.markersForBinaryAtom(key: key)
         guard !markers.isEmpty else { return false }
+        let matchedMarkers = markers
+            .map { $0.lowercased() }
+            .filter { text.contains($0) }
+        guard !matchedMarkers.isEmpty else { return false }
 
         let guards = await registry.guards()
         let loweredKey = key.lowercased()
         if !isBinarySource {
             for suffix in guards.rejectIfMarkerInUserTypedText
                 where loweredKey.contains(suffix.lowercased()) {
-                return false
+                return matchedMarkers.contains(where: Self.isTrustedStringBackedMarker)
             }
         }
 
@@ -511,10 +515,11 @@ actor MetadataService {
             return false
         }
 
-        for marker in markers where text.contains(marker.lowercased()) {
-            return true
-        }
-        return false
+        return true
+    }
+
+    private static func isTrustedStringBackedMarker(_ marker: String) -> Bool {
+        marker == "ray-ban" || marker == "rayban" || marker == "ray ban"
     }
 
     private func shouldStrip(tag: MetadataTag, rules: StripRules) -> Bool {
