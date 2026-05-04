@@ -145,10 +145,10 @@ enum MetaCleanState: Hashable, Sendable {
     case failed(error: LibraryError)
 }
 
-/// Progress shape for the batch clean flow. UI binds to this for the
-/// "Cleaning 3 of 8 …" label + a determinate bar across the whole queue.
+/// Progress shape for the batch clean flow. UI binds to this for a
+/// user-facing label + a determinate bar across the whole queue.
 struct BatchCleanProgress: Hashable, Sendable {
-    var current: Int           // 1-indexed, 0 means not yet started
+    var current: Int           // completed items, 0 means not yet started
     var total: Int             // total items being processed
     var failed: Int            // accumulated failures (none-fatal — keep going)
     var perItem: BoundedProgress  // current item's own progress
@@ -162,26 +162,51 @@ struct BatchCleanProgress: Hashable, Sendable {
 
     var fraction: Double {
         guard total > 0 else { return 0 }
-        let perItemFraction = perItem.value
-        let completedFraction = Double(max(current - 1, 0))
-        return min(1.0, (completedFraction + perItemFraction) / Double(total))
+        return min(1.0, max(0.0, Double(current) / Double(total)))
+    }
+
+    func userFacingLabel(kind: MediaKind) -> String {
+        let noun = kind == .still ? "photo" : "video"
+        let nounPlural = kind == .still ? "photos" : "videos"
+
+        if !isRunning {
+            return total == 1
+                ? "Cleaned 1 \(noun)"
+                : "Cleaned \(total) \(nounPlural)"
+        }
+
+        if total <= 1 {
+            return "Cleaning your \(noun)..."
+        }
+        let displayedCurrent = min(total, max(1, current))
+        return "Cleaning your \(nounPlural) · \(displayedCurrent) of \(total)"
     }
 }
 
 // MARK: - Batch clean
 
 extension MetaCleanQueue {
-    /// Cleans every item in `items`, sequentially, calling `onItemDone` per
-    /// item so the UI can refresh the row state. If `replaceOriginalsOnBatch`
-    /// is on, also saves each cleaned output to Photos and deletes the
-    /// original asset (when its originalAssetID was captured at import).
-    ///
-    /// Sequential is intentional — concurrent AVAssetReaders sharing the
-    /// AVAudioSession can spawn -11800 errors and we'd rather be reliable
-    /// than fast for what's usually a 3–10 file batch.
+    /// Batch concurrency for cleanAll. Pro phones get N=2 under nominal/fair
+    /// thermal state; everyone else stays serial. Cap at 2 to match the
+    /// current device policy and avoid AVFoundation/Photos contention.
+    nonisolated static func batchConcurrency(
+        deviceClass: DeviceCapabilities.DeviceClass,
+        thermalState: ProcessInfo.ThermalState
+    ) -> Int {
+        min(2, max(1, DeviceCapabilities.safeConcurrency(
+            deviceClass: deviceClass,
+            thermalState: thermalState
+        )))
+    }
+
+    /// Cleans every item in `items`, calling `onItemDone` per item so the UI
+    /// can refresh row state. Metadata stripping is bounded-concurrent on Pro
+    /// phones; save/delete remains serial in the result drain so Photos writes
+    /// do not contend with each other.
     func cleanAll(
         onItemDone: @MainActor @escaping (UUID, Result<MetadataCleanResult, Error>) -> Void = { _, _ in },
-        onAllDone: @MainActor @escaping () -> Void = {}
+        onAllDone: @MainActor @escaping () -> Void = {},
+        onBatchSaveComplete: @MainActor @escaping (SaveBatchResult) -> Void = { _ in }
     ) {
         // Don't double-start.
         guard !batchProgress.isRunning else { return }
@@ -207,7 +232,8 @@ extension MetaCleanQueue {
                 rules: rules,
                 replaceOriginals: replace,
                 onItemDone: onItemDone,
-                onAllDone: onAllDone
+                onAllDone: onAllDone,
+                onBatchSaveComplete: onBatchSaveComplete
             )
         }
     }
@@ -222,62 +248,174 @@ extension MetaCleanQueue {
         rules: StripRules,
         replaceOriginals: Bool,
         onItemDone: @MainActor @escaping (UUID, Result<MetadataCleanResult, Error>) -> Void,
-        onAllDone: @MainActor @escaping () -> Void
+        onAllDone: @MainActor @escaping () -> Void,
+        onBatchSaveComplete: @MainActor @escaping (SaveBatchResult) -> Void
     ) async {
-        for (idx, id) in ids.enumerated() {
-            if Task.isCancelled { break }
-            batchProgress.current = idx + 1
-            batchProgress.perItem = .zero
+        let idToItem = Dictionary(uniqueKeysWithValues: items.compactMap { item in
+            ids.contains(item.id) ? (item.id, item) : nil
+        })
+        let orderedIDs = ids.filter { idToItem[$0] != nil }
+        guard !orderedIDs.isEmpty else {
+            batchProgress.isRunning = false
+            onAllDone()
+            return
+        }
 
-            guard let item = items.first(where: { $0.id == id }) else { continue }
+        if orderedIDs.count != batchProgress.total {
+            batchProgress.total = orderedIDs.count
+        }
 
-            do {
-                let result: MetadataCleanResult
-                switch item.kind {
-                case .video:
-                    result = try await service.strip(url: item.sourceURL, rules: rules) { [weak self] p in
-                        self?.batchProgress.perItem = p
-                    }
-                case .still:
-                    result = try await photoService.strip(url: item.sourceURL, rules: rules) { [weak self] p in
-                        self?.batchProgress.perItem = p
-                    }
+        let dominantKind = Self.dominantKind(for: orderedIDs.compactMap { idToItem[$0]?.kind })
+        let concurrency = min(
+            orderedIDs.count,
+            Self.batchConcurrency(
+                deviceClass: DeviceCapabilities.deviceClass,
+                thermalState: ProcessInfo.processInfo.thermalState
+            )
+        )
+        let metadataService = service
+        let photoMetadataService = photoService
+        var savedCount = 0
+        var saveFailureCount = 0
+        var wasCancelled = false
+
+        await withTaskGroup(of: BatchCleanOutcome.self) { group in
+            var inFlight = 0
+            var iterator = orderedIDs.makeIterator()
+
+            while inFlight < concurrency, let nextID = iterator.next() {
+                guard let item = idToItem[nextID] else { continue }
+                inFlight += 1
+                group.addTask { [rules, metadataService, photoMetadataService] in
+                    await Self.cleanOne(
+                        item: item,
+                        rules: rules,
+                        service: metadataService,
+                        photoService: photoMetadataService
+                    )
                 }
-                if let i = items.firstIndex(where: { $0.id == id }) {
-                    items[i].cleanResult = result
+            }
+
+            while let outcome = await group.next() {
+                inFlight -= 1
+                if Task.isCancelled {
+                    wasCancelled = true
+                    group.cancelAll()
+                    break
                 }
 
-                if replaceOriginals {
-                    let assetID = item.originalAssetID
-                    do {
-                        try await PhotosSaver.saveAndOptionallyDeleteOriginal(
-                            cleanedURL: result.cleanedURL,
-                            originalAssetID: assetID
-                        )
-                        let outputURL = result.cleanedURL
-                        let inputURL = item.sourceURL
-                        Task.detached(priority: .utility) {
-                            await CacheSweeper.shared.sweepAfterSave(outputURL)
-                            await CacheSweeper.shared.deleteIfInWorkingDir(inputURL)
+                batchProgress.current += 1
+                batchProgress.perItem = .zero
+
+                switch outcome {
+                case .cleaned(let id, let result):
+                    guard let item = idToItem[id] else { continue }
+                    if let i = items.firstIndex(where: { $0.id == id }) {
+                        items[i].cleanResult = result
+                    }
+
+                    if replaceOriginals {
+                        do {
+                            try await PhotosSaver.saveAndOptionallyDeleteOriginal(
+                                cleanedURL: result.cleanedURL,
+                                originalAssetID: item.originalAssetID
+                            )
+                            savedCount += 1
+                            let outputURL = result.cleanedURL
+                            let inputURL = item.sourceURL
+                            Task.detached(priority: .utility) {
+                                await CacheSweeper.shared.sweepAfterSave(outputURL)
+                                await CacheSweeper.shared.deleteIfInWorkingDir(inputURL)
+                            }
+                        } catch {
+                            saveFailureCount += 1
+                            batchProgress.failed += 1
+                            batchProgress.lastError = error.localizedDescription
                         }
-                    } catch {
-                        batchProgress.failed += 1
-                        batchProgress.lastError = error.localizedDescription
-                        // Don't abort the batch — surface and continue.
                     }
+
+                    onItemDone(id, .success(result))
+                case .failed(let id, let error):
+                    batchProgress.failed += 1
+                    batchProgress.lastError = error.localizedDescription
+                    onItemDone(id, .failure(error))
                 }
 
-                onItemDone(id, .success(result))
-            } catch is CancellationError {
-                break
-            } catch {
-                batchProgress.failed += 1
-                batchProgress.lastError = error.localizedDescription
-                onItemDone(id, .failure(error))
+                while inFlight < concurrency, let nextID = iterator.next() {
+                    if Task.isCancelled {
+                        wasCancelled = true
+                        group.cancelAll()
+                        break
+                    }
+                    guard let item = idToItem[nextID] else { continue }
+                    inFlight += 1
+                    group.addTask { [rules, metadataService, photoMetadataService] in
+                        await Self.cleanOne(
+                            item: item,
+                            rules: rules,
+                            service: metadataService,
+                            photoService: photoMetadataService
+                        )
+                    }
+                }
             }
         }
+
         batchProgress.perItem = .complete
         batchProgress.isRunning = false
+        if replaceOriginals, !wasCancelled, (savedCount > 0 || saveFailureCount > 0) {
+            onBatchSaveComplete(SaveBatchResult(
+                saved: savedCount,
+                failed: saveFailureCount,
+                kind: dominantKind,
+                at: Date()
+            ))
+        }
         onAllDone()
     }
+
+    private nonisolated static func dominantKind(for kinds: [MediaKind]) -> MediaKind {
+        let stills = kinds.filter { $0 == .still }.count
+        let videos = kinds.count - stills
+        return stills >= videos ? .still : .video
+    }
+
+    private nonisolated static func cleanOne(
+        item: MetaCleanItem,
+        rules: StripRules,
+        service: MetadataService,
+        photoService: PhotoMetadataService
+    ) async -> BatchCleanOutcome {
+        do {
+            let result: MetadataCleanResult
+            switch item.kind {
+            case .video:
+                result = try await service.strip(url: item.sourceURL, rules: rules) { _ in }
+            case .still:
+                result = try await photoService.strip(url: item.sourceURL, rules: rules) { _ in }
+            }
+            return .cleaned(id: item.id, result: result)
+        } catch is CancellationError {
+            return .failed(
+                id: item.id,
+                error: BatchCleanFailure(message: "Cleaning was cancelled.")
+            )
+        } catch {
+            return .failed(
+                id: item.id,
+                error: BatchCleanFailure(message: error.localizedDescription)
+            )
+        }
+    }
+}
+
+private enum BatchCleanOutcome: Sendable {
+    case cleaned(id: UUID, result: MetadataCleanResult)
+    case failed(id: UUID, error: BatchCleanFailure)
+}
+
+private struct BatchCleanFailure: Error, LocalizedError, Hashable, Sendable {
+    let message: String
+
+    var errorDescription: String? { message }
 }

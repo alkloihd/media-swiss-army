@@ -37,7 +37,9 @@ struct ClipEditorSheet: View {
             return AnyView(
                 Color.clear
                     .onAppear {
+                        #if DEBUG
                         print("[ClipEditorSheet] clip \(clipID) not found — dismissing")
+                        #endif
                         dismiss()
                     }
             )

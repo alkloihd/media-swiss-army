@@ -50,6 +50,7 @@ struct StitchTimelineView: View {
     /// where the dragged clip will land. iOS Photos / Files use this
     /// pattern; without it the drop is a guess.
     @State private var dropTargetID: StitchClip.ID?
+    @State private var previewClipID: StitchClip.ID?
     /// User-controlled pinch-to-zoom on the timeline strip. 1.0 = default
     /// 200pt clip width; clamped to [0.5, 2.5] so clips never get unusably
     /// small or absurdly large. Persisted across re-renders only — not
@@ -67,21 +68,29 @@ struct StitchTimelineView: View {
             HStack(spacing: 8) {
                 ForEach(project.clips) { clip in
                     HStack(spacing: 0) {
-                        // Drop-target indicator — a 6pt-wide accent-colored
+                        // Drop-target indicator — an accent-colored
                         // pill on the LEFT of the clip when this is the
                         // current drop target and the dragged clip is being
                         // moved into this position.
                         Capsule()
                             .fill(Color.accentColor)
                             .frame(
-                                width: dropTargetID == clip.id && draggedID != clip.id ? 6 : 0,
+                                width: dropTargetID == clip.id && draggedID != clip.id ? 8 : 0,
                                 height: baseClipHeight * zoom * 0.85
                             )
+                            .shadow(
+                                color: dropTargetID == clip.id && draggedID != clip.id
+                                    ? Color.accentColor.opacity(0.4)
+                                    : .clear,
+                                radius: 6
+                            )
                             .padding(.trailing, dropTargetID == clip.id && draggedID != clip.id ? 4 : 0)
-                            .animation(.easeInOut(duration: 0.15), value: dropTargetID)
+                            .animation(.easeInOut(duration: 0.20), value: dropTargetID)
 
                     ClipBlockView(clip: clip)
                         .frame(width: baseClipWidth * zoom, height: baseClipHeight * zoom)
+                        .padding(.leading, dropTargetID == clip.id && draggedID != clip.id ? 12 : 0)
+                        .animation(.easeInOut(duration: 0.20), value: dropTargetID)
                         .opacity(draggedID == clip.id ? 0.4 : 1.0)
                         .overlay(
                             // Selection ring — visible when this clip is the
@@ -178,12 +187,44 @@ struct StitchTimelineView: View {
                     Haptics.tapRigid()
                 }
         )
+        .sheet(item: Binding(
+            get: {
+                previewClipID.flatMap { id in
+                    project.clips.first { $0.id == id }
+                }
+            },
+            set: { newValue in
+                previewClipID = newValue?.id
+            }
+        )) { clip in
+            NavigationStack {
+                ClipLongPressPreview(clip: clip)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .padding()
+                    .navigationTitle(clip.displayName)
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .topBarTrailing) {
+                            Button("Done") {
+                                previewClipID = nil
+                            }
+                        }
+                    }
+            }
+            .presentationDetents([.medium, .large])
+        }
     }
 
     // MARK: - Context menu
 
     @ViewBuilder
     private func clipContextMenu(for clip: StitchClip) -> some View {
+        Button {
+            previewClipID = clip.id
+        } label: {
+            Label("Preview", systemImage: "play.rectangle")
+        }
+        Divider()
         Button {
             duplicate(clip: clip)
         } label: {

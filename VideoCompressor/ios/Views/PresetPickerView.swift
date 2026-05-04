@@ -55,49 +55,56 @@ struct PresetPickerView: View {
 
     private var videoPresetList: some View {
         List {
-            if showAdvanced {
-                Section {
-                    advancedSummary
-                }
-                .listRowBackground(Color.clear)
+            Section {
+                presetRow(.balanced)
+                presetRow(.small)
             }
 
             Section {
-                ForEach(CompressionSettings.phase1Presets) { setting in
-                    Button {
-                        library.selectedSettings = setting
-                        dismiss()
-                    } label: {
-                        HStack(alignment: .top, spacing: 12) {
-                            Image(systemName: setting.symbolName)
-                                .font(.title3)
-                                .frame(width: 28)
-                                .foregroundStyle(.tint)
-                                .padding(.top, 2)
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(setting.title)
-                                    .font(.body.weight(.semibold))
-                                    .foregroundStyle(.primary)
-                                Text(setting.subtitle)
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                                if showAdvanced {
-                                    advancedDetail(for: setting)
-                                }
-                            }
-                            Spacer()
-                            if library.selectedSettings == setting {
-                                Image(systemName: "checkmark")
-                                    .foregroundStyle(.tint)
-                            }
-                        }
-                        .contentShape(Rectangle())
+                DisclosureGroup("Advanced") {
+                    if showAdvanced {
+                        advancedSummary
                     }
-                    .buttonStyle(.plain)
+                    presetRow(.max)
+                    presetRow(.streaming)
                 }
             }
         }
         .listStyle(.plain)
+    }
+
+    @ViewBuilder
+    private func presetRow(_ setting: CompressionSettings) -> some View {
+        Button {
+            library.selectedSettings = setting
+            dismiss()
+        } label: {
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: setting.symbolName)
+                    .font(.title3)
+                    .frame(width: 28)
+                    .foregroundStyle(.tint)
+                    .padding(.top, 2)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(setting.title)
+                        .font(.body.weight(.semibold))
+                        .foregroundStyle(.primary)
+                    Text(setting.subtitle)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    if showAdvanced {
+                        advancedDetail(for: setting)
+                    }
+                }
+                Spacer()
+                if library.selectedSettings == setting {
+                    Image(systemName: "checkmark")
+                        .foregroundStyle(.tint)
+                }
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 
     @ViewBuilder

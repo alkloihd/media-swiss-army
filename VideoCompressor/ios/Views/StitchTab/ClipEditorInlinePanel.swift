@@ -9,7 +9,7 @@
 //
 //  Layout:
 //    ┌────────────────────────────────────────────┐
-//    │ Clip Name              ⟲  ⟳  ✂︎  ↺  ✕     │  ← header + toolbar
+//    │ Clip Name              ⟲  ⟳  ↺  ✕         │  ← header + toolbar
 //    ├────────────────────────────────────────────┤
 //    │  [video player] ← AVPlayer w/ scrubber     │
 //    │  [playhead slider]                          │
@@ -20,7 +20,6 @@
 //  Toolbar actions:
 //    ⟲  Undo            (project.undo)
 //    ⟳  Redo            (project.redo)
-//    ✂︎  Split at playhead (project.split)
 //    ↺  Reset edits     (project.resetEdits)
 //    ✕  Close panel     (selection cleared)
 //
@@ -94,6 +93,8 @@ struct ClipEditorInlinePanel: View {
                         .clipShape(RoundedRectangle(cornerRadius: 8))
                 }
 
+                cropPresetControls(clip: clip)
+
                 if clip.kind == .still {
                     stillDurationControl(clip: clip)
                 } else {
@@ -166,6 +167,24 @@ struct ClipEditorInlinePanel: View {
         .padding(.top, 4)
     }
 
+    // MARK: - Crop presets
+
+    @ViewBuilder
+    private func cropPresetControls(clip: StitchClip) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Crop")
+                .font(.subheadline.weight(.semibold))
+            CropPresetButtonGrid(
+                currentCrop: clip.edits.cropNormalized,
+                naturalSize: clip.naturalSize,
+                displaySize: clip.displaySize
+            ) { preset in
+                applyCropPreset(preset, to: clip)
+            }
+        }
+        .padding(.top, 4)
+    }
+
     // MARK: - Header
 
     @ViewBuilder
@@ -194,15 +213,6 @@ struct ClipEditorInlinePanel: View {
             .disabled(!project.canRedo(for: clipID))
             .accessibilityLabel("Redo")
             .accessibilityIdentifier("clipEditorRedo")
-
-            Button {
-                splitAtPlayhead()
-            } label: {
-                Image(systemName: "scissors")
-            }
-            .disabled(!canSplitAtPlayhead)
-            .accessibilityLabel("Split at playhead")
-            .accessibilityIdentifier("clipEditorSplit")
 
             Button {
                 project.resetEdits(for: clipID)
@@ -377,6 +387,26 @@ struct ClipEditorInlinePanel: View {
             playheadSeconds = currentEnd
             seekTo(currentEnd)
         }
+    }
+
+    private func applyCropPreset(
+        _ preset: CropEditorView.AspectPreset,
+        to clip: StitchClip
+    ) {
+        let next = CropEditorView.cropRect(
+            for: preset,
+            naturalSize: clip.naturalSize,
+            displaySize: clip.displaySize
+        )
+        guard !CropEditorView.isApproximatelyEqual(clip.edits.cropNormalized, next) else {
+            return
+        }
+        let previous = clip.edits
+        project.updateEdits(for: clipID) {
+            $0.cropNormalized = next
+        }
+        project.commitHistorySnapshot(for: clipID, previous: previous)
+        Haptics.tapLight()
     }
 
     // MARK: - Player wiring

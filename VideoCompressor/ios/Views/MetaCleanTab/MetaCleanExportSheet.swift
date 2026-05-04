@@ -82,8 +82,11 @@ struct MetaCleanExportSheet: View {
         switch queue.cleanState {
         case .cleaning:
             ProgressView(value: queue.cleanProgress.value)
-            Text("Cleaning… \(queue.cleanProgress.percent)%")
+            Text(item.kind == .still ? "Cleaning your photo..." : "Cleaning your video...")
+                .font(.subheadline)
+            Text("\(queue.cleanProgress.percent)%")
                 .font(.caption.monospacedDigit())
+                .foregroundStyle(.secondary)
         case .finished(let result):
             switch saveStatus {
             case .unsaved:

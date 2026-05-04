@@ -18,8 +18,16 @@ import AVFoundation
 
 struct MetaCleanTabView: View {
     @StateObject private var queue = MetaCleanQueue()
+    @EnvironmentObject private var library: VideoLibrary
     @State private var pickerItems: [PhotosPickerItem] = []
     @State private var selectedItem: MetaCleanItem?
+    @State private var batchToast: SaveBatchResult?
+
+    private var dominantKind: MediaKind {
+        let stills = queue.items.filter { $0.kind == .still }.count
+        let videos = queue.items.filter { $0.kind == .video }.count
+        return stills >= videos ? .still : .video
+    }
 
     var body: some View {
         NavigationStack {
@@ -99,6 +107,29 @@ struct MetaCleanTabView: View {
             pickerItems = []
             Task { await importItems(items) }
         }
+        .onChange(of: library.lastSaveBatch) { _, newValue in
+            guard let result = newValue else { return }
+            batchToast = result
+            Task {
+                try? await Task.sleep(for: .seconds(3))
+                if batchToast == result {
+                    batchToast = nil
+                }
+            }
+        }
+        .overlay(alignment: .bottom) {
+            if let toast = batchToast {
+                Label(toast.displayMessage, systemImage: "checkmark.circle.fill")
+                    .font(.subheadline.weight(.semibold))
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+                    .background(.thinMaterial, in: Capsule())
+                    .padding(.bottom, 84)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                    .accessibilityIdentifier("metaCleanBatchSaveToast")
+            }
+        }
+        .animation(.easeInOut(duration: 0.20), value: batchToast)
     }
 
     // MARK: - Import
@@ -198,8 +229,9 @@ struct MetaCleanTabView: View {
                 VStack(alignment: .leading, spacing: 6) {
                     ProgressView(value: queue.batchProgress.fraction)
                     HStack {
-                        Text("Cleaning \(queue.batchProgress.current) of \(queue.batchProgress.total)")
+                        Text(queue.batchProgress.userFacingLabel(kind: dominantKind))
                             .font(.caption.monospacedDigit())
+                            .accessibilityIdentifier("metaCleanBatchProgressLabel")
                         Spacer()
                         if queue.batchProgress.failed > 0 {
                             Label("\(queue.batchProgress.failed) failed", systemImage: "exclamationmark.triangle")
@@ -218,7 +250,9 @@ struct MetaCleanTabView: View {
                 }
             } else {
                 Button {
-                    queue.cleanAll()
+                    queue.cleanAll(onBatchSaveComplete: { result in
+                        library.notifySaveBatchCompleted(result)
+                    })
                 } label: {
                     Label(
                         queue.replaceOriginalsOnBatch
@@ -251,4 +285,5 @@ private extension String {
 
 #Preview {
     MetaCleanTabView()
+        .environmentObject(VideoLibrary.preview())
 }

@@ -167,3 +167,89 @@ Rule: append after every cluster task/PR checkpoint before moving on.
 | Tests        | Added stitch retry/downshift tests for `Small -> Streaming`, raw `NSError` `-11841`, non-retry `-11847`, transition-drop-before-preset-retry ordering, transition fallback messaging, Random+Small synthetic timeline coverage, Stitch output sweep preserving inputs, and finished-sheet export-again/stale-output helpers. |
 | Verification | `mcp__XcodeBuildMCP__.build_sim` succeeded. `mcp__XcodeBuildMCP__.test_sim` passed `182` total: `181` passed, `1` skipped. The skip is documented in-test because simulator AVFoundation rejects the synthetic Random+Small composition after the `-11841` fallback path with a generic error; deterministic retry tests cover the production branch. |
 | Watchpoints  | Real iPhone verification is still required for the original hardware encoder bug. Do not touch active bundle identity or TestFlight workflow.                                                                                                                |
+
+### Cluster 2 — PR #13
+
+| Field                 | Notes                                                                                                                                                                                                                                                            |
+| --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Branch / PR           | `feat/codex-cluster2-stitch-correctness`, PR #13                                                                                                                                                                                                                 |
+| Merge                 | Merged to `main` as `1d886cc` after PR checks passed.                                                                                                                                                                                                            |
+| Key changes           | HDR encode metadata preservation, audio-mix track correctness, UUID import staging, oldest-first import finalization, and real-device Stitch `-11841` fallback/re-export guard.                                                                                  |
+| Verification          | Local `build_sim` succeeded; local `test_sim` passed `182` total (`181` passed, `1` documented simulator-fixture skip); PR checks passed; TestFlight workflow run `25317235711` succeeded in 2m59s.                                                               |
+| Not yet proven        | Original iPhone18,2 / iOS 26.3.1 Stitch repro must be retested from TestFlight: Random + Small, no-transition video/photo-only stitches, mixed photo/video stitch, save to Photos, then Export Again on the same project.                                        |
+| Downstream dependency | Cluster 3 UI work must preserve the visible fallback note and `Export Again` action in `StitchExportSheet`; Cluster 4 app-review work must not alter the restored `ca.nextclass.VideoCompressor` bundle identity.                                                |
+
+### Cluster 3 — Branch Start
+
+| Field             | Notes                                                                                                                                                                                                                                  |
+| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Branch            | `feat/codex-cluster3-ux-polish` from `main@1d886cc`, with append-only Cluster 2 merge/TestFlight log commits carried on the branch rather than pushed directly to `main`.                                                              |
+| Baseline          | `mcp__XcodeBuildMCP__.test_sim` passed `182` total: `181` passed, `1` documented simulator-fixture skip.                                                                                                                               |
+| Scope             | Phase 2 UX polish: copy cleanup, first-launch onboarding, Settings explainer, Stitch preview/drop affordances, MetaClean batch concurrency/toast, crop/preset/settings simplification.                                                  |
+| Agent scan        | Read-only agents dispatched for UI/onboarding tasks, MetaClean batch concurrency, and crop/preset/settings simplification.                                                                                                             |
+| Watchpoints       | Preserve Cluster 2 Stitch fallback note and `Export Again`; do not alter bundle identity or TestFlight workflow; validate SwiftUI copy/interaction changes with build/test evidence plus TestFlight/manual prompts after merge.          |
+
+#### Task 1 — Dev-y Copy Polish
+
+| Field        | Notes                                                                                                                                                                                                                 |
+| ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Key changes  | Added `BatchCleanProgress.userFacingLabel(kind:)`; MetaClean batch/export labels now use friendlier copy; `ClipEditorSheet` print is DEBUG-only; duplicate header scissors icon removed from `ClipEditorInlinePanel`.                  |
+| Adaptation   | Kept ASCII ellipses in user-facing strings/tests while preserving the plan's middle-dot batch label. Did not expand into broader MetaClean empty-state copy despite scout noting it, to keep Task 1 scoped.                             |
+| Verification | TDD red compile failed on missing `userFacingLabel(kind:)`; green `mcp__XcodeBuildMCP__.test_sim` passed `186` total: `185` passed, `1` documented simulator-fixture skip.                                           |
+| Watchpoints  | The remaining `print(` grep hit is inside `#if DEBUG`; acceptance allows DEBUG-only print sites.                                                                                                                      |
+
+#### Task 2 — First-Launch Onboarding
+
+| Field        | Notes                                                                                                                                                                                                                 |
+| ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Key changes  | Added pure `OnboardingGate`, 3-card paged `OnboardingView`, and `ContentView` first-launch `.fullScreenCover` gated by `@AppStorage("hasSeenOnboarding_v1")`; final button routes to MetaClean.                       |
+| Adaptation   | Updated stale `ContentView` header comments that still described Stitch/MetaClean as placeholders. Kept onboarding copy concise and app-utility focused.                                                               |
+| Verification | TDD red compile failed on missing `OnboardingGate`; green `mcp__XcodeBuildMCP__.test_sim` passed `190` total: `189` passed, `1` documented simulator-fixture skip.                                                     |
+| Watchpoints  | Fresh-install presentation and persistence still require manual simulator/device walkthrough after the full Cluster 3 PR lands.                                                                                       |
+
+#### Task 3 — Settings MetaClean Explainer
+
+| Field        | Notes                                                                                                                                                                      |
+| ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Key changes  | Settings now starts with a "What MetaClean does" section, including disclosure groups for what gets removed, what stays, and what MetaClean never does.                     |
+| Adaptation   | Kept the section first and updated the Settings file header.                                                                                                                |
+| Verification | `mcp__XcodeBuildMCP__.test_sim` passed `190` total: `189` passed, `1` documented simulator-fixture skip; `mcp__XcodeBuildMCP__.build_sim` succeeded.                       |
+| Watchpoints  | Manual UI inspection should confirm this is visually first above the background-encoding toggle.                                                                            |
+
+#### Task 4 — Stitch Preview Menu Item
+
+| Field        | Notes                                                                                                                                                                      |
+| ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Key changes  | Stitch clip context menus now start with `Preview`, and tapping it presents the existing `ClipLongPressPreview` in a medium/large sheet with a Done button.                |
+| Adaptation   | Kept `ClipLongPressPreview` file-private because the new sheet lives in the same file; the plan's promotion note was unnecessary.                                           |
+| Verification | `mcp__XcodeBuildMCP__.test_sim` passed `190` total: `189` passed, `1` documented simulator-fixture skip; `mcp__XcodeBuildMCP__.build_sim` succeeded.                       |
+| Watchpoints  | Manual UI inspection should confirm Preview appears first and the existing long-press preview overlay still works.                                                          |
+
+#### Task 5 — Drop Indicator Polish
+
+| Field        | Notes                                                                                                                                                                      |
+| ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Key changes  | Stitch timeline drop target now uses an 8pt accent bar, soft accent shadow, and a 12pt animated leading gutter on the target clip.                                         |
+| Verification | `mcp__XcodeBuildMCP__.test_sim` passed `190` total: `189` passed, `1` documented simulator-fixture skip; `mcp__XcodeBuildMCP__.build_sim` succeeded.                       |
+| Watchpoints  | Manual UI inspection should confirm the wider bar and neighbor push read clearly at low zoom.                                                                              |
+
+#### Task 6 — Faster Batch MetaClean + Single Save Toast
+
+| Field        | Notes                                                                                                                                                                                                 |
+| ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Key changes  | MetaClean batch clean now uses `MetaCleanQueue.batchConcurrency` for bounded metadata-strip concurrency, publishes a single `SaveBatchResult` through `VideoLibrary`, and shows one bottom toast after batch save completion. |
+| Adaptation   | Kept Photos save/delete serial in the TaskGroup result drain instead of running `PHPhotoLibrary.performChanges` in child tasks; routed completion through a `cleanAll` callback instead of a static weak global sink. |
+| Tests        | Added `MetaCleanQueueConcurrencyTests` for concurrency policy, completed-count progress fraction, and save-batch display copy.                                                                          |
+| Verification | TDD red compile failed on missing `MetaCleanQueue.batchConcurrency` and `SaveBatchResult`; focused label-start red/green then passed 12/12; full `mcp__XcodeBuildMCP__.test_sim` passed `198` total: `197` passed, `1` skip; `build_sim` succeeded. |
+| Watchpoints  | Real-device MetaClean batch timing and Photos delete-confirmation UX still need TestFlight/iPhone inspection; current confidence is simulator/build plus static diff review until device testing is available. |
+
+#### Task 7 — Frontend Simplifications
+
+| Field        | Notes                                                                                                                                                                                                 |
+| ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Key changes  | Compress picker now shows Balanced + Small by default with Max + Streaming under Advanced; crop controls are four aspect presets; Settings performance lives behind an Advanced disclosure.            |
+| Adaptation   | The active Stitch editor is `ClipEditorInlinePanel`, not just `ClipEditorSheet`, so the crop preset grid is wired into the inline editor as well. Crop math uses `displaySize` to avoid rotated iPhone portrait false crops and collapses identity crops to `nil`. |
+| Tests        | Added `CropEditorPresetTests` for free/invalid clears, square landscape crop, native 16:9/rotated 9:16 identity collapse, and portrait/landscape cross-crops.                                             |
+| Verification | TDD red compile failed on missing `CropEditorView.cropRect`/preset enum; focused crop tests passed 7/7; `mcp__XcodeBuildMCP__.clean` succeeded; full `test_sim` passed `205` total: `204` passed, `1` skip; `build_sim` succeeded. |
+| UI evidence  | Simulator launched, onboarding completed, Settings Advanced collapsed/expanded correctly in `snapshot_ui`; screenshot saved at `/var/folders/4v/3fctbw5j65gcbzcbhrsg33y40000gq/T/screenshot_optimized_de88d7dd-a934-48de-a5aa-2bfe202f5d14.jpg`. |
+| Watchpoints  | Need real media loaded in Stitch to visually confirm inline crop preset placement with video/still previews; simulator shut down before further tap-through, but build/test coverage is green.           |
