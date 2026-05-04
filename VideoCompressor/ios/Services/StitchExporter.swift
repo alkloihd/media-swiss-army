@@ -515,6 +515,30 @@ actor StitchExporter {
         outputURL: URL,
         onProgress: @MainActor @Sendable @escaping (BoundedProgress) -> Void
     ) async throws -> StitchExportResult {
+        do {
+            return try await exportInternal(
+                plan: plan,
+                settings: settings,
+                outputURL: outputURL,
+                onProgress: onProgress
+            )
+        } catch {
+            // Cluster 2.5: every public path through the exporter funnels
+            // here. If the entire fallback chain has been exhausted and we
+            // still see a `-11841` envelope rejection, swap the raw error
+            // for a friendly user-facing one with a recovery hint.
+            // `cancelled` and any non-encoder error pass through untouched.
+            if case CompressionError.cancelled = error { throw error }
+            throw Self.wrapEncoderEnvelopeIfTerminal(error)
+        }
+    }
+
+    private func exportInternal(
+        plan: Plan,
+        settings: CompressionSettings,
+        outputURL: URL,
+        onProgress: @MainActor @Sendable @escaping (BoundedProgress) -> Void
+    ) async throws -> StitchExportResult {
         if plan.canPassthrough {
             do {
                 let url = try await runPassthrough(
@@ -670,12 +694,33 @@ actor StitchExporter {
 
     nonisolated static func stitchDownshift(from settings: CompressionSettings) -> CompressionSettings? {
         switch (settings.resolution, settings.quality) {
-        case (.source, .lossless): return .balanced
-        case (.fhd1080, .high): return .small
-        case (.hd720, .balanced): return .streaming
-        case (.sd540, .balanced): return nil
-        default: return nil
+        case (.source, .lossless): return .balanced       // Max → Balanced
+        case (.fhd1080, .high):    return .small          // Balanced → Small
+        case (.hd720, .balanced):  return .streaming      // Small → Streaming
+        // Streaming (.sd540, .balanced) and any custom preset both step to
+        // Small as a universal floor before the terminal envelope-rejection
+        // wrap kicks in. Previously these returned nil and the user saw the
+        // raw `-11841` alert.
+        case (.sd540, .balanced):  return nil  // already terminal: handled by wrapTerminal
+        default:                   return .small
         }
+    }
+
+    /// Friendly message surfaced when every retry in the chain has failed
+    /// with `-11841`. UI renders this verbatim instead of the raw
+    /// `AVFoundationErrorDomain` string. Centralised so the test suite and
+    /// view layer reference one source of truth.
+    nonisolated static let envelopeExhaustedMessage =
+        "Your iPhone's encoder couldn't handle this combination. Try removing transitions, splitting into shorter clips, or selecting the Small preset."
+
+    /// If `error` is the terminal `-11841` envelope rejection (or wraps one)
+    /// and the caller has exhausted all available downshift steps, rewrap
+    /// it into `CompressionError.encoderEnvelopeRejected` so the user-facing
+    /// alert/banner can render `envelopeExhaustedMessage` instead of the raw
+    /// AVFoundation error.
+    nonisolated static func wrapEncoderEnvelopeIfTerminal(_ error: Error) -> Error {
+        guard isStitchEncoderEnvelopeRejection(error) else { return error }
+        return CompressionError.encoderEnvelopeRejected(message: envelopeExhaustedMessage)
     }
 
     nonisolated static func runWithOneShotStitchDownshift(
