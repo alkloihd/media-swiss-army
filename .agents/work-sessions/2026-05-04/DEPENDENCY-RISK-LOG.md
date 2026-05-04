@@ -311,3 +311,22 @@ Rule: append after every cluster task/PR checkpoint before moving on.
 | Dependencies | Avoided `xcbeautify` so the job does not depend on weekly runner image packages. Uses raw `xcodebuild` with `set -euo pipefail`, `CODE_SIGNING_ALLOWED=NO`, DerivedData cache, and failed-result artifact upload.             |
 | Verification | `ruby` YAML parse passed; `npx prettier --check .github/workflows/ci.yml docs/privacy/index.html` passed; `xcodebuild -list` confirmed scheme/target; CI-style `test_sim` passed `225` total: `224` passed, `1` skipped. |
 | Watchpoints  | Cloud runner availability still needs PR CI proof. After the job appears green, `iOS XCTest` should be added manually as a required status check on `main` branch protection.                                               |
+
+### Cluster 5 — Branch Start
+
+| Field       | Notes                                                                                                                                                                                 |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Branch      | `feat/codex-cluster5-meta-marker-registry` from `main@96f420f`.                                                                                                                      |
+| Baseline    | `mcp__XcodeBuildMCP__.test_sim` passed `225` total: `224` passed, `1` documented simulator-fixture skip.                                                                              |
+| Scope       | Replace hard-coded Meta-glasses markers with a bundled JSON registry and async detector lookups while preserving legacy detection, no network, and no strip-path changes.              |
+| Agent scan  | Read-only scouts dispatched for resource bundling/async cascade, detector semantics, and implementation-quality risks.                                                                |
+| Watchpoints | Preserve current bare `meta` behavior for binary video atoms and MakerApple Software; do not add bare `meta` to XMP; do not touch `strip(...)`, networking, analytics, or TestFlight. |
+
+#### Task 1 — Bundled MetaMarkers JSON
+
+| Field        | Notes                                                                                                                                                                                        |
+| ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Key changes  | Added `VideoCompressor/ios/Resources/MetaMarkers.json` and `MetaMarkerRegistryTests.testBundleContainsMetaMarkersJSON` to prove the resource is copied into the hosted app bundle.          |
+| Adaptation   | Scout review found the plan JSON would regress current detection by omitting bare `meta` from binary atoms/MakerApple. JSON preserves that legacy behavior but still excludes bare `meta` from XMP. |
+| Verification | TDD red failed 1/1 because resource was absent; `clean` succeeded; focused bundle test passed `1/1`; `npx prettier --check VideoCompressor/ios/Resources/MetaMarkers.json` passed after formatting. |
+| Watchpoints  | Bundle auto-inclusion is currently proven by the focused hosted test. If future resource tests fail on CI, inspect filesystem-synchronized group behavior before editing `project.pbxproj`.  |
