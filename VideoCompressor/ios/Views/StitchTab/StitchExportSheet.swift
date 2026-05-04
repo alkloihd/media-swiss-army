@@ -206,10 +206,23 @@ struct StitchExportSheet: View {
                             .foregroundStyle(.secondary)
                     }
                 case .saved:
-                    Label("Saved to Photos", systemImage: "checkmark.circle.fill")
-                        .foregroundStyle(.green)
-                        .font(.body.weight(.semibold))
-                        .symbolEffect(.bounce, value: saveStatus)
+                    VStack(spacing: 12) {
+                        Label("Saved to Photos", systemImage: "checkmark.circle.fill")
+                            .foregroundStyle(.green)
+                            .font(.body.weight(.semibold))
+                            .symbolEffect(.bounce, value: saveStatus)
+
+                        Button {
+                            project.clearAll()
+                            dismiss()
+                        } label: {
+                            Label("Done — start a new project", systemImage: "sparkles")
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 4)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .accessibilityIdentifier("stitchDoneStartNewButton")
+                    }
                 case .saveFailed:
                     Button {
                         runSaveToPhotos(url: output.url)
