@@ -178,3 +178,13 @@ Rule: append after every cluster task/PR checkpoint before moving on.
 | Verification          | Local `build_sim` succeeded; local `test_sim` passed `182` total (`181` passed, `1` documented simulator-fixture skip); PR checks passed; TestFlight workflow run `25317235711` succeeded in 2m59s.                                                               |
 | Not yet proven        | Original iPhone18,2 / iOS 26.3.1 Stitch repro must be retested from TestFlight: Random + Small, no-transition video/photo-only stitches, mixed photo/video stitch, save to Photos, then Export Again on the same project.                                        |
 | Downstream dependency | Cluster 3 UI work must preserve the visible fallback note and `Export Again` action in `StitchExportSheet`; Cluster 4 app-review work must not alter the restored `ca.nextclass.VideoCompressor` bundle identity.                                                |
+
+### Cluster 3 — Branch Start
+
+| Field             | Notes                                                                                                                                                                                                                                  |
+| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Branch            | `feat/codex-cluster3-ux-polish` from `main@1d886cc`, with append-only Cluster 2 merge/TestFlight log commits carried on the branch rather than pushed directly to `main`.                                                              |
+| Baseline          | `mcp__XcodeBuildMCP__.test_sim` passed `182` total: `181` passed, `1` documented simulator-fixture skip.                                                                                                                               |
+| Scope             | Phase 2 UX polish: copy cleanup, first-launch onboarding, Settings explainer, Stitch preview/drop affordances, MetaClean batch concurrency/toast, crop/preset/settings simplification.                                                  |
+| Agent scan        | Read-only agents dispatched for UI/onboarding tasks, MetaClean batch concurrency, and crop/preset/settings simplification.                                                                                                             |
+| Watchpoints       | Preserve Cluster 2 Stitch fallback note and `Export Again`; do not alter bundle identity or TestFlight workflow; validate SwiftUI copy/interaction changes with build/test evidence plus TestFlight/manual prompts after merge.          |
