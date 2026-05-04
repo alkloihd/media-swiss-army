@@ -3,7 +3,7 @@
 //  VideoCompressor
 //
 //  Converts a single still image (HEIC / JPEG / PNG) into a tiny .mov file
-//  showing that image for `duration` seconds. Used by `StitchExporter` so
+//  showing that image for 1 second. Used by `StitchExporter` so
 //  AVMutableComposition (which only accepts AVAssetTracks from URL assets)
 //  can include still-image clips in a stitched output.
 //
@@ -33,15 +33,44 @@ actor StillVideoBaker {
     /// the rate the rest of the stitch composition runs at.
     private let frameRate: Int32 = 30
 
-    /// Cleanly bake `still` to a temp .mov of `duration` seconds. The returned
-    /// URL is the caller's to manage. The size is the encoded movie's actual
+    /// Pre-allocate the output path without starting any I/O. Callers that
+    /// need guaranteed cleanup can register this URL before invoking the bake.
+    func predictedOutputURL() -> URL {
+        FileManager.default.temporaryDirectory
+            .appendingPathComponent("StillBakes", isDirectory: true)
+            .appendingPathComponent("baked-\(UUID().uuidString.prefix(8)).mov")
+    }
+
+    /// Cleanly bake `still` to a temp 1-second .mov. The returned URL is the
+    /// caller's to manage. The size is the encoded movie's actual
     /// post-orientation, post-cap dimensions, so the stitch transform math can
     /// use the baked asset's dimensions instead of the original still metadata.
-    func bake(still sourceURL: URL, duration: Double) async throws -> (url: URL, size: CGSize) {
-        guard duration > 0 else {
-            throw BakeError.invalidDuration
-        }
+    func bake(still sourceURL: URL) async throws -> (url: URL, size: CGSize) {
+        try await bake(still: sourceURL, intoPreallocated: predictedOutputURL())
+    }
 
+    /// Variant that writes to a caller-supplied URL. Used by StitchExporter so
+    /// the cleanup list can contain the target before the writer starts.
+    func bake(
+        still sourceURL: URL,
+        intoPreallocated outputURL: URL
+    ) async throws -> (url: URL, size: CGSize) {
+        try? FileManager.default.createDirectory(
+            at: outputURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        do {
+            return try await bakeImpl(still: sourceURL, output: outputURL)
+        } catch {
+            try? FileManager.default.removeItem(at: outputURL)
+            throw error
+        }
+    }
+
+    private func bakeImpl(
+        still sourceURL: URL,
+        output outputURL: URL
+    ) async throws -> (url: URL, size: CGSize) {
         // Load + decode the still.
         guard let source = CGImageSourceCreateWithURL(sourceURL as CFURL, nil),
               CGImageSourceGetCount(source) > 0 else {
@@ -70,15 +99,10 @@ actor StillVideoBaker {
             throw BakeError.decodeFailed("\(sourceURL.lastPathComponent) too small (\(width)×\(height))")
         }
 
-        // Output URL.
-        let outDir = FileManager.default.temporaryDirectory
-            .appendingPathComponent("StillBakes", isDirectory: true)
-        try? FileManager.default.createDirectory(at: outDir, withIntermediateDirectories: true)
-        let outURL = outDir.appendingPathComponent("\(UUID().uuidString).mov")
-        try? FileManager.default.removeItem(at: outURL)
+        try? FileManager.default.removeItem(at: outputURL)
 
         // Configure writer.
-        let writer = try AVAssetWriter(outputURL: outURL, fileType: .mov)
+        let writer = try AVAssetWriter(outputURL: outputURL, fileType: .mov)
         let videoSettings: [String: Any] = [
             AVVideoCodecKey: AVVideoCodecType.h264,
             AVVideoWidthKey: width,
@@ -118,7 +142,7 @@ actor StillVideoBaker {
         // leak the partially-started writer + an empty .mov).
         func bailWithError(_ err: BakeError) -> BakeError {
             writer.cancelWriting()
-            try? FileManager.default.removeItem(at: outURL)
+            try? FileManager.default.removeItem(at: outputURL)
             return err
         }
         guard let pool = adaptor.pixelBufferPool else {
@@ -168,8 +192,10 @@ actor StillVideoBaker {
         //   each entry → continuation could resume twice → fatal.
         // - `done` flag guards against double-resume even if AVFoundation
         //   re-invokes the closure after markAsFinished() in a race.
-        let totalFrames = max(1, Int(duration * Double(frameRate)))
-        let queue = DispatchQueue(label: "still-bake.\(outURL.lastPathComponent)")
+        // O(1) bake: always emit exactly 1 second of frames. The stitch
+        // composition stretches this source range to the user's stillDuration.
+        let totalFrames = Int(frameRate)
+        let queue = DispatchQueue(label: "still-bake.\(outputURL.lastPathComponent)")
         let inputRef = input
         let adaptorRef = adaptor
         let counter = FrameCounter()
@@ -212,17 +238,17 @@ actor StillVideoBaker {
         if let appendErr = appendFailureBox.message {
             // Surface writer.error if it has a richer message, else our marker.
             let msg = writer.error?.localizedDescription ?? appendErr
-            try? FileManager.default.removeItem(at: outURL)
+            try? FileManager.default.removeItem(at: outputURL)
             throw BakeError.appendFailed(msg)
         }
         if writer.status != .completed {
-            try? FileManager.default.removeItem(at: outURL)
+            try? FileManager.default.removeItem(at: outputURL)
             throw BakeError.writerFinishFailed(
                 writer.error?.localizedDescription ?? "writer status \(writer.status.rawValue)"
             )
         }
 
-        return (url: outURL, size: CGSize(width: width, height: height))
+        return (url: outputURL, size: CGSize(width: width, height: height))
     }
 
     // MARK: - Concurrency primitives for the pump
@@ -280,6 +306,9 @@ actor StillVideoBaker {
     }
 
     enum BakeError: Error, LocalizedError {
+        // Kept for source compatibility with older debug paths; bake duration
+        // is now always 1 second and caller-owned composition scaling handles
+        // the visible still duration.
         case invalidDuration
         case unreadableSource(String)
         case decodeFailed(String)

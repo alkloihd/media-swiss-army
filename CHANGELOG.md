@@ -27,6 +27,7 @@ Agent identifier format: `[type/model]` — e.g. `[Claude Opus 4.7 / 1M ctx]`, `
 
 ### Fixed
 
+- 2026-05-04 [solo/codex/gpt-5] Cluster 1 cache and still-bake hardening. Still-image stitch bakes are now constant-time one-second movies that are stretched in the composition to the user's selected still duration, while preallocated bake URLs are registered before work starts so cancellation can clean them. `CacheSweeper` now tracks managed temporary wrappers, exposes `sweepOnCancel`, delayed `sweepAfterSave`, and tighter launch sweeping, and the app wires those hooks into compression, stitch, MetaClean, photo compression, Photos save-success, and app-launch paths. Local verification: `test_sim` passed `164/164` and `build_sim` succeeded.
 - 2026-05-04 [solo/codex/gpt-5] Cluster 0 hotfixes for launch-blocking real-device issues. Compression now caps Max bitrate at `min(source × 0.9, 50 Mbps)`, declares SDR BT.709 writer color properties, clamps slow-motion frame-rate/GOP hints, and retries one step down on encoder `-11841` while surfacing the actual fallback preset in the row UI. Stitching still photos now carries the baked movie's actual dimensions into `StitchClip.naturalSize`, preventing tiny inset photo renders on the stitch canvas. The iOS target, test targets, and active TestFlight docs now consistently use bundle ID `com.alkloihd.videocompressor`.
 - 2026-05-03 [subagent:sonnet] (5db2187) 12 critical findings from 4-Opus-reviewer audit:
   - `AVAssetExportSession.cancelExport()` now wired through `withTaskCancellationHandler`

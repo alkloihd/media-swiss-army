@@ -295,7 +295,7 @@ final class StitchAspectRatioTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: tmpURL) }
 
         let baker = StillVideoBaker()
-        let result = try await baker.bake(still: tmpURL, duration: 1.0)
+        let result = try await baker.bake(still: tmpURL)
         defer { try? FileManager.default.removeItem(at: result.url) }
 
         let asset = AVURLAsset(url: result.url)

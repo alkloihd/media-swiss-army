@@ -83,6 +83,14 @@ actor StitchExporter {
         let baker = StillVideoBaker()
         var bakedClips: [StitchClip] = []
         var bakedStillURLs: [URL] = []
+        var shouldKeepBakedStillURLs = false
+        defer {
+            if !shouldKeepBakedStillURLs {
+                for url in bakedStillURLs {
+                    try? FileManager.default.removeItem(at: url)
+                }
+            }
+        }
         let totalStills = clips.filter { $0.kind == .still }.count
         var stillsBaked = 0
         if totalStills > 0 {
@@ -95,19 +103,31 @@ actor StitchExporter {
             if clip.kind == .still {
                 let stillDuration = clip.edits.stillDuration ?? 3.0
                 let clamped = min(10.0, max(1.0, stillDuration))
-                let bakeResult = try await baker.bake(
-                    still: clip.sourceURL,
-                    duration: clamped
-                )
-                bakedStillURLs.append(bakeResult.url)
+                let preAllocURL = await baker.predictedOutputURL()
+                bakedStillURLs.append(preAllocURL)
+                let bakeResult: (url: URL, size: CGSize)
+                do {
+                    bakeResult = try await baker.bake(
+                        still: clip.sourceURL,
+                        intoPreallocated: preAllocURL
+                    )
+                } catch {
+                    try? FileManager.default.removeItem(at: preAllocURL)
+                    throw error
+                }
+                if bakeResult.url != preAllocURL,
+                   let last = bakedStillURLs.indices.last {
+                    bakedStillURLs[last] = bakeResult.url
+                }
                 var bakedEdits = clip.edits
                 bakedEdits.trimStartSeconds = 0
-                bakedEdits.trimEndSeconds = clamped
+                bakedEdits.trimEndSeconds = 1.0
+                bakedEdits.stillDuration = clamped
                 let baked = StitchClip(
                     id: clip.id,
                     sourceURL: bakeResult.url,
                     displayName: clip.displayName,
-                    naturalDuration: CMTime(seconds: clamped, preferredTimescale: 600),
+                    naturalDuration: CMTime(seconds: 1.0, preferredTimescale: 600),
                     naturalSize: bakeResult.size,
                     kind: .video,
                     preferredTransform: .identity,
@@ -244,17 +264,28 @@ actor StitchExporter {
                 )
             }
 
+            var composedDuration = timeRange.duration
+            if let stillDuration = clip.edits.stillDuration {
+                let clamped = min(10.0, max(1.0, stillDuration))
+                let targetDuration = CMTime(seconds: clamped, preferredTimescale: 600)
+                videoT.scaleTimeRange(
+                    CMTimeRange(start: insertAt, duration: timeRange.duration),
+                    toDuration: targetDuration
+                )
+                composedDuration = targetDuration
+            }
+
             if let audioT {
                 if let assetAudio = try? await asset.loadTracks(withMediaType: .audio).first {
                     try? audioT.insertTimeRange(timeRange, of: assetAudio, at: insertAt)
                 }
             }
 
-            let composedRange = CMTimeRange(start: insertAt, duration: timeRange.duration)
+            let composedRange = CMTimeRange(start: insertAt, duration: composedDuration)
             segments.append(Segment(clip: clip, composedRange: composedRange, videoTrack: videoT))
             if clip.isEdited { anyEdit = true }
 
-            cursor = CMTimeAdd(insertAt, timeRange.duration)
+            cursor = CMTimeAdd(insertAt, composedDuration)
         }
 
         // Render size derives from aspect mode. `.auto` votes from clip
@@ -326,7 +357,7 @@ actor StitchExporter {
             audioMix = nil
         }
 
-        return Plan(
+        let plan = Plan(
             composition: composition,
             videoComposition: videoComposition,
             audioMix: audioMix,
@@ -334,6 +365,8 @@ actor StitchExporter {
             canPassthrough: canPassthrough,
             bakedStillURLs: bakedStillURLs
         )
+        shouldKeepBakedStillURLs = true
+        return plan
     }
 
     /// Build the audio mix that pairs with the video transitions. For each
@@ -941,10 +974,10 @@ actor StitchExporter {
         case .cancelled:
             // Audit-7-C1 fix: clean up the partial output file. The
             // re-encode path already does this; passthrough did not.
-            try? FileManager.default.removeItem(at: outputURL)
+            await CacheSweeper.shared.sweepOnCancel(predictedOutputURL: outputURL)
             throw CompressionError.cancelled
         case .failed:
-            try? FileManager.default.removeItem(at: outputURL)
+            await CacheSweeper.shared.sweepOnCancel(predictedOutputURL: outputURL)
             let nsErr = exporter.error as NSError?
             // Translate the most common interruption cause for the user.
             if nsErr?.code == -11847 {
@@ -955,7 +988,7 @@ actor StitchExporter {
             let detail = nsErr.map { "[\($0.domain) \($0.code)] \($0.localizedDescription)" } ?? "Unknown export error"
             throw CompressionError.exportFailed("Stitch passthrough failed: \(detail)")
         @unknown default:
-            try? FileManager.default.removeItem(at: outputURL)
+            await CacheSweeper.shared.sweepOnCancel(predictedOutputURL: outputURL)
             throw CompressionError.exportFailed("Stitch passthrough reached non-terminal state.")
         }
     }

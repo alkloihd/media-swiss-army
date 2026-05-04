@@ -504,21 +504,21 @@ actor CompressionService {
 
         if Task.isCancelled {
             writer.cancelWriting()
-            try? FileManager.default.removeItem(at: outputURL)
+            await CacheSweeper.shared.sweepOnCancel(predictedOutputURL: outputURL)
             throw CompressionError.cancelled
         }
 
         // Surface reader-side errors before declaring success.
         if reader.status == .failed {
             writer.cancelWriting()
-            try? FileManager.default.removeItem(at: outputURL)
+            await CacheSweeper.shared.sweepOnCancel(predictedOutputURL: outputURL)
             let detail = reader.error?.localizedDescription ?? "Reader failed."
             throw CompressionError.exportFailed("Read failed: \(detail)")
         }
 
         await writer.finishWriting()
         if writer.status != .completed {
-            try? FileManager.default.removeItem(at: outputURL)
+            await CacheSweeper.shared.sweepOnCancel(predictedOutputURL: outputURL)
             let nsErr = writer.error as NSError?
             if nsErr?.code == -11847 {
                 throw CompressionError.exportFailed(

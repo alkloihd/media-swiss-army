@@ -17,11 +17,11 @@ Rule: append after every cluster task/PR checkpoint before moving on.
 
 ## Running Issues / Watchpoints
 
-| Status | Area                      | Issue                                                                                                                          | Evidence                                                                     | Next action                                                                                           |
-| ------ | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| Open   | TestFlight/manual         | Simulator cannot prove real-device `-11841` fix or photo scale-fit.                                                            | MCP `test_sim` and launch passed, but original bugs were surfaced on iPhone. | After PR #10 merge/TestFlight, user must run Cluster 0 manual prompts.                                |
-| Watch  | Signing/App Store Connect | Bundle ID is now normalized to `com.alkloihd.videocompressor`; TestFlight upload requires this ID to exist/provision in Apple. | `build_run_sim` launched as `com.alkloihd.videocompressor`; PR CI is green.  | Watch TestFlight upload after merge; if signing fails, inspect Actions logs without editing workflow. |
-| Watch  | Historical docs           | Older 2026-05-03 archives still mention `ca.nextclass.VideoCompressor`.                                                        | Active grep only finds old ID in append-only log/archive contexts.           | Do not rewrite historical logs unless user explicitly asks.                                           |
+| Status | Area                      | Issue                                                                                                                     | Evidence                                                                                                                           | Next action                                                                                                                                                                                    |
+| ------ | ------------------------- | ------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Open   | TestFlight/manual         | Simulator cannot prove real-device `-11841` fix or photo scale-fit.                                                       | MCP `test_sim` and launch passed, but original bugs were surfaced on iPhone.                                                       | After PR #10 merge/TestFlight, user must run Cluster 0 manual prompts.                                                                                                                         |
+| Open   | Signing/App Store Connect | Cluster 0 TestFlight export failed after merge while Xcode tried to download App Store app information for export/upload. | GitHub run `25305896821`: archive succeeded; `xcodebuild -exportArchive` failed with `Error Downloading App Information`, exit 70. | Treat as external App Store Connect/bundle/API-key gate; continue simulator-verified feature work on PR branches; do not edit `.github/workflows/testflight.yml` unless separately authorized. |
+| Watch  | Historical docs           | Older 2026-05-03 archives still mention `ca.nextclass.VideoCompressor`.                                                   | Active grep only finds old ID in append-only log/archive contexts.                                                                 | Do not rewrite historical logs unless user explicitly asks.                                                                                                                                    |
 
 ## Cluster Checkpoints
 
@@ -34,5 +34,61 @@ Rule: append after every cluster task/PR checkpoint before moving on.
 | APIs changed          | `StillVideoBaker.bake(still:duration:) -> (url: URL, size: CGSize)`; `CompressionService.compress(input:settings:onProgress:) -> CompressionResult`; `CompressedOutput` includes optional fallback note.     |
 | Downstream dependency | Cluster 1 must preserve the tuple return from `StillVideoBaker`; UI/model work must preserve visible fallback note rather than silently hiding downshift.                                                    |
 | Verification          | `build_sim` passed; `test_sim` passed 152/152; `build_run_sim` launched as `com.alkloihd.videocompressor`; MCP UI snapshot showed Compress empty state; PR CI green.                                         |
+| TestFlight status     | Merge commit `f1e08d5` triggered run `25305896821`; archive succeeded; export/upload failed with `Error Downloading App Information` at `xcodebuild -exportArchive`.                                         |
 | Not yet proven        | Real-device encoder behavior and photo stitch scale-fit on iPhone/TestFlight.                                                                                                                                |
-| Human inspection      | PR #10 diff if available; App Store Connect Bundle ID/provisioning if TestFlight fails; iPhone manual prompts after TestFlight lands.                                                                        |
+| Human inspection      | App Store Connect bundle/app/API-key access if TestFlight remains blocked; iPhone manual prompts after a build successfully lands.                                                                           |
+
+### Autopilot Policy — From 09:11 SAST
+
+| Field              | Notes                                                                                                                                                                                     |
+| ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Branch cadence     | One clean branch/PR per cluster from current `main`; no direct pushes to `main`; no stale outstanding PRs before starting the next cluster.                                               |
+| Review cadence     | Use reviewer agents where they return; if a reviewer hangs, close it, log that fact, and rely on local verification + PR CI rather than blocking indefinitely.                            |
+| TestFlight cadence | Watch every `main` merge workflow. If TestFlight fails for external signing/App Store Connect reasons, log it and continue simulator/local feature work without claiming phone readiness. |
+| Revert path        | Every cluster lands as a merge commit/PR, so code can be reverted by reverting the merge commit. Older successfully processed TestFlight builds remain selectable in Apple tools.         |
+
+### Cluster 1 — Branch Start
+
+| Field             | Notes                                                                                                                                                                                                                                  |
+| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Branch            | `feat/codex-cluster1-cache-and-bake` from `main` at `f1e08d5`                                                                                                                                                                          |
+| Baseline          | `mcp__XcodeBuildMCP__.test_sim` passed 152/152 before production edits.                                                                                                                                                                |
+| Agent scan        | No hard blockers. Adapt plan snippets for Cluster 0 tuple return, use >=32px still fixtures, update expected counts from baseline 152, avoid brittle wall-clock tests, and use explicit cleanup around preallocated still-bake output. |
+| Known deviation   | `StitchExporter.runReencode` has no local export-session cancel branch; it delegates to `CompressionService.encode`, so cancel cleanup should be verified there.                                                                       |
+| Human/iPhone gate | Cluster 1 can be simulator-verified; real cache cleanup after Photos save and TestFlight availability still need a working TestFlight upload or device run.                                                                            |
+
+#### Task 1 — Still Bake O(1)
+
+| Field        | Notes                                                                                                                                                                                                                |
+| ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Key changes  | `StillVideoBaker.bake(still:)` emits a fixed 1-second movie; `bake(still:intoPreallocated:)` supports pre-registered cleanup URLs; `StitchExporter` scales baked still segments to the user-selected still duration. |
+| Tests        | Added `StillVideoBakerTests` and `StitchExporterScaleTests`; updated `StitchAspectRatioTests` for the new API.                                                                                                       |
+| Verification | TDD compile-red on missing `bake(still:)`, then `mcp__XcodeBuildMCP__.test_sim` passed 155/155.                                                                                                                      |
+| Watchpoints  | Focused reviewer agent timed out; rely on green tests and later PR review/CI.                                                                                                                                        |
+
+#### Task 2 — CacheSweeper Lifecycle APIs
+
+| Field        | Notes                                                                                                                                                                                                          |
+| ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Key changes  | `CacheSweeper` now tracks managed tmp outputs, adds `sweepOnCancel`, delayed `sweepAfterSave`, `sweepOnLaunchTight`, and includes managed tmp in totals/breakdown.                                             |
+| Tests        | Added `CacheSweeperTests` for safe Documents deletion, outside-file preservation, cancel cleanup, nil cancel, short-delay save sweep, `StillBakes` cleanup, `PhotoClean-*` wrapper cleanup, and tmp breakdown. |
+| Verification | TDD compile-red on missing APIs, then `mcp__XcodeBuildMCP__.test_sim` passed 163/163.                                                                                                                          |
+| Watchpoints  | Worker and focused reviewer agents timed out; rely on tests plus later PR review/CI.                                                                                                                           |
+
+#### Task 3 — Cleanup Hook Wiring
+
+| Field        | Notes                                                                                                                                                                                                                                   |
+| ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Key changes  | Cancel/failure cleanup now routes through `CacheSweeper.sweepOnCancel` in compression, stitch passthrough, video metadata strip, photo metadata strip, and photo compression paths. Save-success cleanup now uses delayed sweep hooks. |
+| Adaptation   | Current code saves MetaClean and Stitch outputs to Photos from `MetaCleanExportSheet` and `StitchExportSheet`, not from `MetaCleanQueue.runClean` or `StitchProject.runExport`. Delayed sweeps were wired at the actual save sites.     |
+| Tests        | Existing Cluster 1 cache lifecycle tests plus full simulator suite.                                                                                                                                                                     |
+| Verification | `mcp__XcodeBuildMCP__.test_sim` passed 163/163 after integration.                                                                                                                                                                       |
+| Watchpoints  | Focused Task 3 review agent timed out and was closed. Static grep/diff pass found hooks at actual save-success sites; rely on green tests plus final PR review/CI.                                                                     |
+
+#### Final Local Verification
+
+| Field        | Notes                                                                                           |
+| ------------ | ----------------------------------------------------------------------------------------------- |
+| Verification | `mcp__XcodeBuildMCP__.test_sim` passed 164/164 after the pre-merge review follow-up; `mcp__XcodeBuildMCP__.build_sim` succeeded. |
+| PR readiness | CHANGELOG, task manifest, dependency/risk log, and AI chat log updated before push/PR creation.                                   |
+| Review       | Pre-merge reviewer approved PR #11 with no blockers. The one residual still-bake orphan risk was fixed before merge with a regression test. |
