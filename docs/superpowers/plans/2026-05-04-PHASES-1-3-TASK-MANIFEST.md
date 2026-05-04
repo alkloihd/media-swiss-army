@@ -74,7 +74,7 @@
 | ☑   | Task 1: Dev-y copy polish (TASK-04)                               | Added `BatchCleanProgress.userFacingLabel(kind:)`, wired friendlier MetaClean batch/export copy, wrapped the stale-clip debug print in `#if DEBUG`, and removed the duplicate header scissors action. TDD red: missing helper compile failure; green `test_sim` passed 186 total, 185 passed, 1 documented skip. |
 | ☑   | Task 2: Onboarding screen — 3-card paged (TASK-05)                | Added `OnboardingGate` pure logic and first-launch `OnboardingView`, wired `ContentView` via `@AppStorage("hasSeenOnboarding_v1")`, and routes Get started to MetaClean. TDD red: missing `OnboardingGate`; green `test_sim` passed 190 total, 189 passed, 1 documented skip. |
 | ☑   | Task 3: Settings "What MetaClean does" explainer (TASK-10)        | Inserted the MetaClean explainer as the first Settings section with three disclosure groups and accessibility identifier. Verification: `test_sim` passed 190 total, 189 passed, 1 documented skip; `build_sim` succeeded. |
-| ☐   | Task 4: Long-press preview decision (TASK-12)                     |          |
+| ☑   | Task 4: Long-press preview decision (TASK-12)                     | Added Preview as the first Stitch clip context-menu item and a sheet that reuses `ClipLongPressPreview`. Adapted plan by keeping `ClipLongPressPreview` private because the sheet is in the same file. Verification: `test_sim` passed 190 total, 189 passed, 1 documented skip; `build_sim` succeeded. |
 | ☐   | Task 5: Drop indicator polish (TASK-45)                           |          |
 | ☐   | Task 6: Faster batch MetaClean + single-toast (TASK-03 + TASK-06) |          |
 | ☐   | Task 7: Frontend simplifications — presets + sliders (TASK-46)    |          |

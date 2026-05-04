@@ -215,3 +215,12 @@ Rule: append after every cluster task/PR checkpoint before moving on.
 | Adaptation   | Kept the section first and updated the Settings file header.                                                                                                                |
 | Verification | `mcp__XcodeBuildMCP__.test_sim` passed `190` total: `189` passed, `1` documented simulator-fixture skip; `mcp__XcodeBuildMCP__.build_sim` succeeded.                       |
 | Watchpoints  | Manual UI inspection should confirm this is visually first above the background-encoding toggle.                                                                            |
+
+#### Task 4 — Stitch Preview Menu Item
+
+| Field        | Notes                                                                                                                                                                      |
+| ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Key changes  | Stitch clip context menus now start with `Preview`, and tapping it presents the existing `ClipLongPressPreview` in a medium/large sheet with a Done button.                |
+| Adaptation   | Kept `ClipLongPressPreview` file-private because the new sheet lives in the same file; the plan's promotion note was unnecessary.                                           |
+| Verification | `mcp__XcodeBuildMCP__.test_sim` passed `190` total: `189` passed, `1` documented simulator-fixture skip; `mcp__XcodeBuildMCP__.build_sim` succeeded.                       |
+| Watchpoints  | Manual UI inspection should confirm Preview appears first and the existing long-press preview overlay still works.                                                          |

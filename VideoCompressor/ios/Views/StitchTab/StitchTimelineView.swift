@@ -50,6 +50,7 @@ struct StitchTimelineView: View {
     /// where the dragged clip will land. iOS Photos / Files use this
     /// pattern; without it the drop is a guess.
     @State private var dropTargetID: StitchClip.ID?
+    @State private var previewClipID: StitchClip.ID?
     /// User-controlled pinch-to-zoom on the timeline strip. 1.0 = default
     /// 200pt clip width; clamped to [0.5, 2.5] so clips never get unusably
     /// small or absurdly large. Persisted across re-renders only — not
@@ -178,12 +179,44 @@ struct StitchTimelineView: View {
                     Haptics.tapRigid()
                 }
         )
+        .sheet(item: Binding(
+            get: {
+                previewClipID.flatMap { id in
+                    project.clips.first { $0.id == id }
+                }
+            },
+            set: { newValue in
+                previewClipID = newValue?.id
+            }
+        )) { clip in
+            NavigationStack {
+                ClipLongPressPreview(clip: clip)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .padding()
+                    .navigationTitle(clip.displayName)
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .topBarTrailing) {
+                            Button("Done") {
+                                previewClipID = nil
+                            }
+                        }
+                    }
+            }
+            .presentationDetents([.medium, .large])
+        }
     }
 
     // MARK: - Context menu
 
     @ViewBuilder
     private func clipContextMenu(for clip: StitchClip) -> some View {
+        Button {
+            previewClipID = clip.id
+        } label: {
+            Label("Preview", systemImage: "play.rectangle")
+        }
+        Divider()
         Button {
             duplicate(clip: clip)
         } label: {
