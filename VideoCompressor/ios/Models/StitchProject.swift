@@ -135,9 +135,13 @@ final class StitchProject: ObservableObject {
         // + crossfade once and then "Started Over" got unexpected
         // pillarboxing on landscape clips. Reset to factory defaults so
         // the next project starts at a known state.
+        //
+        // NOT touching `lastImportError` here: it's already cleared by the
+        // alert's own dismiss-binding setter, and pre-emptively nulling it
+        // would mask a recently-surfaced import failure the user hasn't
+        // acknowledged yet (re-audit 3 wave-3 catch).
         aspectMode = .auto
         transition = .none
-        lastImportError = nil
         guard !clips.isEmpty || exportState != .idle else { return }
         let allOffsets = IndexSet(integersIn: 0..<clips.count)
         if !allOffsets.isEmpty {

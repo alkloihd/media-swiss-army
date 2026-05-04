@@ -446,7 +446,24 @@ struct StitchTabView: View {
                 }
             }
         }
-        await Self.finalizeImportOrdering(project: project)
+        // Re-audit 6 wave-3 catch: surface unresolved-date count from the
+        // post-import auto-sort the same way the manual Sort toolbar
+        // surfaces it. Without this, users importing N clips via Limited
+        // Photos auth or drag-drop see an apparently-random order with
+        // zero feedback — same 1-star pattern the manual Sort banner was
+        // built to prevent.
+        let outcome = await Self.finalizeImportOrdering(project: project)
+        if outcome.unresolvedCount > 0 {
+            sortBannerDismissTask?.cancel()
+            sortBanner = "Couldn't read date for \(outcome.unresolvedCount) clip\(outcome.unresolvedCount == 1 ? "" : "s") — those moved to the end."
+            sortBannerVisible = true
+            sortBannerDismissTask = Task {
+                try? await Task.sleep(for: .seconds(3))
+                if !Task.isCancelled {
+                    sortBannerVisible = false
+                }
+            }
+        }
     }
 
     /// Moves the picker-staged temp file into `StitchInputs/`.
@@ -496,16 +513,20 @@ struct StitchTabView: View {
         )
     }
 
+    /// Runs the post-import sort and returns the structured outcome so the
+    /// caller can surface unresolved-date counts to the user. Existing
+    /// callers that only care about whether the order changed should read
+    /// `.didChange` from the result.
     @discardableResult
     @MainActor
-    static func finalizeImportOrdering(project: StitchProject) async -> Bool {
-        await project.sortByCreationDateAsync().didChange
+    static func finalizeImportOrdering(project: StitchProject) async -> StitchProject.SortByDateOutcome {
+        await project.sortByCreationDateAsync()
     }
 
     @discardableResult
     @MainActor
     static func testHook_finalizeImportOrdering(project: StitchProject) async -> Bool {
-        await finalizeImportOrdering(project: project)
+        await finalizeImportOrdering(project: project).didChange
     }
 }
 
