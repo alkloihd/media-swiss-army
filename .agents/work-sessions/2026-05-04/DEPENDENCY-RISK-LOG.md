@@ -292,3 +292,12 @@ Rule: append after every cluster task/PR checkpoint before moving on.
 | Tests        | Added pure eligibility and injected recorder tests for threshold, same-version lock, new-version re-prompt, non-positive count ignore, and count persistence.                                                   |
 | Verification | TDD red failed on missing `ReviewPrompter`, then actor-isolated default closures; focused ReviewPrompter tests passed `9/9`; full `test_sim` passed `225` total: `224` passed, `1` documented skip.            |
 | Watchpoints  | Actual system review UI cannot be forced by unit tests and may be rate-limited by iOS; tests cover the app-side eligibility and request trigger path.                                                           |
+
+#### Task 4 — Privacy Policy And Settings Link
+
+| Field        | Notes                                                                                                                                                                                                         |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Key changes  | Added `docs/privacy/index.html` for `https://alkloihd.github.io/media-swiss-army/privacy/` and a Settings `About` section with a Safari-opening Privacy Policy row.                                           |
+| Adaptation   | Used the locked repo URL and current Media Swiss Army branding. The plan's `Section("About") { } footer:` initializer did not compile under this SDK, so the Settings row uses explicit header/footer closures. |
+| Verification | `npx prettier --check docs/privacy/index.html` passed after formatting; TDD compile-red caught the Section initializer issue; focused ReviewPrompter tests passed `9/9`; full `test_sim` passed `225/224/1`.  |
+| Watchpoints  | GitHub Pages still requires manual repo setting: Settings → Pages → Source `main` branch, `/docs` folder. Until then the in-app link opens Safari to a parseable URL that may 404.                              |
