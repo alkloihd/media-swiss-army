@@ -2,10 +2,8 @@
 //  CropEditorView.swift
 //  VideoCompressor
 //
-//  v1 crop editor: four sliders (X, Y, Width, Height) editing a normalized
-//  CGRect over the clip's natural size. Uses explicit Binding<Double> getters
-//  rather than WritableKeyPath<CGRect, Double> to avoid CGFloat/Double type
-//  mismatch. v2 will overlay a draggable rect handle on a preview frame.
+//  Aspect-preset crop controls for Stitch clips. Replaces the old XYWH
+//  sliders with discrete, centered crop presets.
 //
 
 import SwiftUI
@@ -15,116 +13,176 @@ struct CropEditorView: View {
     let clip: StitchClip
     @Binding var edits: ClipEdits
 
+    enum AspectPreset: String, CaseIterable, Hashable {
+        case free
+        case square
+        case portrait916
+        case landscape169
+
+        var label: String {
+            switch self {
+            case .free:         return "Free"
+            case .square:       return "Square"
+            case .portrait916:  return "9:16"
+            case .landscape169: return "16:9"
+            }
+        }
+
+        var symbolName: String {
+            switch self {
+            case .free:         return "crop"
+            case .square:       return "square"
+            case .portrait916:  return "rectangle.portrait"
+            case .landscape169: return "rectangle"
+            }
+        }
+
+        var ratio: CGFloat? {
+            switch self {
+            case .free:         return nil
+            case .square:       return 1
+            case .portrait916:  return 9.0 / 16.0
+            case .landscape169: return 16.0 / 9.0
+            }
+        }
+    }
+
     var body: some View {
         VStack(spacing: 16) {
-            VStack(alignment: .leading, spacing: 8) {
-                cropSlider("X",      value: xBinding,      minimum: 0)
-                cropSlider("Y",      value: yBinding,      minimum: 0)
-                cropSlider("Width",  value: widthBinding,  minimum: 0.05)
-                cropSlider("Height", value: heightBinding, minimum: 0.05)
+            CropPresetButtonGrid(
+                currentCrop: edits.cropNormalized,
+                naturalSize: clip.naturalSize,
+                displaySize: clip.displaySize
+            ) { preset in
+                edits.cropNormalized = Self.cropRect(
+                    for: preset,
+                    naturalSize: clip.naturalSize,
+                    displaySize: clip.displaySize
+                )
             }
-            .padding(.horizontal, 24)
-
-            Button {
-                edits.cropNormalized = nil
-            } label: {
-                Label("Reset Crop", systemImage: "arrow.uturn.backward")
-            }
-            .buttonStyle(.bordered)
-
-            Text("v2 will offer an interactive crop rectangle over a preview frame.")
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, 32)
-                .multilineTextAlignment(.center)
+            .padding(.horizontal, 16)
 
             Spacer()
         }
         .padding(.top, 24)
     }
 
-    // MARK: - Slider builder
+    static func cropRect(
+        for preset: AspectPreset,
+        naturalSize: CGSize
+    ) -> CGRect? {
+        cropRect(for: preset, naturalSize: naturalSize, displaySize: naturalSize)
+    }
 
-    private func cropSlider(
-        _ label: String,
-        value: Binding<Double>,
-        minimum: Double
-    ) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack {
-                Text(label)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Spacer()
-                Text(String(format: "%.2f", value.wrappedValue))
-                    .font(.caption.monospacedDigit())
-            }
-            Slider(value: value, in: minimum...1)
+    static func cropRect(
+        for preset: AspectPreset,
+        naturalSize: CGSize,
+        displaySize: CGSize
+    ) -> CGRect? {
+        guard var targetRatio = preset.ratio else { return nil }
+        guard naturalSize.width > 0, naturalSize.height > 0 else { return nil }
+
+        if isRotated(naturalSize: naturalSize, displaySize: displaySize) {
+            targetRatio = 1 / targetRatio
+        }
+
+        let sourceRatio = naturalSize.width / naturalSize.height
+        let rect: CGRect
+        if targetRatio >= sourceRatio {
+            let height = sourceRatio / targetRatio
+            rect = CGRect(x: 0, y: (1 - height) / 2, width: 1, height: height)
+        } else {
+            let width = targetRatio / sourceRatio
+            rect = CGRect(x: (1 - width) / 2, y: 0, width: width, height: 1)
+        }
+
+        let clamped = clamp(rect)
+        return isApproximatelyIdentity(clamped) ? nil : clamped
+    }
+
+    private static let identityEpsilon: CGFloat = 1e-3
+
+    static func isApproximatelyEqual(_ a: CGRect?, _ b: CGRect?) -> Bool {
+        switch (a, b) {
+        case (nil, nil):
+            return true
+        case let (lhs?, rhs?):
+            return abs(lhs.minX - rhs.minX) < identityEpsilon
+                && abs(lhs.minY - rhs.minY) < identityEpsilon
+                && abs(lhs.width - rhs.width) < identityEpsilon
+                && abs(lhs.height - rhs.height) < identityEpsilon
+        default:
+            return false
         }
     }
 
-    // MARK: - Explicit CGRect field bindings
-    // CGFloat and Double are distinct types; Swift does not synthesize
-    // WritableKeyPath<CGRect, Double>, so we use four explicit bindings.
-    // Each setter normalizes to nil when the rect is approximately the
-    // identity (full frame) so the exporter's passthrough fast-path stays
-    // available — exact CGFloat equality is float-fragile (closes review
-    // {E-0503-1101} H1).
-
-    private static let identityEpsilon: CGFloat = 1e-4
-
-    private static func isApproximatelyIdentity(_ r: CGRect) -> Bool {
-        abs(r.minX) < identityEpsilon
-            && abs(r.minY) < identityEpsilon
-            && abs(r.width  - 1) < identityEpsilon
-            && abs(r.height - 1) < identityEpsilon
+    private static func isApproximatelyIdentity(_ rect: CGRect) -> Bool {
+        isApproximatelyEqual(rect, CGRect(x: 0, y: 0, width: 1, height: 1))
     }
 
-    private func commit(_ rect: CGRect) {
-        edits.cropNormalized = Self.isApproximatelyIdentity(rect) ? nil : rect
+    private static func isRotated(naturalSize: CGSize, displaySize: CGSize) -> Bool {
+        guard displaySize.width > 0, displaySize.height > 0 else { return false }
+        let naturalLandscape = naturalSize.width > naturalSize.height
+        let displayLandscape = displaySize.width > displaySize.height
+        return naturalLandscape != displayLandscape
     }
 
-    private var xBinding: Binding<Double> {
-        Binding(
-            get: { Double(edits.cropNormalized?.origin.x ?? 0) },
-            set: { newValue in
-                var rect = edits.cropNormalized ?? CGRect(x: 0, y: 0, width: 1, height: 1)
-                rect.origin.x = CGFloat(newValue)
-                commit(rect)
+    private static func clamp(_ rect: CGRect) -> CGRect {
+        let x = min(1, max(0, rect.minX))
+        let y = min(1, max(0, rect.minY))
+        let width = min(1 - x, max(0, rect.width))
+        let height = min(1 - y, max(0, rect.height))
+        return CGRect(x: x, y: y, width: width, height: height)
+    }
+}
+
+struct CropPresetButtonGrid: View {
+    let currentCrop: CGRect?
+    let naturalSize: CGSize
+    let displaySize: CGSize
+    var apply: (CropEditorView.AspectPreset) -> Void
+
+    private let columns = Array(repeating: GridItem(.flexible(), spacing: 8), count: 4)
+
+    var body: some View {
+        LazyVGrid(columns: columns, spacing: 8) {
+            ForEach(CropEditorView.AspectPreset.allCases, id: \.self) { preset in
+                let selected = isSelected(preset)
+                Button {
+                    apply(preset)
+                } label: {
+                    VStack(spacing: 5) {
+                        Image(systemName: preset.symbolName)
+                            .font(.title3)
+                        Text(preset.label)
+                            .font(.caption.weight(.semibold))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.8)
+                    }
+                    .frame(maxWidth: .infinity, minHeight: 58)
+                    .background(
+                        RoundedRectangle(cornerRadius: 8)
+                            .fill(selected
+                                  ? Color.accentColor.opacity(0.18)
+                                  : Color.secondary.opacity(0.08))
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(selected ? Color.accentColor : .clear, lineWidth: 2)
+                    )
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("cropPreset_\(preset.rawValue)")
             }
-        )
+        }
     }
 
-    private var yBinding: Binding<Double> {
-        Binding(
-            get: { Double(edits.cropNormalized?.origin.y ?? 0) },
-            set: { newValue in
-                var rect = edits.cropNormalized ?? CGRect(x: 0, y: 0, width: 1, height: 1)
-                rect.origin.y = CGFloat(newValue)
-                commit(rect)
-            }
+    private func isSelected(_ preset: CropEditorView.AspectPreset) -> Bool {
+        let target = CropEditorView.cropRect(
+            for: preset,
+            naturalSize: naturalSize,
+            displaySize: displaySize
         )
-    }
-
-    private var widthBinding: Binding<Double> {
-        Binding(
-            get: { Double(edits.cropNormalized?.size.width ?? 1) },
-            set: { newValue in
-                var rect = edits.cropNormalized ?? CGRect(x: 0, y: 0, width: 1, height: 1)
-                rect.size.width = CGFloat(newValue)
-                commit(rect)
-            }
-        )
-    }
-
-    private var heightBinding: Binding<Double> {
-        Binding(
-            get: { Double(edits.cropNormalized?.size.height ?? 1) },
-            set: { newValue in
-                var rect = edits.cropNormalized ?? CGRect(x: 0, y: 0, width: 1, height: 1)
-                rect.size.height = CGFloat(newValue)
-                commit(rect)
-            }
-        )
+        return CropEditorView.isApproximatelyEqual(currentCrop, target)
     }
 }

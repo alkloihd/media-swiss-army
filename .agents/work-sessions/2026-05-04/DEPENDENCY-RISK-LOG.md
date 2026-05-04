@@ -242,3 +242,14 @@ Rule: append after every cluster task/PR checkpoint before moving on.
 | Tests        | Added `MetaCleanQueueConcurrencyTests` for concurrency policy, completed-count progress fraction, and save-batch display copy.                                                                          |
 | Verification | TDD red compile failed on missing `MetaCleanQueue.batchConcurrency` and `SaveBatchResult`; focused label-start red/green then passed 12/12; full `mcp__XcodeBuildMCP__.test_sim` passed `198` total: `197` passed, `1` skip; `build_sim` succeeded. |
 | Watchpoints  | Real-device MetaClean batch timing and Photos delete-confirmation UX still need TestFlight/iPhone inspection; current confidence is simulator/build plus static diff review until device testing is available. |
+
+#### Task 7 — Frontend Simplifications
+
+| Field        | Notes                                                                                                                                                                                                 |
+| ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Key changes  | Compress picker now shows Balanced + Small by default with Max + Streaming under Advanced; crop controls are four aspect presets; Settings performance lives behind an Advanced disclosure.            |
+| Adaptation   | The active Stitch editor is `ClipEditorInlinePanel`, not just `ClipEditorSheet`, so the crop preset grid is wired into the inline editor as well. Crop math uses `displaySize` to avoid rotated iPhone portrait false crops and collapses identity crops to `nil`. |
+| Tests        | Added `CropEditorPresetTests` for free/invalid clears, square landscape crop, native 16:9/rotated 9:16 identity collapse, and portrait/landscape cross-crops.                                             |
+| Verification | TDD red compile failed on missing `CropEditorView.cropRect`/preset enum; focused crop tests passed 7/7; `mcp__XcodeBuildMCP__.clean` succeeded; full `test_sim` passed `205` total: `204` passed, `1` skip; `build_sim` succeeded. |
+| UI evidence  | Simulator launched, onboarding completed, Settings Advanced collapsed/expanded correctly in `snapshot_ui`; screenshot saved at `/var/folders/4v/3fctbw5j65gcbzcbhrsg33y40000gq/T/screenshot_optimized_de88d7dd-a934-48de-a5aa-2bfe202f5d14.jpg`. |
+| Watchpoints  | Need real media loaded in Stitch to visually confirm inline crop preset placement with video/still previews; simulator shut down before further tap-through, but build/test coverage is green.           |

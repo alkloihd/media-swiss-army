@@ -93,6 +93,8 @@ struct ClipEditorInlinePanel: View {
                         .clipShape(RoundedRectangle(cornerRadius: 8))
                 }
 
+                cropPresetControls(clip: clip)
+
                 if clip.kind == .still {
                     stillDurationControl(clip: clip)
                 } else {
@@ -161,6 +163,24 @@ struct ClipEditorInlinePanel: View {
             Text("Plays for \(String(format: "%.1f", duration)) seconds in the stitched video. Range: 1–10 s.")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
+        }
+        .padding(.top, 4)
+    }
+
+    // MARK: - Crop presets
+
+    @ViewBuilder
+    private func cropPresetControls(clip: StitchClip) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Crop")
+                .font(.subheadline.weight(.semibold))
+            CropPresetButtonGrid(
+                currentCrop: clip.edits.cropNormalized,
+                naturalSize: clip.naturalSize,
+                displaySize: clip.displaySize
+            ) { preset in
+                applyCropPreset(preset, to: clip)
+            }
         }
         .padding(.top, 4)
     }
@@ -367,6 +387,26 @@ struct ClipEditorInlinePanel: View {
             playheadSeconds = currentEnd
             seekTo(currentEnd)
         }
+    }
+
+    private func applyCropPreset(
+        _ preset: CropEditorView.AspectPreset,
+        to clip: StitchClip
+    ) {
+        let next = CropEditorView.cropRect(
+            for: preset,
+            naturalSize: clip.naturalSize,
+            displaySize: clip.displaySize
+        )
+        guard !CropEditorView.isApproximatelyEqual(clip.edits.cropNormalized, next) else {
+            return
+        }
+        let previous = clip.edits
+        project.updateEdits(for: clipID) {
+            $0.cropNormalized = next
+        }
+        project.commitHistorySnapshot(for: clipID, previous: previous)
+        Haptics.tapLight()
     }
 
     // MARK: - Player wiring
