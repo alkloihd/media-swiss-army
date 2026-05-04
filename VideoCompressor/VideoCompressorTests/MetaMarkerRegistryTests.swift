@@ -77,4 +77,70 @@ final class MetaMarkerRegistryTests: XCTestCase {
 
         XCTAssertEqual(result, MetaMarkerRegistry.defaultBundled())
     }
+
+    func testFalsePositiveGuardRejectsMetaInUserTypedDescription() async {
+        let hit = await MetadataService.isMetaGlassesFingerprint(
+            key: "com.apple.quicktime.description",
+            decodedText: "Meta-data backup",
+            isBinarySource: false,
+            atomByteCount: nil
+        )
+
+        XCTAssertFalse(hit, "User-typed text containing 'meta' must not trigger.")
+    }
+
+    func testBinaryAtomBareMetaMarkerInLargePayloadDoesTrigger() async {
+        let hit = await MetadataService.isMetaGlassesFingerprint(
+            key: "com.apple.quicktime.comment",
+            decodedText: String(repeating: "x", count: 796) + "meta",
+            isBinarySource: true,
+            atomByteCount: 800
+        )
+
+        XCTAssertTrue(hit, "Binary 800-byte atom containing bare 'meta' must trigger.")
+    }
+
+    func testBinaryAtomMetaMarkerInShortPayloadDoesNotTrigger() async {
+        let hit = await MetadataService.isMetaGlassesFingerprint(
+            key: "com.apple.quicktime.comment",
+            decodedText: "meta",
+            isBinarySource: true,
+            atomByteCount: 4
+        )
+
+        XCTAssertFalse(hit, "Below minimumMarkerLengthBytes must short-circuit.")
+    }
+
+    func testUserTypedMetaWearableInDescriptionDoesNotTrigger() async {
+        let hit = await MetadataService.isMetaGlassesFingerprint(
+            key: "com.apple.quicktime.description",
+            decodedText: "My meta wearable backup from yesterday's hike",
+            isBinarySource: false,
+            atomByteCount: nil
+        )
+
+        XCTAssertFalse(hit, "User-typed text containing a real marker must not trigger.")
+    }
+
+    func testRegistryDetectsLegacyRayBanMarker() async {
+        let hit = await MetadataService.isMetaGlassesFingerprint(
+            key: "com.apple.quicktime.comment",
+            decodedText: "Ray-Ban Stories",
+            isBinarySource: true,
+            atomByteCount: 32
+        )
+
+        XCTAssertTrue(hit)
+    }
+
+    func testRegistryRejectsKeyOutsideCommentDescription() async {
+        let hit = await MetadataService.isMetaGlassesFingerprint(
+            key: "com.apple.quicktime.location.ISO6709",
+            decodedText: "Ray-Ban",
+            isBinarySource: true,
+            atomByteCount: 32
+        )
+
+        XCTAssertFalse(hit, "Detector only matches comment/description atoms.")
+    }
 }

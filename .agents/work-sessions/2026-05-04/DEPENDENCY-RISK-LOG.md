@@ -339,3 +339,13 @@ Rule: append after every cluster task/PR checkpoint before moving on.
 | Adaptation   | Fallback preserves current legacy `meta` / Ray-Ban detection semantics while excluding new Oakley/device-hint literals so JSON-vs-fallback remains observable in tests.                                  |
 | Verification | TDD red compile failed on missing `MetaMarkerRegistry`; focused registry tests passed `6/6`; full `test_sim` passed `231` total: `230` passed, `1` documented simulator-fixture skip.                 |
 | Watchpoints  | `MetaMarkerRegistry.shared` caches the first load; tests that exercise parse failures use static `parseOrFallback(data:)` rather than mutating shared actor state. No network or strip paths touched.      |
+
+#### Task 3 — MetadataService Registry Wire-In
+
+| Field        | Notes                                                                                                                                                                                                            |
+| ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Key changes  | `MetadataService.isMetaGlassesFingerprint` is now async, loads binary atom markers from `MetaMarkerRegistry`, and applies source-type plus min-length guards. `classify` passes `isBinarySource` and byte count. |
+| Adaptation   | Because legacy detection included bare `meta`, Task 3 tests intentionally prove binary bare `meta` still triggers only when the source is binary and the payload is large enough.                                |
+| Tests        | Added false-positive/user-typed rejection, large binary bare-`meta`, short-payload min-length, user-typed real marker rejection, legacy Ray-Ban, and non-comment key rejection tests.                              |
+| Verification | TDD red failed on old detector signature; focused registry + metadata tag tests passed `26/26`; full `test_sim` passed `237` total: `236` passed, `1` documented simulator-fixture skip.                         |
+| Watchpoints  | Only video detection/classification changed; `MetadataService.strip` and stripping predicates were not edited.                                                                                                    |
