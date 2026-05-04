@@ -1,7 +1,7 @@
 # TestFlight Deployment Guide — Media Swiss Army (iOS)
 
 **App display name:** Media Swiss Army
-**Bundle ID:** `com.alkloihd.videocompressor`
+**Bundle ID:** `ca.nextclass.VideoCompressor`
 **Apple Developer Program:** Paid ($99/yr) — required for TestFlight + Xcode Cloud
 **Recommended CI:** **Xcode Cloud** (Apple's native CI; included free with paid membership)
 **Fallback CI:** GitHub Actions (documented in `.agents/work-sessions/2026-05-03/plans/PLAN-cicd-testflight.md`)
@@ -18,7 +18,7 @@ The full step-by-step plan (with exact App Store Connect URLs and screenshots-wo
 
 It walks through (all from `appstoreconnect.apple.com` on phone Safari):
 
-1. Claim bundle ID `com.alkloihd.videocompressor` and create the "Media Swiss Army" app record
+1. Claim bundle ID `ca.nextclass.VideoCompressor` and create the "Media Swiss Army" app record
 2. Add yourself as Internal Tester
 3. Connect Xcode Cloud to the GitHub repo
 4. Create a workflow: trigger on push to `main` (or any branch you choose) → build with Xcode 16 → archive → upload to TestFlight
@@ -66,7 +66,7 @@ Ignore this section if Xcode Cloud is set up. Kept here for emergency local buil
 | Problem                                                                     | Fix                                                                                           |
 | --------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
 | "No signing certificate found" on archive                                   | Open Xcode once, target → Signing → tick Automatic → re-pick Team                             |
-| Bundle ID `com.alkloihd.videocompressor` already taken in App Store Connect | Claim `com.alkloihd.metaclean` instead and update `PRODUCT_BUNDLE_IDENTIFIER` in pbxproj      |
+| Bundle ID `ca.nextclass.VideoCompressor` already taken in App Store Connect | Claim `com.alkloihd.metaclean` instead and update `PRODUCT_BUNDLE_IDENTIFIER` in pbxproj      |
 | Build processing stuck >30 min                                              | Apple is slow occasionally. Check <https://developer.apple.com/system-status/>.               |
 | Tester can't see build                                                      | Must accept invite email AND have TestFlight app installed AND sign in with the SAME Apple ID |
 | Internal testers cap at 100                                                 | Switch to External Testing (10,000 cap) — requires one-time Beta App Review                   |

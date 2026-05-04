@@ -539,7 +539,7 @@ Deliverables:
 
 | Field                | Value                                              |
 | -------------------- | -------------------------------------------------- |
-| Bundle ID            | `com.alkloihd.videocompressor`                     |
+| Bundle ID            | `ca.nextclass.VideoCompressor`                     |
 | Home-screen name     | `Media Swiss Army`                                 |
 | In-app title         | `Alkloihd Video Swiss-AK`                          |
 | Apple Team ID        | `9577LMA4J5`                                       |
@@ -710,7 +710,7 @@ The backlog folder is your task list. `AUDIT-CONSOLIDATED-FINDINGS.md` is the sy
 | Field | Value |
 |---|---|
 | Apple Team ID | `9577LMA4J5` |
-| Bundle ID | `com.alkloihd.videocompressor` |
+| Bundle ID | `ca.nextclass.VideoCompressor` |
 | Home-screen name | `Media Swiss Army` |
 | App Store name (planned) | `MetaClean: AI Glasses Data` |
 | GitHub repo | `alkloihd/media-swiss-army` |
