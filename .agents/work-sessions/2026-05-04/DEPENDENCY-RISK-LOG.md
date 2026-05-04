@@ -46,3 +46,22 @@ Rule: append after every cluster task/PR checkpoint before moving on.
 | Review cadence     | Use reviewer agents where they return; if a reviewer hangs, close it, log that fact, and rely on local verification + PR CI rather than blocking indefinitely.                            |
 | TestFlight cadence | Watch every `main` merge workflow. If TestFlight fails for external signing/App Store Connect reasons, log it and continue simulator/local feature work without claiming phone readiness. |
 | Revert path        | Every cluster lands as a merge commit/PR, so code can be reverted by reverting the merge commit. Older successfully processed TestFlight builds remain selectable in Apple tools.         |
+
+### Cluster 1 — Branch Start
+
+| Field             | Notes                                                                                                                                                                                                                                  |
+| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Branch            | `feat/codex-cluster1-cache-and-bake` from `main` at `f1e08d5`                                                                                                                                                                          |
+| Baseline          | `mcp__XcodeBuildMCP__.test_sim` passed 152/152 before production edits.                                                                                                                                                                |
+| Agent scan        | No hard blockers. Adapt plan snippets for Cluster 0 tuple return, use >=32px still fixtures, update expected counts from baseline 152, avoid brittle wall-clock tests, and use explicit cleanup around preallocated still-bake output. |
+| Known deviation   | `StitchExporter.runReencode` has no local export-session cancel branch; it delegates to `CompressionService.encode`, so cancel cleanup should be verified there.                                                                       |
+| Human/iPhone gate | Cluster 1 can be simulator-verified; real cache cleanup after Photos save and TestFlight availability still need a working TestFlight upload or device run.                                                                            |
+
+#### Task 1 — Still Bake O(1)
+
+| Field        | Notes                                                                                                                                                                                                                |
+| ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Key changes  | `StillVideoBaker.bake(still:)` emits a fixed 1-second movie; `bake(still:intoPreallocated:)` supports pre-registered cleanup URLs; `StitchExporter` scales baked still segments to the user-selected still duration. |
+| Tests        | Added `StillVideoBakerTests` and `StitchExporterScaleTests`; updated `StitchAspectRatioTests` for the new API.                                                                                                       |
+| Verification | TDD compile-red on missing `bake(still:)`, then `mcp__XcodeBuildMCP__.test_sim` passed 155/155.                                                                                                                      |
+| Watchpoints  | Focused reviewer agent timed out; rely on green tests and later PR review/CI.                                                                                                                                        |
