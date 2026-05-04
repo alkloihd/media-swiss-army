@@ -20,6 +20,8 @@ struct StitchTabView: View {
     @State private var pickerItems: [PhotosPickerItem] = []
     @State private var showExportSheet = false
     @State private var showStartOverConfirmation = false
+    @State private var sortBanner: String = ""
+    @State private var sortBannerVisible: Bool = false
     /// Drives the inline ClipEditorInlinePanel below the timeline. nil when
     /// no clip is being edited. Tapping a timeline tile sets it; tapping
     /// the same tile again or the panel's X button clears it.
@@ -94,11 +96,25 @@ struct StitchTabView: View {
                             if project.clips.count >= 2 {
                                 Button {
                                     Task {
-                                        let changed = await project.sortByCreationDateAsync()
-                                        if changed {
+                                        let outcome = await project.sortByCreationDateAsync()
+                                        if outcome.didChange {
                                             Haptics.tapMedium()
                                         } else {
                                             Haptics.notifyWarning()
+                                        }
+                                        // Cluster 2.5 audit follow-up: when
+                                        // some clips lacked dates (Limited
+                                        // Photos auth / drag-drop / Share
+                                        // Extension), surface a banner so
+                                        // the user knows why their timeline
+                                        // didn't fully re-order.
+                                        if outcome.unresolvedCount > 0 {
+                                            sortBanner = "Couldn't read date for \(outcome.unresolvedCount) clip\(outcome.unresolvedCount == 1 ? "" : "s") — those moved to the end."
+                                            sortBannerVisible = true
+                                            Task {
+                                                try? await Task.sleep(for: .seconds(3))
+                                                sortBannerVisible = false
+                                            }
                                         }
                                     }
                                 } label: {
@@ -124,8 +140,10 @@ struct StitchTabView: View {
                 titleVisibility: .visible
             ) {
                 Button("Start Over", role: .destructive) {
-                    project.clearAll()
-                    Haptics.notifyWarning()
+                    Task {
+                        await project.clearAll()
+                        Haptics.notifyWarning()
+                    }
                 }
                 Button("Cancel", role: .cancel) {}
             } message: {
@@ -136,6 +154,21 @@ struct StitchTabView: View {
                     stitchActionBar
                 }
             }
+            .overlay(alignment: .top) {
+                if sortBannerVisible {
+                    Text(sortBanner)
+                        .font(.subheadline)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 10)
+                        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
+                        .padding(.horizontal, 16)
+                        .padding(.top, 8)
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                        .accessibilityIdentifier("stitchSortBanner")
+                }
+            }
+            .animation(.easeInOut(duration: 0.3), value: sortBannerVisible)
             .alert(
                 "Import failed",
                 isPresented: Binding(
@@ -236,18 +269,29 @@ struct StitchTabView: View {
     private var stitchActionBar: some View {
         VStack(spacing: 0) {
             Divider()
-            HStack {
-                Spacer()
-                Button {
-                    showExportSheet = true
-                } label: {
-                    Label("Stitch & Export", systemImage: "square.and.arrow.up")
-                        .font(.subheadline.weight(.semibold))
+            VStack(spacing: 6) {
+                HStack {
+                    Spacer()
+                    Button {
+                        showExportSheet = true
+                    } label: {
+                        Label("Stitch & Export", systemImage: "square.and.arrow.up")
+                            .font(.subheadline.weight(.semibold))
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(!project.canExport)
+                    .accessibilityIdentifier("stitchExportButton")
+                    Spacer()
                 }
-                .buttonStyle(.borderedProminent)
-                .disabled(!project.canExport)
-                .accessibilityIdentifier("stitchExportButton")
-                Spacer()
+                if !project.canExport, !project.clips.isEmpty {
+                    // Cluster 2.5 audit: single-clip dead-end was the most
+                    // likely 1-star review trigger. The disabled button alone
+                    // gave new users no signal what they needed to do next.
+                    Text("Add at least one more clip to stitch.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .accessibilityIdentifier("stitchAddMoreHint")
+                }
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 10)
@@ -446,7 +490,7 @@ struct StitchTabView: View {
     @discardableResult
     @MainActor
     static func finalizeImportOrdering(project: StitchProject) async -> Bool {
-        await project.sortByCreationDateAsync()
+        await project.sortByCreationDateAsync().didChange
     }
 
     @discardableResult

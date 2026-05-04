@@ -14,6 +14,7 @@
 import Foundation
 import AVFoundation
 import UIKit
+import os
 
 @MainActor
 final class AudioBackgroundKeeper {
@@ -21,6 +22,10 @@ final class AudioBackgroundKeeper {
 
     private var audioPlayer: AVAudioPlayer?
     private var refCount = 0
+    private let log = Logger(
+        subsystem: Bundle.main.bundleIdentifier ?? "ca.nextclass.VideoCompressor",
+        category: "AudioBackgroundKeeper"
+    )
 
     private init() {}
 
@@ -60,7 +65,10 @@ final class AudioBackgroundKeeper {
             audioPlayer?.play()
         } catch {
             // Fail-soft. If audio session activation fails, fall back to
-            // the existing UIBackgroundTask grace window.
+            // the existing UIBackgroundTask grace window. Cluster 2.5
+            // audit: log to OSLog so users who later report "background
+            // encode died" can be diagnosed via Console.
+            log.error("AVAudioSession setup failed; falling back to UIBackgroundTask grace window. \(String(describing: error), privacy: .public)")
         }
     }
 
@@ -95,6 +103,9 @@ final class AudioBackgroundKeeper {
         } catch {
             // If we can't generate, return a path that doesn't exist —
             // AVAudioPlayer init will fail in startAudio, fail-soft kicks in.
+            // Cluster 2.5 audit: log so the silent-track failure is
+            // diagnosable via Console instead of being invisible.
+            log.error("Silent track generation failed; AVAudioPlayer init will fail and fall back. \(String(describing: error), privacy: .public)")
         }
         return tmp
     }

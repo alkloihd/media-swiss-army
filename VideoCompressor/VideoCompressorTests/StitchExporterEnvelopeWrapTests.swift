@@ -132,6 +132,38 @@ final class StitchExporterEnvelopeWrapTests: XCTestCase {
     /// chain falls to `.small` so there is always at least one fallback step
     /// before the terminal wrap. Previously this returned nil and surfaced
     /// raw -11841.
+    // MARK: - StitchExportResult.merging (Cluster 2.5 audit follow-up)
+
+    func testMergingNotesPreservesUrlAndSettings() {
+        let url = URL(fileURLWithPath: "/tmp/x.mp4")
+        let r = StitchExportResult(url: url, settings: .balanced, fallbackMessage: nil)
+        let merged = r.merging(note: "added")
+        XCTAssertEqual(merged.url, url)
+        XCTAssertEqual(merged.settings, .balanced)
+        XCTAssertEqual(merged.fallbackMessage, "added")
+    }
+
+    func testMergingNotesJoinsBothMessages() {
+        let url = URL(fileURLWithPath: "/tmp/x.mp4")
+        let r = StitchExportResult(url: url, settings: .small, fallbackMessage: "first.")
+        let merged = r.merging(note: "second.")
+        XCTAssertEqual(merged.fallbackMessage, "first. second.")
+    }
+
+    func testMergingNilNotePreservesExisting() {
+        let url = URL(fileURLWithPath: "/tmp/x.mp4")
+        let r = StitchExportResult(url: url, settings: .small, fallbackMessage: "existing")
+        let merged = r.merging(note: nil)
+        XCTAssertEqual(merged.fallbackMessage, "existing")
+    }
+
+    func testMergingBothNilProducesNil() {
+        let url = URL(fileURLWithPath: "/tmp/x.mp4")
+        let r = StitchExportResult(url: url, settings: .max, fallbackMessage: nil)
+        let merged = r.merging(note: nil)
+        XCTAssertNil(merged.fallbackMessage)
+    }
+
     func testStitchDownshiftFromUnmappedCustomPresetFallsToSmall() {
         // (.source, .high) is not one of the four named factory cells —
         // exactly the kind of "custom" combination that pre-2.5 surfaced

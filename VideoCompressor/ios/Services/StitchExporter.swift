@@ -40,6 +40,20 @@ struct StitchExportResult: Hashable, Sendable {
     let url: URL
     let settings: CompressionSettings
     let fallbackMessage: String?
+
+    /// Combine an additional note into this result. If both are non-nil
+    /// they are joined with " " — keeps stitched-with-multiple-fallbacks
+    /// messages readable. Nil-safe both ways.
+    func merging(note: String?) -> StitchExportResult {
+        let combined: String?
+        switch (fallbackMessage, note) {
+        case (nil, nil):           combined = nil
+        case (let m?, nil):        combined = m
+        case (nil, let n?):        combined = n
+        case (let m?, let n?):     combined = "\(m) \(n)"
+        }
+        return StitchExportResult(url: url, settings: settings, fallbackMessage: combined)
+    }
 }
 
 actor StitchExporter {
@@ -516,12 +530,19 @@ actor StitchExporter {
         onProgress: @MainActor @Sendable @escaping (BoundedProgress) -> Void
     ) async throws -> StitchExportResult {
         do {
-            return try await exportInternal(
+            let result = try await exportInternal(
                 plan: plan,
                 settings: settings,
                 outputURL: outputURL,
                 onProgress: onProgress
             )
+            // Cluster 2.5 audit follow-up: the stitch path always uses an
+            // AVMutableVideoComposition, which forces the encode pipeline to
+            // drop to SDR for HDR sources (see DIAG-11841-real-root-cause).
+            // Surface a friendly note so the user knows their HDR clips were
+            // tone-mapped instead of silently downgraded.
+            let hdrNote = await Self.hdrFallbackNoteIfNeeded(plan: plan)
+            return result.merging(note: hdrNote)
         } catch {
             // Cluster 2.5: every public path through the exporter funnels
             // here. If the entire fallback chain has been exhausted and we
@@ -531,6 +552,28 @@ actor StitchExporter {
             if case CompressionError.cancelled = error { throw error }
             throw Self.wrapEncoderEnvelopeIfTerminal(error)
         }
+    }
+
+    /// Returns a user-facing note when the stitch was rendered in SDR
+    /// because at least one source clip was HDR (10-bit). Returns nil when
+    /// no source was HDR. Stitch always uses an AVMutableVideoComposition,
+    /// which drops the encode pipeline to SDR per
+    /// `CompressionService.canEncodeHDR(...)`.
+    static func hdrFallbackNoteIfNeeded(plan: Plan) async -> String? {
+        for clip in plan.sourceClips {
+            // Baked stills are synthetic 8-bit output of StillVideoBaker, so
+            // their format descriptions never report HDR. Only original-
+            // source clips can carry 10-bit metadata.
+            if clip.kind == .still { continue }
+            let asset = AVURLAsset(url: clip.sourceURL)
+            guard let track = try? await asset.loadTracks(withMediaType: .video).first,
+                  let fds = try? await track.load(.formatDescriptions),
+                  CompressionService.is10Bit(formatDescriptions: fds) else {
+                continue
+            }
+            return "Stitched in standard dynamic range. Your HDR clips were tone-mapped — full HDR stitch is coming in a future update."
+        }
+        return nil
     }
 
     private func exportInternal(

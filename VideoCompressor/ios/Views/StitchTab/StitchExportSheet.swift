@@ -213,8 +213,10 @@ struct StitchExportSheet: View {
                             .symbolEffect(.bounce, value: saveStatus)
 
                         Button {
-                            project.clearAll()
-                            dismiss()
+                            Task {
+                                await project.clearAll()
+                                dismiss()
+                            }
                         } label: {
                             Label("Done — start a new project", systemImage: "sparkles")
                                 .frame(maxWidth: .infinity)
