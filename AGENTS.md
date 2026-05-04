@@ -537,9 +537,23 @@ Deliverables:
 
 ### App identity
 
+> ⛔️ **DO NOT RENAME the bundle ID. EVER. This is a hard rule for every agent.**
+>
+> The bundle ID `ca.nextclass.VideoCompressor` (capital `V`, capital `C`) is the **canonical, Apple-side identity** for this app. The Apple Developer App ID and the App Store Connect app record are both **bound to this exact string** under team `9577LMA4J5`. Renaming it (e.g. to `com.alkloihd.videocompressor`, `com.alkloihd.metaclean`, or any other variant) **does not** rename the Apple-side records — it instead disconnects the codebase from them and breaks TestFlight at `xcodebuild -exportArchive` with `Error Downloading App Information` (exit 70).
+>
+> This already happened once: commit `a9f300d` on 2026-05-04 renamed the bundle ID to `com.alkloihd.videocompressor` based on a stale value in this very document. Every subsequent TestFlight workflow run on `main` failed until the rename was reverted. **If you find yourself "normalizing" or "harmonizing" or "fixing" the bundle ID — STOP.** That is not a fix; it is the bug. The codebase is the source of truth that must match Apple, not the other way around.
+>
+> **What this means in practice for any agent:**
+> - Treat the strings `ca.nextclass.VideoCompressor` and `ca.nextclass.VideoCompressor.tests` and `ca.nextclass.VideoCompressor.uitests` as immutable constants in `project.pbxproj`. Do not edit `PRODUCT_BUNDLE_IDENTIFIER` lines for any reason.
+> - If a doc, plan, prompt, or kickstarter file disagrees with the codebase, the **codebase wins** — fix the doc, never fix the codebase to match the doc.
+> - The home-screen name (`Media Swiss Army`), display name, and App Store Connect listing name are all independently editable; **only the bundle ID is locked**.
+> - If the user explicitly asks you to change the bundle ID (e.g. to migrate to a new App Store Connect app), require them to first confirm: (a) the new App ID exists in Apple Developer Portal, (b) the new ASC app record exists, (c) they have accepted that the old TestFlight record will be orphaned. Get all three in writing in `AI-CHAT-LOG.md` before touching any string.
+>
+> **Side note on App Store Connect API keys:** the GitHub Actions secrets (`APP_STORE_CONNECT_API_KEY`, `_API_KEY_ID`, `_ISSUER_ID`) are **team-scoped**, not bundle-id-scoped. They keep working across any bundle ID under team `9577LMA4J5`. The `Error Downloading App Information` failure mode is auth-success-but-app-not-found, never auth failure. **Do NOT diagnose this as a credentials issue, do NOT rotate secrets, do NOT edit `.github/workflows/testflight.yml`.**
+
 | Field                | Value                                              |
 | -------------------- | -------------------------------------------------- |
-| Bundle ID            | `com.alkloihd.videocompressor`                     |
+| Bundle ID            | `ca.nextclass.VideoCompressor` **— locked, see warning above** |
 | Home-screen name     | `Media Swiss Army`                                 |
 | In-app title         | `Alkloihd Video Swiss-AK`                          |
 | Apple Team ID        | `9577LMA4J5`                                       |
@@ -710,7 +724,7 @@ The backlog folder is your task list. `AUDIT-CONSOLIDATED-FINDINGS.md` is the sy
 | Field | Value |
 |---|---|
 | Apple Team ID | `9577LMA4J5` |
-| Bundle ID | `com.alkloihd.videocompressor` |
+| Bundle ID | `ca.nextclass.VideoCompressor` |
 | Home-screen name | `Media Swiss Army` |
 | App Store name (planned) | `MetaClean: AI Glasses Data` |
 | GitHub repo | `alkloihd/media-swiss-army` |

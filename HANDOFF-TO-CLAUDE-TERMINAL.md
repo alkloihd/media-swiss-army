@@ -26,7 +26,7 @@ A SwiftUI + AVFoundation iOS 17+ app with **four tabs**: Compress / Stitch / Met
 | **Settings** | Audio Background Mode toggle (extends the 30s background-encode ceiling). Cache management with auto-sweep (>7 days). Storage breakdown. |
 
 **App identity:**
-- Bundle: `com.alkloihd.videocompressor`
+- Bundle: `ca.nextclass.VideoCompressor`
 - Apple Team: `9577LMA4J5`
 - Home-screen name: `Media Swiss Army`
 - App Store name (planned): `MetaClean: AI Glasses Data`

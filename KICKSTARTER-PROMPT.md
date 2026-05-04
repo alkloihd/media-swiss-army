@@ -68,7 +68,7 @@ Constraints (NON-NEGOTIABLE):
 - The 7 already-fixed audit CRITICALs (in PR #9) must NOT regress
 - Privacy-first: no network calls, no analytics, no third-party SDKs
 - iOS 17.0 minimum
-- Bundle: com.alkloihd.videocompressor; Team: 9577LMA4J5
+- Bundle: ca.nextclass.VideoCompressor; Team: 9577LMA4J5
 
 Output requirements:
 - One plan file per task across MASTER-PLAN.md Phases 1, 2, 3

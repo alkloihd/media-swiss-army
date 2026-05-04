@@ -63,7 +63,7 @@ Expected output (the lead's session left these set; confirm they're correct):
   "simulatorName": "iPhone 16 Pro",
   "simulatorId": "996226E2-F957-4730-93D5-4F10BFD916C3",
   "platform": "iOS",
-  "bundleId": "com.alkloihd.videocompressor"
+  "bundleId": "ca.nextclass.VideoCompressor"
 }
 ```
 
