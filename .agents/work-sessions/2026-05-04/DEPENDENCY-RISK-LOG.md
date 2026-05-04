@@ -188,3 +188,12 @@ Rule: append after every cluster task/PR checkpoint before moving on.
 | Scope             | Phase 2 UX polish: copy cleanup, first-launch onboarding, Settings explainer, Stitch preview/drop affordances, MetaClean batch concurrency/toast, crop/preset/settings simplification.                                                  |
 | Agent scan        | Read-only agents dispatched for UI/onboarding tasks, MetaClean batch concurrency, and crop/preset/settings simplification.                                                                                                             |
 | Watchpoints       | Preserve Cluster 2 Stitch fallback note and `Export Again`; do not alter bundle identity or TestFlight workflow; validate SwiftUI copy/interaction changes with build/test evidence plus TestFlight/manual prompts after merge.          |
+
+#### Task 1 — Dev-y Copy Polish
+
+| Field        | Notes                                                                                                                                                                                                                 |
+| ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Key changes  | Added `BatchCleanProgress.userFacingLabel(kind:)`; MetaClean batch/export labels now use friendlier copy; `ClipEditorSheet` print is DEBUG-only; duplicate header scissors icon removed from `ClipEditorInlinePanel`.                  |
+| Adaptation   | Kept ASCII ellipses in user-facing strings/tests while preserving the plan's middle-dot batch label. Did not expand into broader MetaClean empty-state copy despite scout noting it, to keep Task 1 scoped.                             |
+| Verification | TDD red compile failed on missing `userFacingLabel(kind:)`; green `mcp__XcodeBuildMCP__.test_sim` passed `186` total: `185` passed, `1` documented simulator-fixture skip.                                           |
+| Watchpoints  | The remaining `print(` grep hit is inside `#if DEBUG`; acceptance allows DEBUG-only print sites.                                                                                                                      |

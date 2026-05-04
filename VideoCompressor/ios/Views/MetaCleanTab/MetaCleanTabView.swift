@@ -21,6 +21,12 @@ struct MetaCleanTabView: View {
     @State private var pickerItems: [PhotosPickerItem] = []
     @State private var selectedItem: MetaCleanItem?
 
+    private var dominantKind: MediaKind {
+        let stills = queue.items.filter { $0.kind == .still }.count
+        let videos = queue.items.filter { $0.kind == .video }.count
+        return stills >= videos ? .still : .video
+    }
+
     var body: some View {
         NavigationStack {
             Group {
@@ -198,8 +204,9 @@ struct MetaCleanTabView: View {
                 VStack(alignment: .leading, spacing: 6) {
                     ProgressView(value: queue.batchProgress.fraction)
                     HStack {
-                        Text("Cleaning \(queue.batchProgress.current) of \(queue.batchProgress.total)")
+                        Text(queue.batchProgress.userFacingLabel(kind: dominantKind))
                             .font(.caption.monospacedDigit())
+                            .accessibilityIdentifier("metaCleanBatchProgressLabel")
                         Spacer()
                         if queue.batchProgress.failed > 0 {
                             Label("\(queue.batchProgress.failed) failed", systemImage: "exclamationmark.triangle")

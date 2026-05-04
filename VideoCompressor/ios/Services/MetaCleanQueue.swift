@@ -145,8 +145,8 @@ enum MetaCleanState: Hashable, Sendable {
     case failed(error: LibraryError)
 }
 
-/// Progress shape for the batch clean flow. UI binds to this for the
-/// "Cleaning 3 of 8 …" label + a determinate bar across the whole queue.
+/// Progress shape for the batch clean flow. UI binds to this for a
+/// user-facing label + a determinate bar across the whole queue.
 struct BatchCleanProgress: Hashable, Sendable {
     var current: Int           // 1-indexed, 0 means not yet started
     var total: Int             // total items being processed
@@ -165,6 +165,22 @@ struct BatchCleanProgress: Hashable, Sendable {
         let perItemFraction = perItem.value
         let completedFraction = Double(max(current - 1, 0))
         return min(1.0, (completedFraction + perItemFraction) / Double(total))
+    }
+
+    func userFacingLabel(kind: MediaKind) -> String {
+        let noun = kind == .still ? "photo" : "video"
+        let nounPlural = kind == .still ? "photos" : "videos"
+
+        if !isRunning {
+            return total == 1
+                ? "Cleaned 1 \(noun)"
+                : "Cleaned \(total) \(nounPlural)"
+        }
+
+        if total <= 1 {
+            return "Cleaning your \(noun)..."
+        }
+        return "Cleaning your \(nounPlural) · \(current) of \(total)"
     }
 }
 

@@ -71,7 +71,7 @@
 
 | ✓   | Sub-task                                                          | Comments |
 | --- | ----------------------------------------------------------------- | -------- |
-| ☐   | Task 1: Dev-y copy polish (TASK-04)                               |          |
+| ☑   | Task 1: Dev-y copy polish (TASK-04)                               | Added `BatchCleanProgress.userFacingLabel(kind:)`, wired friendlier MetaClean batch/export copy, wrapped the stale-clip debug print in `#if DEBUG`, and removed the duplicate header scissors action. TDD red: missing helper compile failure; green `test_sim` passed 186 total, 185 passed, 1 documented skip. |
 | ☐   | Task 2: Onboarding screen — 3-card paged (TASK-05)                |          |
 | ☐   | Task 3: Settings "What MetaClean does" explainer (TASK-10)        |          |
 | ☐   | Task 4: Long-press preview decision (TASK-12)                     |          |

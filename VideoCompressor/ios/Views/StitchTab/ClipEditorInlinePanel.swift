@@ -9,7 +9,7 @@
 //
 //  Layout:
 //    ┌────────────────────────────────────────────┐
-//    │ Clip Name              ⟲  ⟳  ✂︎  ↺  ✕     │  ← header + toolbar
+//    │ Clip Name              ⟲  ⟳  ↺  ✕         │  ← header + toolbar
 //    ├────────────────────────────────────────────┤
 //    │  [video player] ← AVPlayer w/ scrubber     │
 //    │  [playhead slider]                          │
@@ -20,7 +20,6 @@
 //  Toolbar actions:
 //    ⟲  Undo            (project.undo)
 //    ⟳  Redo            (project.redo)
-//    ✂︎  Split at playhead (project.split)
 //    ↺  Reset edits     (project.resetEdits)
 //    ✕  Close panel     (selection cleared)
 //
@@ -194,15 +193,6 @@ struct ClipEditorInlinePanel: View {
             .disabled(!project.canRedo(for: clipID))
             .accessibilityLabel("Redo")
             .accessibilityIdentifier("clipEditorRedo")
-
-            Button {
-                splitAtPlayhead()
-            } label: {
-                Image(systemName: "scissors")
-            }
-            .disabled(!canSplitAtPlayhead)
-            .accessibilityLabel("Split at playhead")
-            .accessibilityIdentifier("clipEditorSplit")
 
             Button {
                 project.resetEdits(for: clipID)
