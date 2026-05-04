@@ -8,9 +8,14 @@
 //    • Background encoding toggle (Audio Background Mode)
 //    • Advanced performance
 //    • Storage (cache management — Phase 3 commit 4)
+//    • About
 //
 
 import SwiftUI
+
+private let privacyPolicyURL = URL(
+    string: "https://alkloihd.github.io/media-swiss-army/privacy/"
+)!
 
 struct SettingsTabView: View {
     @AppStorage("allowBackgroundEncoding") private var allowBackgroundEncoding = false
@@ -153,6 +158,26 @@ struct SettingsTabView: View {
                             "Files already saved to Photos are not affected."
                         )
                     }
+                }
+
+                // MARK: About
+                Section {
+                    Link(destination: privacyPolicyURL) {
+                        HStack {
+                            Text("Privacy Policy")
+                            Spacer()
+                            Image(systemName: "arrow.up.right.square")
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                } header: {
+                    Text("About")
+                } footer: {
+                    Text(
+                        "Opens the latest privacy policy in Safari. " +
+                        "Media Swiss Army does not collect, transmit, or store any of your data."
+                    )
+                    .font(.caption)
                 }
             }
             .navigationTitle("Settings")

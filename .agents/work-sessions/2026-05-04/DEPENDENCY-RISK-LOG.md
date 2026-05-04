@@ -253,3 +253,61 @@ Rule: append after every cluster task/PR checkpoint before moving on.
 | Verification | TDD red compile failed on missing `CropEditorView.cropRect`/preset enum; focused crop tests passed 7/7; `mcp__XcodeBuildMCP__.clean` succeeded; full `test_sim` passed `205` total: `204` passed, `1` skip; `build_sim` succeeded. |
 | UI evidence  | Simulator launched, onboarding completed, Settings Advanced collapsed/expanded correctly in `snapshot_ui`; screenshot saved at `/var/folders/4v/3fctbw5j65gcbzcbhrsg33y40000gq/T/screenshot_optimized_de88d7dd-a934-48de-a5aa-2bfe202f5d14.jpg`. |
 | Watchpoints  | Need real media loaded in Stitch to visually confirm inline crop preset placement with video/still previews; simulator shut down before further tap-through, but build/test coverage is green.           |
+
+### Cluster 4 — Branch Start
+
+| Field       | Notes                                                                                                                                                                              |
+| ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Branch      | `feat/codex-cluster4-appstore-hardening` from `main@d5c108d`, with append-only Cluster 3 merge/TestFlight log commits carried locally on the feature branch.                      |
+| Baseline    | `mcp__XcodeBuildMCP__.test_sim` passed `205` total: `204` passed, `1` documented simulator-fixture skip.                                                                           |
+| Scope       | App Store hardening: privacy manifest, Photos read auth gate, review prompt, privacy policy/settings link, and PR-side iOS XCTest CI.                                               |
+| Agent scan  | Read-only scouts dispatched for privacy manifest/policy/CI, Photos auth gate, and review prompt integration.                                                                       |
+| Watchpoints | Do not edit TestFlight workflow or bundle identity. Review prompt should count user-visible clean/save success, not metadata-strip-only success. CI job must avoid masking failures. |
+
+#### Task 1 — Privacy Manifest
+
+| Field        | Notes                                                                                                                                                                                                  |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Key changes  | Added `VideoCompressor/ios/PrivacyInfo.xcprivacy` with UserDefaults `CA92.1`, FileTimestamp `C617.1`, DiskSpace `E174.1`, `NSPrivacyTracking=false`, empty tracking domains, and empty collected data. |
+| Tests        | Added `PrivacyManifestTests` to load the hosted app bundle manifest, parse the plist, assert no tracking, and pin all three required-reason API categories.                                             |
+| Verification | TDD red failed 3/3 because the manifest was missing from the app bundle; `plutil -lint` passed; `clean` succeeded; focused tests passed 3/3; full `test_sim` passed `208` total: `207` passed, `1` skip. |
+| Watchpoints  | Simulator app-bundle test proves local bundling, but App Store Connect privacy-manifest acceptance is still verified by the next TestFlight/App Store Connect build details.                           |
+
+#### Task 2 — Photos Auth Gate
+
+| Field        | Notes                                                                                                                                                                                             |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Key changes  | `StitchClipFetcher.creationDate` and `creationDates` now gate Photos metadata lookup on passive `.readWrite` authorization and return `nil` / `[:]` unless status is `.authorized` or `.limited`. |
+| Adaptation   | Added the missing batch `.restricted` test so all three denied-status states are covered across both fetch paths. Used `authorizationStatus`, not `requestAuthorization`, to avoid any Stitch prompt. |
+| Review fix   | A reviewer noted fake asset IDs did not prove denied states skip fetch. Added defaulted fetch-provider seams plus tests proving denied no-fetch and authorized/limited fetch continuation.             |
+| Verification | TDD red compile failed on missing `authStatusProvider`, then missing fetch provider seam; focused auth tests passed `8/8`; full `test_sim` passed `216` total: `215` passed, `1` documented skip. |
+| Watchpoints  | Real Photos authorized/limited behavior still depends on the device library, but tests now prove the gate calls or skips the fetch seam before Photos API access.                                  |
+
+#### Task 3 — Review Prompt
+
+| Field        | Notes                                                                                                                                                                                                         |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Key changes  | Added `ReviewPrompter` with UserDefaults-backed success count, per-version lock, iOS 18 `AppStore.requestReview(in:)`, and `SKStoreReviewController` fallback for older SDK paths.                            |
+| Adaptation   | Prompt credit is recorded after actual Photos save success, not metadata-strip success. Single saves count after `MetaCleanExportSheet` save succeeds; batch replace counts `savedCount` once after the batch. |
+| Tests        | Added pure eligibility and injected recorder tests for threshold, same-version lock, new-version re-prompt, non-positive count ignore, and count persistence.                                                   |
+| Verification | TDD red failed on missing `ReviewPrompter`, then actor-isolated default closures; focused ReviewPrompter tests passed `9/9`; full `test_sim` passed `225` total: `224` passed, `1` documented skip.            |
+| Watchpoints  | Actual system review UI cannot be forced by unit tests and may be rate-limited by iOS; tests cover the app-side eligibility and request trigger path.                                                           |
+
+#### Task 4 — Privacy Policy And Settings Link
+
+| Field        | Notes                                                                                                                                                                                                         |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Key changes  | Added `docs/privacy/index.html` for `https://alkloihd.github.io/media-swiss-army/privacy/` and a Settings `About` section with a Safari-opening Privacy Policy row.                                           |
+| Adaptation   | Used the locked repo URL and current Media Swiss Army branding. The plan's `Section("About") { } footer:` initializer did not compile under this SDK, so the Settings row uses explicit header/footer closures. |
+| Verification | `npx prettier --check docs/privacy/index.html` passed after formatting; TDD compile-red caught the Section initializer issue; focused ReviewPrompter tests passed `9/9`; full `test_sim` passed `225/224/1`.  |
+| Watchpoints  | GitHub Pages still requires manual repo setting: Settings → Pages → Source `main` branch, `/docs` folder. Until then the in-app link opens Safari to a parseable URL that may 404.                              |
+
+#### Task 5 — PR-Side iOS CI
+
+| Field        | Notes                                                                                                                                                                                                                     |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Key changes  | Added an `iOS XCTest` job to `.github/workflows/ci.yml` so pull requests run the iOS unit test target before merge. No TestFlight workflow, signing, or bundle ID files changed.                                           |
+| Adaptation   | The plan's `VideoCompressorTests` selector and hard-coded iPhone 16 Pro runner assumption were stale. CI now uses `VideoCompressor_iOSTests` and selects iPhone 17 Pro, iPhone 16 Pro, or first available iPhone Pro.       |
+| Dependencies | Avoided `xcbeautify` so the job does not depend on weekly runner image packages. Uses raw `xcodebuild` with `set -euo pipefail`, `CODE_SIGNING_ALLOWED=NO`, DerivedData cache, and failed-result artifact upload.             |
+| Verification | `ruby` YAML parse passed; `npx prettier --check .github/workflows/ci.yml docs/privacy/index.html` passed; `xcodebuild -list` confirmed scheme/target; CI-style `test_sim` passed `225` total: `224` passed, `1` skipped. |
+| Watchpoints  | Cloud runner availability still needs PR CI proof. After the job appears green, `iOS XCTest` should be added manually as a required status check on `main` branch protection.                                               |
