@@ -42,6 +42,22 @@ struct CompressionResult: Hashable, Sendable {
 }
 
 actor CompressionService {
+    struct EncodingInput: @unchecked Sendable {
+        let asset: AVAsset
+        let videoComposition: AVMutableVideoComposition?
+        let audioMix: AVMutableAudioMix?
+
+        init(
+            asset: AVAsset,
+            videoComposition: AVMutableVideoComposition?,
+            audioMix: AVMutableAudioMix? = nil
+        ) {
+            self.asset = asset
+            self.videoComposition = videoComposition
+            self.audioMix = audioMix
+        }
+    }
+
     /// Output URL is derived from `inputURL` + settings suffix and lives in
     /// the app's Documents/Outputs folder so users can find their files via
     /// Files.app even before we copy to Photos.
@@ -59,7 +75,7 @@ actor CompressionService {
     /// Run a compression. Reports progress on the main actor via `onProgress`.
     /// Returns the output URL when complete. Throws on failure.
     ///
-    /// Thin wrapper around `encode(asset:videoComposition:settings:outputURL:onProgress:)` —
+    /// Thin wrapper around `encode(input:settings:outputURL:onProgress:)` —
     /// the Stitch flow uses the same underlying pipeline with an
     /// `AVMutableComposition` instead of an `AVURLAsset`.
     func compress(
@@ -94,8 +110,10 @@ actor CompressionService {
                 ])
             }
             return try await self.encode(
-                asset: attemptAsset,
-                videoComposition: nil,
+                input: EncodingInput(
+                    asset: attemptAsset,
+                    videoComposition: nil
+                ),
                 settings: attemptSettings,
                 outputURL: attemptOutputURL,
                 onProgress: onProgress
@@ -142,14 +160,15 @@ actor CompressionService {
     /// `outputURL` is passed in explicitly because the Stitch flow has no
     /// "input URL" to derive from — composition assets are synthesised in
     /// memory.
-    func encode(
-        asset: AVAsset,
-        videoComposition: AVMutableVideoComposition?,
-        audioMix: AVMutableAudioMix? = nil,
+    nonisolated func encode(
+        input: EncodingInput,
         settings: CompressionSettings,
         outputURL: URL,
         onProgress: @MainActor @Sendable @escaping (BoundedProgress) -> Void
     ) async throws -> URL {
+        let asset = input.asset
+        let videoComposition = input.videoComposition
+        let audioMix = input.audioMix
 
         // Remove any previous output at the target URL — AVAssetWriter
         // refuses to overwrite an existing file.

@@ -25,6 +25,20 @@ final class StitchExportSheetTests: XCTestCase {
         )
     }
 
+    func testFinishedStateHidesExportAgainWhileSaveInProgress() {
+        let output = CompressedOutput(
+            url: URL(fileURLWithPath: "/tmp/stitch-saving.mp4"),
+            bytes: 1024,
+            createdAt: Date(),
+            settings: .small
+        )
+
+        XCTAssertFalse(
+            StitchExportSheet.shouldShowExportAgain(for: .finished(output), saveStatus: .saving),
+            "Export Again must be hidden while Save to Photos is still in flight."
+        )
+    }
+
     func testMissingFinishedOutputCannotBeSavedAgain() {
         let output = CompressedOutput(
             url: URL(fileURLWithPath: "/tmp/stitch-missing-\(UUID().uuidString).mp4"),

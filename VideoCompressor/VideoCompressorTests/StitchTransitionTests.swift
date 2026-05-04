@@ -228,6 +228,109 @@ final class StitchTransitionTests: XCTestCase {
         }
     }
 
+    func testTransitionInstructionsDoNotOverlap() async throws {
+        let videoA = try Self.makeShortVideoFixture(withAudio: false, size: 64)
+        defer { try? FileManager.default.removeItem(at: videoA) }
+        let videoB = try Self.makeShortVideoFixture(withAudio: false, size: 64)
+        defer { try? FileManager.default.removeItem(at: videoB) }
+
+        let clips = [
+            StitchClip(
+                id: UUID(),
+                sourceURL: videoA,
+                displayName: "A.mov",
+                naturalDuration: CMTime(seconds: 1, preferredTimescale: 600),
+                naturalSize: CGSize(width: 64, height: 64),
+                kind: .video,
+                edits: .identity
+            ),
+            StitchClip(
+                id: UUID(),
+                sourceURL: videoB,
+                displayName: "B.mov",
+                naturalDuration: CMTime(seconds: 1, preferredTimescale: 600),
+                naturalSize: CGSize(width: 64, height: 64),
+                kind: .video,
+                edits: .identity
+            ),
+        ]
+
+        let plan = try await StitchExporter().buildPlan(
+            from: clips,
+            aspectMode: .auto,
+            transition: .crossfade
+        )
+        let instructions = try XCTUnwrap(plan.videoComposition?.instructions)
+        XCTAssertFalse(instructions.isEmpty)
+
+        var previousEnd = CMTime.zero
+        for instruction in instructions {
+            XCTAssertGreaterThanOrEqual(
+                instruction.timeRange.start.seconds,
+                previousEnd.seconds,
+                "Transition video composition instructions must not overlap."
+            )
+            previousEnd = instruction.timeRange.end
+        }
+    }
+
+    func testTransitionInstructionsDoNotOverlapWithShortMiddleClip() async throws {
+        let videoA = try Self.makeShortVideoFixture(withAudio: false, size: 64)
+        defer { try? FileManager.default.removeItem(at: videoA) }
+        let videoB = try Self.makeShortVideoFixture(withAudio: false, size: 64)
+        defer { try? FileManager.default.removeItem(at: videoB) }
+        let videoC = try Self.makeShortVideoFixture(withAudio: false, size: 64)
+        defer { try? FileManager.default.removeItem(at: videoC) }
+
+        let clips = [
+            StitchClip(
+                id: UUID(),
+                sourceURL: videoA,
+                displayName: "A.mov",
+                naturalDuration: CMTime(seconds: 1, preferredTimescale: 600),
+                naturalSize: CGSize(width: 64, height: 64),
+                kind: .video,
+                edits: .identity
+            ),
+            StitchClip(
+                id: UUID(),
+                sourceURL: videoB,
+                displayName: "B.mov",
+                naturalDuration: CMTime(seconds: 1, preferredTimescale: 600),
+                naturalSize: CGSize(width: 64, height: 64),
+                kind: .video,
+                edits: .identity
+            ),
+            StitchClip(
+                id: UUID(),
+                sourceURL: videoC,
+                displayName: "C.mov",
+                naturalDuration: CMTime(seconds: 1, preferredTimescale: 600),
+                naturalSize: CGSize(width: 64, height: 64),
+                kind: .video,
+                edits: .identity
+            ),
+        ]
+
+        let plan = try await StitchExporter().buildPlan(
+            from: clips,
+            aspectMode: .auto,
+            transition: .crossfade
+        )
+        let instructions = try XCTUnwrap(plan.videoComposition?.instructions)
+        XCTAssertFalse(instructions.isEmpty)
+
+        var previousEnd = CMTime.zero
+        for instruction in instructions {
+            XCTAssertGreaterThanOrEqual(
+                instruction.timeRange.start.seconds,
+                previousEnd.seconds,
+                "Short middle clips must not make adjacent transition instructions overlap."
+            )
+            previousEnd = instruction.timeRange.end
+        }
+    }
+
     func testStitchDownshiftTableSmallFallsBackToStreaming() {
         let next = StitchExporter.stitchDownshift(from: .small)
         XCTAssertEqual(
@@ -292,6 +395,36 @@ final class StitchTransitionTests: XCTestCase {
         XCTAssertEqual(
             result.fallbackMessage,
             CompressionService.downshiftMessage(from: .small, to: .streaming)
+        )
+    }
+
+    func testSyntheticMinus11841StitchReencodeWalksFullFallbackChain() async throws {
+        let outputURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("synthetic-stitch-full-retry-\(UUID().uuidString).mp4")
+        var attempts: [CompressionSettings] = []
+
+        let result = try await StitchExporter.runWithOneShotStitchDownshift(
+            settings: .max,
+            outputURL: outputURL,
+            onRetry: {}
+        ) { settings, _, attempt in
+            attempts.append(settings)
+            if attempt < 3 {
+                throw CompressionError.exportFailed("[AVFoundationErrorDomain -11841]")
+            }
+            return outputURL
+        }
+
+        XCTAssertEqual(attempts.map(\.id), [
+            CompressionSettings.max.id,
+            CompressionSettings.balanced.id,
+            CompressionSettings.small.id,
+            CompressionSettings.streaming.id,
+        ])
+        XCTAssertEqual(result.settings.id, CompressionSettings.streaming.id)
+        XCTAssertEqual(
+            result.fallbackMessage,
+            CompressionService.downshiftMessage(from: .max, to: .streaming)
         )
     }
 

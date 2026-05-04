@@ -36,6 +36,19 @@ final class StitchProject: ObservableObject {
     private let inputsDir: URL
     private let outputsDir: URL
     private var exportTask: Task<Void, Never>?
+    private var activeExportID: UUID?
+    private var isClearing = false
+
+    #if DEBUG
+    typealias TestExportRunner = @MainActor (
+        _ exporter: StitchExporter,
+        _ plan: StitchExporter.Plan,
+        _ settings: CompressionSettings,
+        _ outputURL: URL,
+        _ onProgress: @escaping @MainActor @Sendable (BoundedProgress) -> Void
+    ) async throws -> StitchExportResult
+    private var testExportRunner: TestExportRunner?
+    #endif
 
     init() {
         let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
@@ -125,10 +138,14 @@ final class StitchProject: ObservableObject {
     /// phantom `_STITCH.mp4` into `outputsDir` that the user never asked
     /// for. Three independent audits flagged this; this is the fix.
     func clearAll() async {
+        isClearing = true
+        defer { isClearing = false }
+
         if let task = exportTask {
             task.cancel()
             _ = await task.value
             exportTask = nil
+            activeExportID = nil
         }
         // Re-audit 6 finding: prior version left aspectMode/transition
         // pinned from the previous project, so users who exported portrait
@@ -408,7 +425,7 @@ final class StitchProject: ObservableObject {
         fromSeconds: Double,
         toSeconds: Double
     ) -> Bool {
-        guard let original = clips.first(where: { $0.id == clipID }) else { return false }
+        guard clips.contains(where: { $0.id == clipID }) else { return false }
         guard fromSeconds < toSeconds else { return false }
 
         // Split at `fromSeconds`. After this, originalID is the FIRST half.
@@ -482,16 +499,19 @@ final class StitchProject: ObservableObject {
 
     // MARK: - Export
 
-    /// Kicks off a new export with the given settings. Cancels any in-flight
-    /// export first. Idempotent — calling repeatedly while one is running
-    /// replaces the running task.
+    /// Kicks off a new export with the given settings. Repeated calls while
+    /// an export is already running are ignored; callers must cancel or wait
+    /// for completion before starting a replacement export.
     func export(settings: CompressionSettings) {
-        exportTask?.cancel()
+        guard !isClearing, !isExporting else { return }
+        let exportID = UUID()
+        activeExportID = exportID
         exportState = .building
         let snapshot = clips
         let outputURL = makeOutputURL()
         exportTask = Task { [weak self] in
             await self?.runExport(
+                exportID: exportID,
                 clipsSnapshot: snapshot,
                 outputURL: outputURL,
                 settings: settings
@@ -504,7 +524,27 @@ final class StitchProject: ObservableObject {
         exportTask?.cancel()
     }
 
+    private func cancelExport(exportID: UUID) {
+        guard activeExportID == exportID else { return }
+        exportTask?.cancel()
+    }
+
+    private func isCurrentExport(_ exportID: UUID) -> Bool {
+        activeExportID == exportID && !isClearing
+    }
+
+    #if DEBUG
+    func testHook_setExportTask(_ task: Task<Void, Never>?) {
+        exportTask = task
+    }
+
+    func testHook_setExportRunner(_ runner: TestExportRunner?) {
+        testExportRunner = runner
+    }
+    #endif
+
     private func runExport(
+        exportID: UUID,
         clipsSnapshot: [StitchClip],
         outputURL: URL,
         settings: CompressionSettings
@@ -515,7 +555,11 @@ final class StitchProject: ObservableObject {
         // of AVErrorOperationInterrupted (-11847) failures the user sees.
         let bgTaskID = UIApplication.shared.beginBackgroundTask(
             withName: "VideoCompressor.stitchExport"
-        )
+        ) { [weak self, exportID] in
+            Task { @MainActor in
+                self?.cancelExport(exportID: exportID)
+            }
+        }
         AudioBackgroundKeeper.shared.begin()
         defer {
             if bgTaskID != .invalid {
@@ -535,9 +579,11 @@ final class StitchProject: ObservableObject {
         if freeBytes > 0, estimatedMaxBytes > 0, freeBytes < estimatedMaxBytes {
             let neededMB = max(1, estimatedMaxBytes / 1_048_576)
             let freeMB = max(0, freeBytes / 1_048_576)
-            exportState = .failed(error: .compression(.exportFailed(
+            exportState = .failed(error: .fileSystem(message:
                 "Not enough free space to export this stitch. Need ~\(neededMB) MB, only \(freeMB) MB free. Clear storage in Settings → General → iPhone Storage and try again."
-            )))
+            ))
+            exportTask = nil
+            activeExportID = nil
             return
         }
 
@@ -549,15 +595,17 @@ final class StitchProject: ObservableObject {
                 from: clipsSnapshot,
                 aspectMode: aspect,
                 transition: transition,
-                onPrepareProgress: { [weak self] current, total in
+                onPrepareProgress: { [weak self, exportID] current, total in
                     // Surface still-baking progress so users don't sit on a
                     // mute "Building composition…" for several seconds when
                     // their timeline has photos. Encode progress takes over
                     // immediately after.
-                    self?.exportState = .preparing(current: current, total: total)
+                    guard let self, self.isCurrentExport(exportID) else { return }
+                    self.exportState = .preparing(current: current, total: total)
                 }
             )
             try Task.checkCancellation()
+            guard isCurrentExport(exportID) else { throw CancellationError() }
 
             // Clean up baked-still temp .movs after the export finishes (or
             // throws). Without this, NSTemporaryDirectory accumulates orphaned
@@ -569,19 +617,46 @@ final class StitchProject: ObservableObject {
                 }
             }
 
-            let result = try await exporter.export(
+            let progressHandler: @MainActor @Sendable (BoundedProgress) -> Void = { [weak self, exportID] progress in
+                // onProgress is @MainActor by signature.
+                guard let self, self.isCurrentExport(exportID) else { return }
+                self.exportState = .encoding(progress)
+            }
+            let result: StitchExportResult
+            #if DEBUG
+            if let testExportRunner {
+                result = try await testExportRunner(
+                    exporter,
+                    plan,
+                    settings,
+                    outputURL,
+                    progressHandler
+                )
+            } else {
+                result = try await exporter.export(
+                    plan: plan,
+                    settings: settings,
+                    outputURL: outputURL,
+                    onProgress: progressHandler
+                )
+            }
+            #else
+            result = try await exporter.export(
                 plan: plan,
                 settings: settings,
-                outputURL: outputURL
-            ) { [weak self] progress in
-                // onProgress is @MainActor by signature.
-                self?.exportState = .encoding(progress)
-            }
+                outputURL: outputURL,
+                onProgress: progressHandler
+            )
+            #endif
+            try Task.checkCancellation()
+            guard isCurrentExport(exportID) else { throw CancellationError() }
 
             // Auto-strip Meta-glasses fingerprint atoms from the stitched
             // output so the result is privacy-clean by default. Fail-soft.
             // Per user direction 2026-05-03.
             await VideoLibrary.metadataServiceShared.stripMetaFingerprintInPlace(at: result.url)
+            try Task.checkCancellation()
+            guard isCurrentExport(exportID) else { throw CancellationError() }
 
             let bytes: Int64 = ((try? FileManager.default
                 .attributesOfItem(atPath: result.url.path)[.size]) as? NSNumber)?.int64Value ?? 0
@@ -592,8 +667,15 @@ final class StitchProject: ObservableObject {
                 settings: result.settings,
                 note: result.fallbackMessage
             ))
+            exportTask = nil
+            activeExportID = nil
         } catch is CancellationError {
-            exportState = .cancelled
+            await CacheSweeper.shared.sweepOnCancel(predictedOutputURL: outputURL)
+            if activeExportID == exportID {
+                exportState = .cancelled
+                exportTask = nil
+                activeExportID = nil
+            }
         } catch CompressionError.cancelled {
             // Cluster 2.5 audit: CompressionService.encode throws a domain
             // CompressionError.cancelled when its writer notices Task is
@@ -601,11 +683,24 @@ final class StitchProject: ObservableObject {
             // this arm, user-cancel rendered as a red "Compression was
             // cancelled" failure banner instead of the silent .cancelled
             // state. Treat both cancellation flavours identically.
-            exportState = .cancelled
+            await CacheSweeper.shared.sweepOnCancel(predictedOutputURL: outputURL)
+            if activeExportID == exportID {
+                exportState = .cancelled
+                exportTask = nil
+                activeExportID = nil
+            }
         } catch let err as CompressionError {
-            exportState = .failed(error: .compression(err))
+            if activeExportID == exportID {
+                exportState = .failed(error: .compression(err))
+                exportTask = nil
+                activeExportID = nil
+            }
         } catch {
-            exportState = .failed(error: .compression(.exportFailed(error.localizedDescription)))
+            if activeExportID == exportID {
+                exportState = .failed(error: .compression(.exportFailed(error.localizedDescription)))
+                exportTask = nil
+                activeExportID = nil
+            }
         }
     }
 
@@ -631,21 +726,53 @@ final class StitchProject: ObservableObject {
         return bytes
     }
 
-    /// Worst-case byte estimate for a stitch export. Sum of source clip
-    /// sizes × 3 to cover (a) post-strip rewrite, (b) baked stills,
-    /// (c) safety margin for AVFoundation's internal buffering. Returns 0
-    /// when no clip has a measurable file size — preflight then skips.
+    /// Working-space estimate for a stitch export. This intentionally uses the
+    /// selected preset and composed duration instead of source bytes × 3:
+    /// source files are already staged on disk, while the additional pressure
+    /// comes from encoded output, the post-strip rewrite, the Photos save copy,
+    /// and temporary still bakes. Overestimating wildly blocks valid exports on
+    /// near-full devices, which is worse than allowing AVFoundation to surface
+    /// a mid-encode storage error.
     static func estimatedExportBytes(for clips: [StitchClip], settings: CompressionSettings) -> Int64 {
-        var sum: Int64 = 0
+        var sourceBytes: Int64 = 0
+        var composedSeconds: Double = 0
+        var stillCount = 0
+
         for clip in clips {
             let attrs = try? FileManager.default.attributesOfItem(atPath: clip.sourceURL.path)
             let size = (attrs?[.size] as? NSNumber)?.int64Value ?? 0
-            sum += size
+            sourceBytes += size
+
+            if clip.kind == .still {
+                stillCount += 1
+            }
+
+            let seconds: Double
+            if clip.kind == .still {
+                seconds = min(10.0, max(1.0, clip.edits.stillDuration ?? 3.0))
+            } else {
+                seconds = CMTimeGetSeconds(clip.trimmedRange.duration)
+            }
+            if seconds.isFinite, seconds > 0 {
+                composedSeconds += seconds
+            }
         }
-        // 3× headroom: composition output + post-strip rewrite + Photos
-        // save copy. Underestimating is the failure mode we're protecting
-        // against, so prefer over-estimating.
-        return sum > 0 ? sum * 3 : 0
+
+        guard composedSeconds > 0 else {
+            return sourceBytes > 0 ? min(sourceBytes * 2, 512 * 1_048_576) : 0
+        }
+
+        let sourceBitrate = sourceBytes > 0
+            ? Int64((Double(sourceBytes) * 8.0 / composedSeconds).rounded())
+            : 0
+        let audioBitrate: Int64 = 192_000
+        let outputBitrate = settings.bitrate(forSourceBitrate: sourceBitrate) + audioBitrate
+        let outputBytes = Int64((Double(outputBitrate) * composedSeconds / 8.0).rounded(.up))
+
+        let rewriteAndSaveCopies = outputBytes * 3
+        let stillBakeBudget = Int64(stillCount) * 20 * 1_048_576
+        let minimumWorkingBudget: Int64 = 256 * 1_048_576
+        return max(minimumWorkingBudget, rewriteAndSaveCopies + stillBakeBudget)
     }
 
     /// Output filename is derived from the first clip's display name plus a

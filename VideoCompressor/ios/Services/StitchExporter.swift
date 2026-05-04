@@ -12,7 +12,7 @@
 //   2. **Re-encode** — anything else: differing codecs, mismatched
 //      dimensions, or any crop/rotate/trim edit. We hand the composition
 //      and (if needed) an AVMutableVideoComposition to
-//      `CompressionService.encode(asset:videoComposition:settings:...)` and
+//      `CompressionService.encode(input:settings:...)` and
 //      reuse its progress / cancellation plumbing.
 //
 //  Concurrency:
@@ -200,7 +200,7 @@ actor StitchExporter {
             )
             : nil
 
-        let transitionDuration: CMTime = needsAB
+        let baseTransitionDuration: CMTime = needsAB
             ? CMTime(seconds: StitchTransition.durationSeconds, preferredTimescale: 600)
             : .zero
 
@@ -272,6 +272,12 @@ actor StitchExporter {
             }
 
             let timeRange = clip.trimmedRange
+            let stillTargetDuration: CMTime? = {
+                guard let stillDuration = clip.edits.stillDuration else { return nil }
+                let clamped = min(10.0, max(1.0, stillDuration))
+                return CMTime(seconds: clamped, preferredTimescale: 600)
+            }()
+            let composedDuration = stillTargetDuration ?? timeRange.duration
 
             // Alternate tracks A/B when transitions are on so adjacent clips
             // can OVERLAP in composition time without stomping each other.
@@ -280,12 +286,20 @@ actor StitchExporter {
             let audioT: AVMutableCompositionTrack? = useTrackB ? audioTrackB : audioTrackA
 
             // For clips after the first, when transitions are on, pull the
-            // insertion cursor back by transitionDuration so the new clip
-            // overlaps the tail of the previous clip. The previous clip's
-            // tail is on the OTHER track, so insertions don't collide.
+            // insertion cursor back by the effective transition duration so
+            // the new clip overlaps the tail of the previous clip. Clamp the
+            // duration to half of each adjacent clip so a short middle clip
+            // cannot have incoming + outgoing transition windows overlap.
+            let overlapDuration = (segments.isEmpty || !needsAB)
+                ? CMTime.zero
+                : Self.effectiveTransitionDuration(
+                    base: baseTransitionDuration,
+                    previousDuration: segments[segments.count - 1].composedRange.duration,
+                    currentDuration: composedDuration
+                )
             let insertAt = (segments.isEmpty || !needsAB)
                 ? cursor
-                : CMTimeMaximum(.zero, CMTimeSubtract(cursor, transitionDuration))
+                : CMTimeMaximum(.zero, CMTimeSubtract(cursor, overlapDuration))
 
             do {
                 try videoT.insertTimeRange(timeRange, of: assetVideoTrack, at: insertAt)
@@ -295,15 +309,11 @@ actor StitchExporter {
                 )
             }
 
-            var composedDuration = timeRange.duration
-            if let stillDuration = clip.edits.stillDuration {
-                let clamped = min(10.0, max(1.0, stillDuration))
-                let targetDuration = CMTime(seconds: clamped, preferredTimescale: 600)
+            if let stillTargetDuration {
                 videoT.scaleTimeRange(
                     CMTimeRange(start: insertAt, duration: timeRange.duration),
-                    toDuration: targetDuration
+                    toDuration: stillTargetDuration
                 )
-                composedDuration = targetDuration
             }
 
             var audioForSegment: AVMutableCompositionTrack?
@@ -365,7 +375,7 @@ actor StitchExporter {
                 },
                 renderSize: renderSize,
                 transition: transition,
-                transitionDuration: transitionDuration
+                transitionDuration: baseTransitionDuration
             )
             videoComposition = vc
         } else {
@@ -396,7 +406,7 @@ actor StitchExporter {
                      videoTrack: $0.videoTrack, audioTrack: $0.audioTrack)
                 },
                 transition: transition,
-                transitionDuration: transitionDuration
+                transitionDuration: baseTransitionDuration
             )
         } else {
             audioMix = nil
@@ -415,6 +425,19 @@ actor StitchExporter {
         )
         shouldKeepBakedStillURLs = true
         return plan
+    }
+
+    private static func effectiveTransitionDuration(
+        base: CMTime,
+        previousDuration: CMTime,
+        currentDuration: CMTime
+    ) -> CMTime {
+        guard base > .zero, previousDuration > .zero, currentDuration > .zero else {
+            return .zero
+        }
+        let previousHalf = CMTimeMultiplyByFloat64(previousDuration, multiplier: 0.5)
+        let currentHalf = CMTimeMultiplyByFloat64(currentDuration, multiplier: 0.5)
+        return CMTimeMaximum(.zero, CMTimeMinimum(base, CMTimeMinimum(previousHalf, currentHalf)))
     }
 
     /// Build the audio mix that pairs with the video transitions. For each
@@ -534,19 +557,24 @@ actor StitchExporter {
         onProgress: @MainActor @Sendable @escaping (BoundedProgress) -> Void
     ) async throws -> StitchExportResult {
         do {
-            let result = try await exportInternal(
+            let internalResult = try await exportInternal(
                 plan: plan,
                 settings: settings,
                 outputURL: outputURL,
                 onProgress: onProgress
             )
-            // Cluster 2.5 audit follow-up: the stitch path always uses an
-            // AVMutableVideoComposition, which forces the encode pipeline to
-            // drop to SDR for HDR sources (see DIAG-11841-real-root-cause).
-            // Surface a friendly note so the user knows their HDR clips were
-            // tone-mapped instead of silently downgraded.
-            let hdrNote = await Self.hdrFallbackNoteIfNeeded(plan: plan)
-            return result.merging(note: hdrNote)
+            // Codex audit fix: the HDR fallback note is only accurate when
+            // the actual path went through a re-encode + AVMutableVideo
+            // Composition (which forces SDR for HDR sources per
+            // CompressionService.canEncodeHDR). When the plan ran via
+            // passthrough, source HDR metadata is preserved as-is — adding
+            // an "approximate SDR conversion" note there would be a lie.
+            // Gate on internalResult.didReencode.
+            if internalResult.didReencode {
+                let hdrNote = await Self.hdrFallbackNoteIfNeeded(plan: plan)
+                return internalResult.result.merging(note: hdrNote)
+            }
+            return internalResult.result
         } catch {
             // Cluster 2.5: every public path through the exporter funnels
             // here. If the entire fallback chain has been exhausted and we
@@ -594,9 +622,21 @@ actor StitchExporter {
             // "tone-mapped" — but `colorProperties` only swaps BT.2020/HLG
             // metadata for BT.709 metadata; there is no Rec.2020→Rec.709
             // luminance-aware mapping pass. Use accurate copy.
-            return "Stitched in standard dynamic range. HDR clips were rendered with an approximate SDR conversion — colors may differ from the source. Full HDR stitch is coming in a future update."
+            return "Stitched in standard dynamic range. HDR clips were rendered with an approximate SDR conversion — colors may differ from the source."
         }
         return nil
+    }
+
+    /// Internal carrier — pairs a StitchExportResult with whether the
+    /// actual encode path went through a re-encode (vs passthrough). Used
+    /// by `export()` to decide whether the HDR fallback note is honest.
+    private struct InternalExportResult {
+        let result: StitchExportResult
+        /// True when the path went through `runReencodeWithTransitionFallback`,
+        /// false when `runPassthrough` succeeded directly. Passthrough
+        /// preserves source HDR metadata; re-encode forces SDR via the
+        /// composition path.
+        let didReencode: Bool
     }
 
     private func exportInternal(
@@ -604,7 +644,7 @@ actor StitchExporter {
         settings: CompressionSettings,
         outputURL: URL,
         onProgress: @MainActor @Sendable @escaping (BoundedProgress) -> Void
-    ) async throws -> StitchExportResult {
+    ) async throws -> InternalExportResult {
         if plan.canPassthrough {
             do {
                 let url = try await runPassthrough(
@@ -613,10 +653,13 @@ actor StitchExporter {
                     optimizesForNetwork: settings.optimizesForNetwork,
                     onProgress: onProgress
                 )
-                return StitchExportResult(
-                    url: url,
-                    settings: settings,
-                    fallbackMessage: nil
+                return InternalExportResult(
+                    result: StitchExportResult(
+                        url: url,
+                        settings: settings,
+                        fallbackMessage: nil
+                    ),
+                    didReencode: false
                 )
             } catch CompressionError.cancelled {
                 throw CompressionError.cancelled
@@ -626,21 +669,23 @@ actor StitchExporter {
                 // make AVFoundation refuse the sample copy. Fall back to the
                 // re-encode path rather than surfacing an unrecoverable error
                 // to the user (closes review {E-0503-1114} H1).
-                return try await runReencodeWithTransitionFallback(
+                let result = try await runReencodeWithTransitionFallback(
                     plan: plan,
                     settings: settings,
                     outputURL: outputURL,
                     onProgress: onProgress
                 )
+                return InternalExportResult(result: result, didReencode: true)
             }
         }
 
-        return try await runReencodeWithTransitionFallback(
+        let result = try await runReencodeWithTransitionFallback(
             plan: plan,
             settings: settings,
             outputURL: outputURL,
             onProgress: onProgress
         )
+        return InternalExportResult(result: result, didReencode: true)
     }
 
     private func runReencodeWithTransitionFallback(
@@ -710,9 +755,11 @@ actor StitchExporter {
     ) async throws -> StitchExportResult {
         let service = CompressionService()
         let url = try await service.encode(
-            asset: plan.composition,
-            videoComposition: plan.videoComposition,
-            audioMix: plan.audioMix,
+            input: CompressionService.EncodingInput(
+                asset: plan.composition,
+                videoComposition: plan.videoComposition,
+                audioMix: plan.audioMix
+            ),
             settings: settings,
             outputURL: outputURL,
             onProgress: onProgress
@@ -726,33 +773,21 @@ actor StitchExporter {
         outputURL: URL,
         onProgress: @MainActor @Sendable @escaping (BoundedProgress) -> Void
     ) async throws -> StitchExportResult {
-        do {
-            return try await runReencodeOnce(
-                plan: plan,
-                settings: settings,
-                outputURL: outputURL,
-                onProgress: onProgress
-            )
-        } catch {
-            guard
-                Self.isStitchEncoderEnvelopeRejection(error),
-                let fallback = Self.stitchDownshift(from: settings)
-            else {
-                throw error
+        try await Self.runWithOneShotStitchDownshift(
+            settings: settings,
+            outputURL: outputURL,
+            onRetry: {
+                onProgress(.zero)
             }
-
-            await onProgress(.zero)
-            let result = try await runReencodeOnce(
+        ) { [weak self] attemptSettings, _, _ in
+            guard let self else { throw CompressionError.cancelled }
+            let result = try await self.runReencodeOnce(
                 plan: plan,
-                settings: fallback,
+                settings: attemptSettings,
                 outputURL: outputURL,
                 onProgress: onProgress
             )
-            return StitchExportResult(
-                url: result.url,
-                settings: result.settings,
-                fallbackMessage: CompressionService.downshiftMessage(from: settings, to: fallback)
-            )
+            return result.url
         }
     }
 
@@ -795,24 +830,39 @@ actor StitchExporter {
         onRetry: @MainActor @escaping () async -> Void,
         encodeAttempt: @escaping (_ settings: CompressionSettings, _ outputURL: URL, _ attempt: Int) async throws -> URL
     ) async throws -> StitchExportResult {
-        do {
-            let url = try await encodeAttempt(settings, outputURL, 0)
-            return StitchExportResult(url: url, settings: settings, fallbackMessage: nil)
-        } catch {
-            guard
-                Self.isStitchEncoderEnvelopeRejection(error),
-                let fallback = Self.stitchDownshift(from: settings)
-            else {
-                throw error
-            }
+        var currentSettings = settings
+        var attempt = 0
 
-            await onRetry()
-            let url = try await encodeAttempt(fallback, outputURL, 1)
-            return StitchExportResult(
-                url: url,
-                settings: fallback,
-                fallbackMessage: CompressionService.downshiftMessage(from: settings, to: fallback)
-            )
+        while true {
+            do {
+                let url = try await encodeAttempt(currentSettings, outputURL, attempt)
+                if currentSettings == settings {
+                    return StitchExportResult(
+                        url: url,
+                        settings: settings,
+                        fallbackMessage: nil
+                    )
+                }
+                return StitchExportResult(
+                    url: url,
+                    settings: currentSettings,
+                    fallbackMessage: CompressionService.downshiftMessage(
+                        from: settings,
+                        to: currentSettings
+                    )
+                )
+            } catch {
+                guard
+                    Self.isStitchEncoderEnvelopeRejection(error),
+                    let fallback = Self.stitchDownshift(from: currentSettings)
+                else {
+                    throw error
+                }
+
+                await onRetry()
+                currentSettings = fallback
+                attempt += 1
+            }
         }
     }
 
@@ -965,12 +1015,27 @@ actor StitchExporter {
         // Multi-clip with transitions. Walk the segments. Each segment's
         // composedRange may overlap the next segment's start by exactly
         // `transitionDuration` (enforced by the insert loop).
+        //
+        // Codex audit fix (BLOCKER): segment i's soloRange must start at the
+        // PREVIOUS segment's composedRange.end (i.e. where the previous
+        // transition gap ended), NOT at seg.composedRange.start. The old
+        // code emitted seg[i+1].soloRange = [start_{i+1}, start_{i+2}) which
+        // overlaps seg[i].gapRange = [start_{i+1}, end_i) on the prefix
+        // [start_{i+1}, end_i). AVFoundation requires non-overlapping
+        // instruction time ranges; the simulator tolerated this but real
+        // device composition can reject the configuration.
         for (i, seg) in segments.enumerated() {
             let next: (clip: StitchClip, composedRange: CMTimeRange, videoTrack: AVMutableCompositionTrack)? =
                 i + 1 < segments.count ? segments[i + 1] : nil
+            let prev: (clip: StitchClip, composedRange: CMTimeRange, videoTrack: AVMutableCompositionTrack)? =
+                i > 0 ? segments[i - 1] : nil
 
+            // Solo range starts WHERE THE PREVIOUS TRANSITION ENDED — for
+            // segment 0 that's its own start; for later segments it's the
+            // previous segment's composedRange.end.
+            let soloStart = prev.map { $0.composedRange.end } ?? seg.composedRange.start
             let soloEnd = next.map { $0.composedRange.start } ?? seg.composedRange.end
-            let soloRange = CMTimeRange(start: seg.composedRange.start, end: soloEnd)
+            let soloRange = CMTimeRange(start: soloStart, end: soloEnd)
             if soloRange.duration > .zero {
                 out.append(makeInstruction(
                     layers: [makeAspectFitLayer(
@@ -1133,6 +1198,7 @@ actor StitchExporter {
                 toEndOpacity: 0.0,
                 timeRange: firstHalf
             )
+            layerIn.setOpacity(0.0, at: gapRange.start)
             layerIn.setOpacityRamp(
                 fromStartOpacity: 0.0,
                 toEndOpacity: 1.0,
@@ -1255,29 +1321,26 @@ actor StitchExporter {
         exporter.outputFileType = .mp4
         exporter.shouldOptimizeForNetworkUse = optimizesForNetwork
 
-        let progressTask = Task { @MainActor [weak exporter] in
+        let exportBox = PassthroughExportBox(exporter)
+
+        let progressTask = Task { @MainActor [exportBox] in
             while !Task.isCancelled {
-                guard let exporter else { return }
-                onProgress(BoundedProgress(Double(exporter.progress)))
+                onProgress(BoundedProgress(Double(exportBox.progress)))
                 do { try await Task.sleep(nanoseconds: 100_000_000) }
                 catch { return }
             }
         }
 
         await withTaskCancellationHandler {
-            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-                exporter.exportAsynchronously {
-                    continuation.resume()
-                }
-            }
+            await exportBox.export()
         } onCancel: {
-            exporter.cancelExport()
+            exportBox.cancel()
         }
 
         progressTask.cancel()
         await MainActor.run { onProgress(.complete) }
 
-        switch exporter.status {
+        switch exportBox.status {
         case .completed:
             return outputURL
         case .cancelled:
@@ -1287,7 +1350,7 @@ actor StitchExporter {
             throw CompressionError.cancelled
         case .failed:
             await CacheSweeper.shared.sweepOnCancel(predictedOutputURL: outputURL)
-            let nsErr = exporter.error as NSError?
+            let nsErr = exportBox.error as NSError?
             // Translate the most common interruption cause for the user.
             if nsErr?.code == -11847 {
                 throw CompressionError.exportFailed(
@@ -1296,9 +1359,36 @@ actor StitchExporter {
             }
             let detail = nsErr.map { "[\($0.domain) \($0.code)] \($0.localizedDescription)" } ?? "Unknown export error"
             throw CompressionError.exportFailed("Stitch passthrough failed: \(detail)")
+        case .unknown, .waiting, .exporting:
+            await CacheSweeper.shared.sweepOnCancel(predictedOutputURL: outputURL)
+            throw CompressionError.exportFailed("Stitch passthrough ended before completion.")
         @unknown default:
             await CacheSweeper.shared.sweepOnCancel(predictedOutputURL: outputURL)
             throw CompressionError.exportFailed("Stitch passthrough reached non-terminal state.")
+        }
+    }
+}
+
+private final class PassthroughExportBox: @unchecked Sendable {
+    private let exporter: AVAssetExportSession
+
+    init(_ exporter: AVAssetExportSession) {
+        self.exporter = exporter
+    }
+
+    var progress: Float { exporter.progress }
+    var status: AVAssetExportSession.Status { exporter.status }
+    var error: Error? { exporter.error }
+
+    func cancel() {
+        exporter.cancelExport()
+    }
+
+    func export() async {
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            exporter.exportAsynchronously {
+                continuation.resume()
+            }
         }
     }
 }
