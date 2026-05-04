@@ -36,6 +36,12 @@ import UIKit
 import CoreMedia
 import CoreGraphics
 
+struct StitchExportResult: Hashable, Sendable {
+    let url: URL
+    let settings: CompressionSettings
+    let fallbackMessage: String?
+}
+
 actor StitchExporter {
     /// A composition + (optional) videoComposition pair ready to feed into
     /// AVAssetExportSession. `canPassthrough` lets the caller pick a fast
@@ -53,6 +59,9 @@ actor StitchExporter {
         let audioMix: AVMutableAudioMix?
         let renderSize: CGSize
         let canPassthrough: Bool
+        let sourceClips: [StitchClip]
+        let aspectMode: StitchAspectMode
+        let transition: StitchTransition
         /// Temp .mov files baked from still images during buildPlan. The
         /// caller (StitchProject.runExport) is expected to delete these
         /// after export completes — they live in NSTemporaryDirectory
@@ -78,6 +87,7 @@ actor StitchExporter {
         guard !clips.isEmpty else {
             throw CompressionError.exportFailed("Stitch export requires at least one clip.")
         }
+        let sourceClips = clips
         // Bake any still-image clips to temp .mov files so the rest of the
         // composition pipeline can treat them uniformly.
         let baker = StillVideoBaker()
@@ -380,6 +390,9 @@ actor StitchExporter {
             audioMix: audioMix,
             renderSize: renderSize,
             canPassthrough: canPassthrough,
+            sourceClips: sourceClips,
+            aspectMode: aspectMode,
+            transition: transition,
             bakedStillURLs: bakedStillURLs
         )
         shouldKeepBakedStillURLs = true
@@ -501,14 +514,19 @@ actor StitchExporter {
         settings: CompressionSettings,
         outputURL: URL,
         onProgress: @MainActor @Sendable @escaping (BoundedProgress) -> Void
-    ) async throws -> URL {
+    ) async throws -> StitchExportResult {
         if plan.canPassthrough {
             do {
-                return try await runPassthrough(
+                let url = try await runPassthrough(
                     composition: plan.composition,
                     outputURL: outputURL,
                     optimizesForNetwork: settings.optimizesForNetwork,
                     onProgress: onProgress
+                )
+                return StitchExportResult(
+                    url: url,
+                    settings: settings,
+                    fallbackMessage: nil
                 )
             } catch CompressionError.cancelled {
                 throw CompressionError.cancelled
@@ -518,7 +536,7 @@ actor StitchExporter {
                 // make AVFoundation refuse the sample copy. Fall back to the
                 // re-encode path rather than surfacing an unrecoverable error
                 // to the user (closes review {E-0503-1114} H1).
-                return try await runReencode(
+                return try await runReencodeWithTransitionFallback(
                     plan: plan,
                     settings: settings,
                     outputURL: outputURL,
@@ -527,7 +545,7 @@ actor StitchExporter {
             }
         }
 
-        return try await runReencode(
+        return try await runReencodeWithTransitionFallback(
             plan: plan,
             settings: settings,
             outputURL: outputURL,
@@ -535,14 +553,73 @@ actor StitchExporter {
         )
     }
 
-    private func runReencode(
+    private func runReencodeWithTransitionFallback(
         plan: Plan,
         settings: CompressionSettings,
         outputURL: URL,
         onProgress: @MainActor @Sendable @escaping (BoundedProgress) -> Void
-    ) async throws -> URL {
+    ) async throws -> StitchExportResult {
+        do {
+            if plan.transition == .none {
+                return try await runReencode(
+                    plan: plan,
+                    settings: settings,
+                    outputURL: outputURL,
+                    onProgress: onProgress
+                )
+            }
+            return try await runReencodeOnce(
+                plan: plan,
+                settings: settings,
+                outputURL: outputURL,
+                onProgress: onProgress
+            )
+        } catch {
+            guard Self.shouldDropTransitionsBeforePresetRetry(
+                transition: plan.transition,
+                error: error
+            ) else {
+                throw error
+            }
+
+            await onProgress(.zero)
+            let fallbackSettings = Self.stitchDownshift(from: settings) ?? settings
+            let fallbackPlan = try await buildPlan(
+                from: plan.sourceClips,
+                aspectMode: plan.aspectMode,
+                transition: .none
+            )
+            defer {
+                for url in fallbackPlan.bakedStillURLs {
+                    try? FileManager.default.removeItem(at: url)
+                }
+            }
+
+            let result = try await runReencode(
+                plan: fallbackPlan,
+                settings: fallbackSettings,
+                outputURL: outputURL,
+                onProgress: onProgress
+            )
+            return StitchExportResult(
+                url: result.url,
+                settings: result.settings,
+                fallbackMessage: Self.transitionFallbackMessage(
+                    from: settings,
+                    to: result.settings
+                )
+            )
+        }
+    }
+
+    private func runReencodeOnce(
+        plan: Plan,
+        settings: CompressionSettings,
+        outputURL: URL,
+        onProgress: @MainActor @Sendable @escaping (BoundedProgress) -> Void
+    ) async throws -> StitchExportResult {
         let service = CompressionService()
-        return try await service.encode(
+        let url = try await service.encode(
             asset: plan.composition,
             videoComposition: plan.videoComposition,
             audioMix: plan.audioMix,
@@ -550,9 +627,107 @@ actor StitchExporter {
             outputURL: outputURL,
             onProgress: onProgress
         )
+        return StitchExportResult(url: url, settings: settings, fallbackMessage: nil)
+    }
+
+    private func runReencode(
+        plan: Plan,
+        settings: CompressionSettings,
+        outputURL: URL,
+        onProgress: @MainActor @Sendable @escaping (BoundedProgress) -> Void
+    ) async throws -> StitchExportResult {
+        do {
+            return try await runReencodeOnce(
+                plan: plan,
+                settings: settings,
+                outputURL: outputURL,
+                onProgress: onProgress
+            )
+        } catch {
+            guard
+                Self.isStitchEncoderEnvelopeRejection(error),
+                let fallback = Self.stitchDownshift(from: settings)
+            else {
+                throw error
+            }
+
+            await onProgress(.zero)
+            let result = try await runReencodeOnce(
+                plan: plan,
+                settings: fallback,
+                outputURL: outputURL,
+                onProgress: onProgress
+            )
+            return StitchExportResult(
+                url: result.url,
+                settings: result.settings,
+                fallbackMessage: CompressionService.downshiftMessage(from: settings, to: fallback)
+            )
+        }
     }
 
     // MARK: - Private helpers
+
+    nonisolated static func stitchDownshift(from settings: CompressionSettings) -> CompressionSettings? {
+        switch (settings.resolution, settings.quality) {
+        case (.source, .lossless): return .balanced
+        case (.fhd1080, .high): return .small
+        case (.hd720, .balanced): return .streaming
+        case (.sd540, .balanced): return nil
+        default: return nil
+        }
+    }
+
+    nonisolated static func runWithOneShotStitchDownshift(
+        settings: CompressionSettings,
+        outputURL: URL,
+        onRetry: @MainActor @escaping () async -> Void,
+        encodeAttempt: @escaping (_ settings: CompressionSettings, _ outputURL: URL, _ attempt: Int) async throws -> URL
+    ) async throws -> StitchExportResult {
+        do {
+            let url = try await encodeAttempt(settings, outputURL, 0)
+            return StitchExportResult(url: url, settings: settings, fallbackMessage: nil)
+        } catch {
+            guard
+                Self.isStitchEncoderEnvelopeRejection(error),
+                let fallback = Self.stitchDownshift(from: settings)
+            else {
+                throw error
+            }
+
+            await onRetry()
+            let url = try await encodeAttempt(fallback, outputURL, 1)
+            return StitchExportResult(
+                url: url,
+                settings: fallback,
+                fallbackMessage: CompressionService.downshiftMessage(from: settings, to: fallback)
+            )
+        }
+    }
+
+    nonisolated static func isStitchEncoderEnvelopeRejection(_ error: Error) -> Bool {
+        if case let CompressionError.exportFailed(message) = error {
+            return CompressionService.isEncoderEnvelopeRejectionMessage(message)
+        }
+
+        let nsError = error as NSError
+        return nsError.domain == AVFoundationErrorDomain
+            && (nsError.code == -11841 || nsError.localizedDescription.contains("-11841"))
+    }
+
+    nonisolated static func shouldDropTransitionsBeforePresetRetry(
+        transition: StitchTransition,
+        error: Error
+    ) -> Bool {
+        transition != .none && isStitchEncoderEnvelopeRejection(error)
+    }
+
+    nonisolated static func transitionFallbackMessage(
+        from original: CompressionSettings,
+        to fallback: CompressionSettings
+    ) -> String {
+        "\(original.title) with transitions was rejected by the encoder. Exported without transitions using \(fallback.title)."
+    }
 
     /// Builds a per-segment layer instruction that:
     /// 1. Applies the clip's `preferredTransform` (rotate iPhone portrait into

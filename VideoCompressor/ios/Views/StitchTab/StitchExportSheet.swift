@@ -22,6 +22,18 @@ struct StitchExportSheet: View {
     @State private var saveError: String?
     @State private var saveStatus: SaveStatus = .unsaved
 
+    static func shouldShowExportAgain(for state: StitchExportState) -> Bool {
+        if case .finished = state { return true }
+        return false
+    }
+
+    static func canSaveFinishedOutput(
+        _ output: CompressedOutput,
+        fileExists: (URL) -> Bool = { FileManager.default.fileExists(atPath: $0.path) }
+    ) -> Bool {
+        fileExists(output.url)
+    }
+
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
@@ -160,47 +172,82 @@ struct StitchExportSheet: View {
 
     @ViewBuilder
     private func finishedView(output: CompressedOutput) -> some View {
+        let canSave = Self.canSaveFinishedOutput(output)
+
         VStack(spacing: 8) {
             Label("Done · \(output.sizeLabel)", systemImage: "checkmark.seal.fill")
                 .foregroundStyle(.green)
                 .font(.body.weight(.semibold))
 
-            switch saveStatus {
-            case .unsaved:
+            if let note = output.note {
+                Text(note)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+            }
+
+            if canSave {
+                switch saveStatus {
+                case .unsaved:
+                    Button {
+                        runSaveToPhotos(url: output.url)
+                    } label: {
+                        Label("Save to Photos", systemImage: "photo.badge.plus")
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 4)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .accessibilityIdentifier("stitchSaveToPhotosButton")
+                case .saving:
+                    HStack(spacing: 8) {
+                        ProgressView()
+                        Text("Saving…")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+                case .saved:
+                    Label("Saved to Photos", systemImage: "checkmark.circle.fill")
+                        .foregroundStyle(.green)
+                        .font(.body.weight(.semibold))
+                        .symbolEffect(.bounce, value: saveStatus)
+                case .saveFailed:
+                    Button {
+                        runSaveToPhotos(url: output.url)
+                    } label: {
+                        Label("Retry Save to Photos", systemImage: "exclamationmark.triangle.fill")
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 4)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.red)
+                    .accessibilityIdentifier("stitchSaveToPhotosButton")
+                }
+            } else {
+                Label("Output cleaned up", systemImage: "clock.arrow.circlepath")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            if Self.shouldShowExportAgain(for: project.exportState) {
                 Button {
-                    runSaveToPhotos(url: output.url)
+                    rerunExport()
                 } label: {
-                    Label("Save to Photos", systemImage: "photo.badge.plus")
+                    Label("Export Again", systemImage: "arrow.clockwise")
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 4)
                 }
-                .buttonStyle(.borderedProminent)
-                .accessibilityIdentifier("stitchSaveToPhotosButton")
-            case .saving:
-                HStack(spacing: 8) {
-                    ProgressView()
-                    Text("Saving…")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                }
-            case .saved:
-                Label("Saved to Photos", systemImage: "checkmark.circle.fill")
-                    .foregroundStyle(.green)
-                    .font(.body.weight(.semibold))
-                    .symbolEffect(.bounce, value: saveStatus)
-            case .saveFailed:
-                Button {
-                    runSaveToPhotos(url: output.url)
-                } label: {
-                    Label("Retry Save to Photos", systemImage: "exclamationmark.triangle.fill")
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 4)
-                }
-                .buttonStyle(.borderedProminent)
-                .tint(.red)
-                .accessibilityIdentifier("stitchSaveToPhotosButton")
+                .buttonStyle(.bordered)
+                .accessibilityIdentifier("stitchExportAgainButton")
             }
         }
+    }
+
+    private func rerunExport() {
+        saveTask?.cancel()
+        saveTask = nil
+        saveError = nil
+        saveStatus = .unsaved
+        project.export(settings: draftSettings)
     }
 
     private func runSaveToPhotos(url: URL) {
