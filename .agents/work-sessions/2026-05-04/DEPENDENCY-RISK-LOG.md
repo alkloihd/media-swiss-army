@@ -330,3 +330,12 @@ Rule: append after every cluster task/PR checkpoint before moving on.
 | Adaptation   | Scout review found the plan JSON would regress current detection by omitting bare `meta` from binary atoms/MakerApple. JSON preserves that legacy behavior but still excludes bare `meta` from XMP. |
 | Verification | TDD red failed 1/1 because resource was absent; `clean` succeeded; focused bundle test passed `1/1`; `npx prettier --check VideoCompressor/ios/Resources/MetaMarkers.json` passed after formatting. |
 | Watchpoints  | Bundle auto-inclusion is currently proven by the focused hosted test. If future resource tests fail on CI, inspect filesystem-synchronized group behavior before editing `project.pbxproj`.  |
+
+#### Task 2 — MetaMarkerRegistry Actor
+
+| Field        | Notes                                                                                                                                                                                                    |
+| ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Key changes  | Added `MetaMarkerRegistry` actor with `shared`, bundled JSON load, actor memoization, `parseOrFallback(data:)`, strict legacy fallback, and helper accessors for binary atoms, XMP, MakerApple, guards. |
+| Adaptation   | Fallback preserves current legacy `meta` / Ray-Ban detection semantics while excluding new Oakley/device-hint literals so JSON-vs-fallback remains observable in tests.                                  |
+| Verification | TDD red compile failed on missing `MetaMarkerRegistry`; focused registry tests passed `6/6`; full `test_sim` passed `231` total: `230` passed, `1` documented simulator-fixture skip.                 |
+| Watchpoints  | `MetaMarkerRegistry.shared` caches the first load; tests that exercise parse failures use static `parseOrFallback(data:)` rather than mutating shared actor state. No network or strip paths touched.      |

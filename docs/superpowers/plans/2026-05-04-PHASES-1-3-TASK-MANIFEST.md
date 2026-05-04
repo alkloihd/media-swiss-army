@@ -108,7 +108,7 @@
 | ✓   | Sub-task                                                     | Comments |
 | --- | ------------------------------------------------------------ | -------- |
 | ☑   | Task 1: Resource JSON schema + bundled MetaMarkers.json      | Added bundled `VideoCompressor/ios/Resources/MetaMarkers.json` and resource-presence test. Adapted the plan JSON to preserve current binary video atom and MakerApple legacy bare-`meta` detection while keeping bare `meta` out of XMP. TDD red: resource missing; green after `clean`, focused bundle test passed 1/1; Prettier check passed. |
-| ☐   | Task 2: Registry actor + binaryAtomMarkers / xmpFingerprints |          |
+| ☑   | Task 2: Registry actor + binaryAtomMarkers / xmpFingerprints | Added `MetaMarkerRegistry` actor with bundled load, memoization, validated `parseOrFallback(data:)`, strict legacy fallback, and helper accessors for video/XMP/MakerApple/guards. Adapted fallback to preserve current legacy `meta`/Ray-Ban detection while excluding new Oakley/device-hint literals. TDD red: missing `MetaMarkerRegistry`; green focused registry tests passed 6/6, full `test_sim` passed 231 total, 230 passed, 1 documented skip. |
 | ☐   | Task 3: MetadataService wire-in + false-positive guards      |          |
 | ☐   | Task 4: PhotoMetadataService wire-in                         |          |
 | ☐   | Task 5: Registry tests (unit + integration)                  |          |
