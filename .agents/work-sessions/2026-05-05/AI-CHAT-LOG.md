@@ -29,6 +29,34 @@ User can inspect and decide whether to merge PR #18. After merge, TestFlight sho
 
 **Result:** Success
 
+## [2026-05-05 10:46 SAST] {E-0505-1046} -- [TEST] Codex (gpt-5): Cluster 3.5 Task 0 baseline verified
+
+**In-Reply-To:** {E-0505-1042}
+**Confidence:** HIGH
+**Files:** docs/superpowers/plans/2026-05-05-cluster-3.5-visual-calm-cinema-execution.md
+
+### Context
+
+Before touching visual app code, Task 0 required verifying the branch, XcodeBuildMCP CLI path, SDK constraints, and current simulator test baseline.
+
+### Evidence
+
+`git status --short --branch` showed `feat/cluster-3.5-visual-calm-cinema` clean after setup commit `f111b99`. `xcodebuildmcp --help` and `xcodebuildmcp tools` succeeded. SDK probe showed `/Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator18.0.sdk` and no `glassEffect` symbol. `xcodebuildmcp simulator test --project-path VideoCompressor/VideoCompressor_iOS.xcodeproj --scheme VideoCompressor_iOS --simulator-name 'iPhone 16 Pro' --prefer-xcodebuild` passed.
+
+### Findings
+
+Baseline is 282 total / 281 passed / 1 skipped / 0 failed on iPhone 16 Pro simulator iOS 18.0. `.glassEffect()` must not be referenced in this branch because the local SDK cannot compile it.
+
+### Decisions
+
+Proceed with material-only glass fallback for Cluster 3.5. Use explicit XcodeBuildMCP CLI arguments instead of interactive `setup`.
+
+### Next Steps
+
+Start Task 1: add failing `ThemeContrastTests.swift`, then implement `Theme.swift` tokens and rerun the simulator suite.
+
+**Result:** Success
+
 ## [2026-05-05 10:42 SAST] {E-0505-1042} -- [PLANNING] Codex (gpt-5): Cluster 3.5 visual redo setup and config decision
 
 **In-Reply-To:** {E-0505-0837}
