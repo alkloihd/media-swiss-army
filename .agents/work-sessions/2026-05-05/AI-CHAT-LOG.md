@@ -165,6 +165,34 @@ Continue implementation and compile/test gates, then include the Claude prompt i
 
 **Result:** Success
 
+## [2026-05-05 19:36 SAST] {E-0505-1936} -- [TEST] Codex (gpt-5): Cluster 3.5 empty states compile gate green
+
+**In-Reply-To:** {E-0505-1933}
+**Confidence:** MEDIUM
+**Files:** VideoCompressor/ios/Views/Shared/CenteredEmptyState.swift, VideoCompressor/ios/Views/EmptyStateView.swift, VideoCompressor/ios/Views/VideoListView.swift, VideoCompressor/ios/Views/StitchTab/StitchTabView.swift, VideoCompressor/ios/Views/MetaCleanTab/MetaCleanTabView.swift
+
+### Context
+
+Task 3 applies the Calm-Cinema empty-state shell to Compress, Stitch, and MetaClean without touching media pipelines.
+
+### Evidence
+
+Generic `xcodebuild -project VideoCompressor/VideoCompressor_iOS.xcodeproj -scheme VideoCompressor_iOS -destination 'generic/platform=iOS Simulator' build-for-testing CODE_SIGNING_ALLOWED=NO` passed. `git diff --check` passed. No-touch gates found no service/model/workflow/project.pbxproj edits, no `.glassEffect()` source/test references, and no raw `Color(red:)` outside `Theme.swift`.
+
+### Findings
+
+The shared `CenteredEmptyState` now supports tint and larger palette symbols. Compress, Stitch, and MetaClean empty states use their tab tint and material capsule import CTAs. Runtime screenshots are still deferred because the local simulator/MCP path is unstable and opens extra iPhone windows.
+
+### Decisions
+
+Use the shared empty-state view as a small plan deviation so the tab implementations stay simple and consistent. Continue to avoid simulator launch commands until the window issue is cleaned up.
+
+### Next Steps
+
+Commit Task 3 compile-green checkpoint, then continue serially with Compress card/grid work.
+
+**Result:** Partial
+
 ## [2026-05-05 10:42 SAST] {E-0505-1042} -- [PLANNING] Codex (gpt-5): Cluster 3.5 visual redo setup and config decision
 
 **In-Reply-To:** {E-0505-0837}

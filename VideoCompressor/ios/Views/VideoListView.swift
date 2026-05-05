@@ -26,7 +26,7 @@ struct VideoListView: View {
                 MeshAuroraView(tint: compressTint)
 
                 if library.videos.isEmpty {
-                    EmptyStateView(pickerItems: $pickerItems)
+                    EmptyStateView(pickerItems: $pickerItems, tint: compressTint)
                 } else {
                     populatedList
                 }

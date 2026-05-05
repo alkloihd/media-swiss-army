@@ -35,12 +35,16 @@ struct StitchTabView: View {
 
     var body: some View {
         NavigationStack {
-            Group {
+            ZStack {
+                MeshAuroraView(tint: stitchTint)
+
                 if project.clips.isEmpty {
                     CenteredEmptyState(
-                        systemImage: "square.stack.3d.up",
+                        systemImage: "film.stack",
                         title: "No clips yet",
-                        message: "Pick two or more videos to stitch together into one."
+                        message: "Pick two or more videos to stitch together into one.",
+                        tint: stitchTint,
+                        symbolSize: 96
                     ) {
                         PhotosPicker(
                             selection: $pickerItems,
@@ -50,9 +54,16 @@ struct StitchTabView: View {
                         ) {
                             Label("Import Videos", systemImage: "photo.on.rectangle.angled")
                                 .font(.body.weight(.semibold))
-                                .padding(.horizontal, 8)
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 10)
+                                .appMaterialBackground(
+                                    .regularMaterial,
+                                    fallback: AppMesh.backdrop(colorScheme),
+                                    in: Capsule()
+                                )
+                                .overlay(Capsule().strokeBorder(stitchTint.opacity(0.25), lineWidth: AppShape.strokeHairline))
                         }
-                        .buttonStyle(.borderedProminent)
+                        .buttonStyle(.plain)
                         .accessibilityIdentifier("stitchImportButton")
                     }
                 } else {
@@ -81,7 +92,9 @@ struct StitchTabView: View {
                     .animation(.easeInOut(duration: 0.22), value: selectedClipID)
                 }
             }
+            .tint(stitchTint)
             .navigationTitle("Stitch")
+            .toolbarBackground(.hidden, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     PhotosPicker(
@@ -175,7 +188,15 @@ struct StitchTabView: View {
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, 16)
                         .padding(.vertical, 10)
-                        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
+                        .appMaterialBackground(
+                            .regularMaterial,
+                            fallback: AppMesh.backdrop(colorScheme),
+                            in: RoundedRectangle(cornerRadius: AppShape.radiusM)
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: AppShape.radiusM)
+                                .strokeBorder(stitchTint.opacity(0.20), lineWidth: AppShape.strokeHairline)
+                        )
                         .padding(.horizontal, 16)
                         .padding(.top, 8)
                         .transition(.move(edge: .top).combined(with: .opacity))
