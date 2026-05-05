@@ -1,0 +1,80 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .codex/hooks/block-node-modules.sh",
+            "timeout": 30
+          },
+          {
+            "type": "command",
+            "command": "bash .codex/hooks/block-package-lock.sh",
+            "timeout": 30
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .codex/hooks/block-destructive-git.sh",
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .codex/hooks/auto-prettier.sh",
+            "timeout": 60
+          },
+          {
+            "type": "command",
+            "command": "bash .codex/hooks/auto-eslint.sh",
+            "timeout": 60
+          },
+          {
+            "type": "command",
+            "command": "bash .codex/hooks/syntax-check.sh",
+            "timeout": 30
+          },
+          {
+            "type": "command",
+            "command": "bash .codex/hooks/backend-restart-notice.sh",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .codex/hooks/session-log-prompt.sh",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .codex/hooks/session-log-stop.sh",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}
