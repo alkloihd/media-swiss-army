@@ -139,3 +139,78 @@
 [2026-05-04 16:28 SAST] [solo/codex/gpt-5] [TEST] Cluster 5 Task 5 committed: final registry category/cache coverage plus review-driven Ray-Ban/XMP marker fixes landed on `feat/codex-cluster5-meta-marker-registry` (commit 2099b09).
 [2026-05-04 16:30 SAST] [solo/codex/gpt-5] [DOCS] Cluster 5 final PR prep started: CHANGELOG entries added after Task 5 commit; final clean/test/build verification is next before push.
 [2026-05-04 16:31 SAST] [solo/codex/gpt-5] [TEST] Cluster 5 final local verification passed before PR prep commit: `clean` succeeded, full `test_sim` passed 249 total / 248 passed / 1 documented skip, and `build_sim` succeeded. Pre-existing Swift 6/iOS 18 warnings remain in Stitch/StillVideoBaker.
+
+---
+
+# 📋 EVENING SESSION SUMMARY — Claude (Opus 4.7) picked up after Codex SESSION-COMPLETE
+
+[2026-05-04 22:10 SAST] [claude/opus-4.7/handoff] [SESSION] **One-shot recap of everything Claude did between 16:35 SAST and 22:10 SAST tonight, after Codex shipped Clusters 0–5.** This entry exists because the prior history above was truncated and a fresh agent (Codex on resume) needs full context.
+
+**(A) Codex tail-end** (16:35–16:51 SAST, before its session ended): pushed Cluster 5 PR #16, CI green, merged to `main` as `6d7941e`, TestFlight workflow run `25325603042` succeeded. Codex wrote a final `[SESSION-COMPLETE]` entry summarising all 6 PRs (#10 → #16) and `[BLOCKED]` real-device verification + GitHub Pages enablement for the privacy-policy URL.
+
+**(B) Real-device bug report from user** (~17:25 SAST): User on iPhone 18 / iOS 26.3.1 hit `Compression failed: -11841` repeatedly in Stitch flow even on Small preset + transitions. Also reported "can't re-render after save" and "no way to clear stitch session." Logged at 17:25 as `[DEVICE-BUG]` (in pre-truncation history). Claude dispatched a `pr-review-toolkit:code-reviewer` agent to confirm scope; reviewer verdict: Cluster 2's `runReencodeWithTransitionFallback` only downshifts Max → Balanced → Small (no floor below); `Start Over` UI affordance entirely missing; re-render path via `Export Again` already worked. Three fixes scoped.
+
+**(C) PR #17 — Cluster 2.5 hotfix** (~17:40–18:30 SAST): Claude implemented + landed `fix/cluster-2.5-stitch-hotfix` (3 commits, +110 LOC, no new tests at this point). Merged to `main` as `207f3c3`. TestFlight workflow run `25330296365` SUCCEEDED. Changes: `StitchProject.clearAll()` (sync, scoped to inputsDir, idempotent); `StitchTabView` overflow toolbar with destructive Start-Over confirmation; `CompressionError.encoderEnvelopeRejected(message:)` new case; extended `StitchExporter.stitchDownshift` table with Small floor for unmapped/custom presets; `StitchExporter.export()` refactored into `exportInternal` + `wrapEncoderEnvelopeIfTerminal` so terminal `-11841` becomes the friendly message; post-save "Done — start a new project" CTA in `StitchExportSheet`.
+
+**(D) PR #18 — `fix/cluster-2.5-tests`** (~18:35 SAST → still OPEN at 22:10 SAST). HEAD: `82372e9`. CI green at 273 passed / 1 skipped / 0 failed. NOT YET MERGED — held open for Codex review per user request.
+
+PR #18 went through THREE waves of red-team audit + fix cycles. Each wave dispatched 6 parallel agents (silent-failure-hunter × 4, type-design-analyzer × 1, general-purpose × 1) covering: HDR fix correctness, Stitch pipeline, Cache lifecycle, Concurrency, Performance, Edge cases. Audit reports all in `/tmp/claude-503/.../tasks/*.output` as JSONL transcripts but those are agent-internal — DO NOT read them.
+
+**Wave 1 fix bundle** (`b0893dd`): added `CompressionService.canEncodeHDR(sourceIs10Bit:codec:hasVideoComposition:)` static helper + 4 unit tests. Diagnostic at `.agents/work-sessions/2026-05-04/diagnostics/DIAG-11841-real-root-cause.md` documents why this is the actual root cause for iPhone 18 (NOT "encoder envelope" per the original DIAG): H.264 High AutoLevel is 8-bit-only; AVMutableVideoComposition emits 8-bit BT.709 by default; Cluster 2's HDR commit naively activated 10-bit pipeline whenever source was HDR, mismatching reader/composition/writer formats, fired raw `-11841`. Aggregate confidence after wave 1: **6.25 / 10**.
+
+**Wave 2 fix bundle** (`e9481b5`): six audit-driven fixes: (1) `StitchProject.clearAll()` is now `async` and cancels + awaits the in-flight export task before mutating state — three independent auditors flagged this as the highest-impact bug. (2) Single-clip "Add at least one more clip" caption beneath disabled Stitch & Export button. (3) HDR fallback note plumbed via new `StitchExportResult.merging(note:)` + `StitchExporter.hdrFallbackNoteIfNeeded(plan:)` static helper. (4) `sortByCreationDateAsync()` now returns `SortByDateOutcome { didChange, unresolvedCount }`; toolbar Sort surfaces a 3 s top banner when N clips lacked dates. (5) `runExport`'s catch chain matches `CompressionError.cancelled` explicitly so user-cancel renders as `.cancelled` not `.failed`. (6) `AudioBackgroundKeeper` empty `catch {}` blocks replaced with `os.Logger.error`. Plus disk-space preflight via new `StitchProject.freeDiskBytesForOutput()` + `estimatedExportBytes(for:settings:)` (3× source-bytes multiplier). Plus 5 new unit tests for `merging()` and clearAll. Aggregate confidence after wave 2: **7.92 / 10**.
+
+**Wave 3 fix bundle** (`f1a9c90` + `82372e9`): wave-2 audit catches: HDR fallback copy was inaccurate (claimed "tone-mapped" — code only swaps metadata, no Rec.2020→Rec.709 luminance mapping; corrected to "approximate SDR conversion — colors may differ from the source"). `merging()` now joins notes with `\n\n` paragraph breaks (was single space, would have produced wall of text on multi-fallback exports). Sort banner re-tap race fixed via `@State sortBannerDismissTask: Task<Void, Never>?` + `Task.isCancelled` guard. `clearAll()` now also resets `aspectMode = .auto` and `transition = .none` (NOT `lastImportError` — that was a wave-2 over-reach the auditor caught as "could mask unacknowledged import failure"). Two `os.Logger` breadcrumbs added for previously-silent `try?` swallows in `hdrFallbackNoteIfNeeded` and `freeDiskBytesForOutput`. `finalizeImportOrdering` now returns `SortByDateOutcome` so `importClips` can surface `unresolvedCount` via the same banner — closes the silent auto-sort path that mirrored the manual Sort gap. Aggregate confidence after wave 3: **8.46 / 10**. All six auditors verdict GREEN.
+
+**Final wave-3 individual ratings:** HDR fix 9/10, Stitch 8.5/10, Cache 8.5/10, Concurrency 9/10, Perf 7/10, UX 8.75/10. Perf alone holds the average down — four flagged hot paths are all explicit v1.1 deferrals (`buildPlan` serial inspect; `hdrFallbackNoteIfNeeded` second 50-async-hop loop; `estimatedExportBytes` MainActor sync stats; PhotosPicker serial import).
+
+**Known limitations / v1.1 backlog:**
+- HDR conversion is metadata-only (BT.2020 → BT.709 swap), not Rec.2020→Rec.709 luminance-aware tone mapping. User-facing copy is honest about this.
+- `testClearAllAwaitsInFlightExportTaskBeforeWiping` is a placeholder — exercises the nil-task path only; the cancel-and-await behaviour with a real in-flight task is not directly automated. Production code IS correct on inspection.
+- `StitchExporter.hdrFallbackNoteIfNeeded(plan:)` does a second 50-async-hop loop after encode finishes (could be folded into `buildPlan`'s existing per-clip loop — auditor's highest-ROI v1.1 fix).
+- `is10Bit` detector relies on `kCMFormatDescriptionExtension_BitsPerComponent`; some HDR HEVC sources signal HDR via transfer-function (HLG/PQ) only and would silently SDR-export.
+- Audio-mix keyframe collision: `setVolume(1.0, at: t)` immediately followed by `setVolumeRamp(0.0 → 1.0, …)` whose timeRange starts at the same `t`. AVFoundation precedence is order-dependent and undocumented; possible 1-frame audio click at crossfade boundaries.
+- `PhotoMetadataService.strip` calls `sweepOnCancel` on the SUCCESS path (semantically confusing, not buggy).
+- No `scenePhase` observers anywhere in the iOS code; backgrounding handled solely via `UIApplication.beginBackgroundTask` + `AudioBackgroundKeeper`.
+- "Output cleaned up" message in `StitchExportSheet` after the 30 s post-save sweep is cryptic to non-technical users.
+
+**Current state at 22:10 SAST:**
+- `main` HEAD: `207f3c3` (Cluster 2.5 hotfix merged earlier today).
+- `fix/cluster-2.5-tests` HEAD: `82372e9`. CI fully green: ESLint, Prettier, Security Audit, Syntax Check, iOS XCTest 273/1/0.
+- PR #18 OPEN at https://github.com/alkloihd/media-swiss-army/pull/18 — held open per user request for Codex review before merge.
+- Diagnostic doc at `.agents/work-sessions/2026-05-04/diagnostics/DIAG-11841-real-root-cause.md`.
+- Three design specs at `.agents/work-sessions/2026-05-04/design-spec/` for v1.1 work (Cluster 3.5 visual redo + Cluster 6 Snap-mode multi-cam capture).
+
+**For Codex on resume:** the user is asking you to do a fresh-eyes full-stack review of PR #18 before deciding whether to merge. They explicitly want you NOT to anchor on Claude's 8.46 aggregate. The user's prompt to you should be self-contained; this entry is here for context only. Do not edit or merge — read-only verdict required.
+
+## [2026-05-04 23:36 SAST] {E-0504-2336} -- [FIX] Codex (gpt-5): PR #18 blocker pass after independent review
+
+**In-Reply-To:** {E-0504-2210}
+**Confidence:** HIGH
+**Files:** VideoCompressor/ios/Services/StitchExporter.swift, VideoCompressor/ios/Models/StitchProject.swift, VideoCompressor/ios/Services/CompressionService.swift, VideoCompressor/ios/Services/StillVideoBaker.swift, VideoCompressor/ios/Views/StitchTab/StitchExportSheet.swift, VideoCompressor/VideoCompressorTests/StitchTransitionTests.swift, VideoCompressor/VideoCompressorTests/StitchProjectClearAllTests.swift, VideoCompressor/VideoCompressorTests/StitchExportSheetTests.swift
+
+### Context
+
+Codex resumed on PR #18 for fresh-eyes review, found the initial state was not merge-ready, then fixed the review blockers the user asked Codex to handle.
+
+### Evidence
+
+Read Claude handoff + diagnostic, reviewed required source files, dispatched read-only review agents, and verified with XcodeBuildMCP focused tests plus CLI fallback full suite because MCP full-suite call timed out at 120s.
+
+### Findings
+
+Initial Codex review verdict was BLOCK due 3+ clip transition overlap, helper-only retry coverage, late-cancel phantom output risk, Export Again while saving, and lifecycle identity races. Follow-up agents re-reviewed the patched transition and lifecycle areas with no blocking findings; risk ratings 2/10 and 2/10 respectively.
+
+### Decisions
+
+Kept launch HDR policy pragmatic: preserve HDR only for HEVC/no-composition paths; stitch/composition re-encodes SDR with honest user-facing copy. Did not migrate deprecated AVAssetExportSession passthrough APIs in this hotfix because that is a larger iOS 18 API behavior change; left it as v1.1 cleanup.
+
+### Verification
+
+Focused suites passed: affected Stitch/HDR/export-sheet groups 71 total / 70 passed / 1 documented skip. Final exact-diff full CLI run passed: `/tmp/vc-codex-final.xcresult`, 282 total / 281 passed / 1 skipped / 0 failed. `git diff --check` passed. UI test target was skipped by Xcode because `UITargetAppPath` is not configured in the scheme.
+
+### Next Steps
+
+Commit and push the blocker fixes to PR #18, let CI run, then the user can decide whether to merge/TestFlight after inspecting the PR and running the iPhone walkthrough.
+
+**Result:** Success

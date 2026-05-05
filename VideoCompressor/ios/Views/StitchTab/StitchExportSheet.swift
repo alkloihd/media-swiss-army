@@ -22,7 +22,11 @@ struct StitchExportSheet: View {
     @State private var saveError: String?
     @State private var saveStatus: SaveStatus = .unsaved
 
-    static func shouldShowExportAgain(for state: StitchExportState) -> Bool {
+    static func shouldShowExportAgain(
+        for state: StitchExportState,
+        saveStatus: SaveStatus = .unsaved
+    ) -> Bool {
+        guard saveStatus != .saving else { return false }
         if case .finished = state { return true }
         return false
     }
@@ -213,8 +217,10 @@ struct StitchExportSheet: View {
                             .symbolEffect(.bounce, value: saveStatus)
 
                         Button {
-                            project.clearAll()
-                            dismiss()
+                            Task {
+                                await project.clearAll()
+                                dismiss()
+                            }
                         } label: {
                             Label("Done — start a new project", systemImage: "sparkles")
                                 .frame(maxWidth: .infinity)
@@ -241,7 +247,7 @@ struct StitchExportSheet: View {
                     .foregroundStyle(.secondary)
             }
 
-            if Self.shouldShowExportAgain(for: project.exportState) {
+            if Self.shouldShowExportAgain(for: project.exportState, saveStatus: saveStatus) {
                 Button {
                     rerunExport()
                 } label: {
@@ -270,6 +276,7 @@ struct StitchExportSheet: View {
         saveTask = Task {
             do {
                 try await PhotosSaver.saveVideo(at: url)
+                try Task.checkCancellation()
                 saveStatus = .saved
                 UINotificationFeedbackGenerator().notificationOccurred(.success)
                 // Audit-9-F2 fix: stitched output is now safely in Photos.
@@ -278,6 +285,9 @@ struct StitchExportSheet: View {
                 Task.detached(priority: .utility) {
                     await CacheSweeper.shared.sweepAfterSave(url)
                 }
+            } catch is CancellationError {
+                // A re-render or sheet dismissal cancelled this save. Leave
+                // the caller's freshly-reset save state alone.
             } catch {
                 if !Task.isCancelled {
                     saveStatus = .saveFailed(reason: error.localizedDescription)

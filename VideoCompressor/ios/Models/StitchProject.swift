@@ -12,6 +12,7 @@ import Combine
 import SwiftUI
 import AVFoundation
 import UIKit
+import os
 
 @MainActor
 final class StitchProject: ObservableObject {
@@ -35,6 +36,19 @@ final class StitchProject: ObservableObject {
     private let inputsDir: URL
     private let outputsDir: URL
     private var exportTask: Task<Void, Never>?
+    private var activeExportID: UUID?
+    private var isClearing = false
+
+    #if DEBUG
+    typealias TestExportRunner = @MainActor (
+        _ exporter: StitchExporter,
+        _ plan: StitchExporter.Plan,
+        _ settings: CompressionSettings,
+        _ outputURL: URL,
+        _ onProgress: @escaping @MainActor @Sendable (BoundedProgress) -> Void
+    ) async throws -> StitchExportResult
+    private var testExportRunner: TestExportRunner?
+    #endif
 
     init() {
         let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
@@ -109,12 +123,42 @@ final class StitchProject: ObservableObject {
         clips.move(fromOffsets: src, toOffset: dst)
     }
 
-    /// Wipes the entire project: removes every clip and its on-disk source
-    /// file (scoped to `inputsDir`, same safety semantics as `remove(at:)`),
-    /// resets export state to `.idle`, clears edit histories. Idempotent —
-    /// calling on an empty project is a no-op. Used by the "Start Over"
-    /// toolbar action and the post-save "Done — start a new project" CTA.
-    func clearAll() {
+    /// Wipes the entire project: cancels any in-flight export, removes every
+    /// clip and its on-disk source file (scoped to `inputsDir`, same safety
+    /// semantics as `remove(at:)`), resets export state to `.idle`, clears
+    /// edit histories. Idempotent — calling on an empty project is a no-op.
+    /// Used by the "Start Over" toolbar action and the post-save
+    /// "Done — start a new project" CTA.
+    ///
+    /// **Cancel-and-await contract** (Cluster 2.5 audit follow-up): if an
+    /// export task is in flight, we cancel it and await completion BEFORE
+    /// touching any state. Without this, the live `runExport` task continues
+    /// to read from `inputsDir` while `remove(at:)` deletes those files,
+    /// surfaces opaque `-11800` "Read failed" alerts, and (worst) writes a
+    /// phantom `_STITCH.mp4` into `outputsDir` that the user never asked
+    /// for. Three independent audits flagged this; this is the fix.
+    func clearAll() async {
+        isClearing = true
+        defer { isClearing = false }
+
+        if let task = exportTask {
+            task.cancel()
+            _ = await task.value
+            exportTask = nil
+            activeExportID = nil
+        }
+        // Re-audit 6 finding: prior version left aspectMode/transition
+        // pinned from the previous project, so users who exported portrait
+        // + crossfade once and then "Started Over" got unexpected
+        // pillarboxing on landscape clips. Reset to factory defaults so
+        // the next project starts at a known state.
+        //
+        // NOT touching `lastImportError` here: it's already cleared by the
+        // alert's own dismiss-binding setter, and pre-emptively nulling it
+        // would mask a recently-surfaced import failure the user hasn't
+        // acknowledged yet (re-audit 3 wave-3 catch).
+        aspectMode = .auto
+        transition = .none
         guard !clips.isEmpty || exportState != .idle else { return }
         let allOffsets = IndexSet(integersIn: 0..<clips.count)
         if !allOffsets.isEmpty {
@@ -161,12 +205,26 @@ final class StitchProject: ObservableObject {
         return true
     }
 
+    /// Result of a `sortByCreationDateAsync()` call. Lets the UI distinguish
+    /// "actually re-ordered the timeline" from "couldn't read N dates so
+    /// nothing changed" — Cluster 2.5 audit found these were collapsed into
+    /// one outcome, producing identical haptics for both states.
+    struct SortByDateOutcome: Equatable, Sendable {
+        let didChange: Bool
+        /// Number of clips for which we couldn't resolve a creation date —
+        /// these were parked at the end of the timeline in import order.
+        /// Limited Photos auth, drag-drop sources, and Share-Extension
+        /// inputs all surface here.
+        let unresolvedCount: Int
+    }
+
     /// Fetches missing creation dates from Photos in a single batch call
     /// (cheaper than N×serial), populates the in-memory cache on each clip,
-    /// then runs the sync sort. Returns true if the timeline order
-    /// changed. Used by the toolbar "Sort by Date Taken" action.
+    /// then runs the sync sort. Used by the toolbar "Sort by Date Taken"
+    /// action. Returns a structured outcome the caller can surface to the
+    /// user when some clips lacked dates.
     @discardableResult
-    func sortByCreationDateAsync() async -> Bool {
+    func sortByCreationDateAsync() async -> SortByDateOutcome {
         // Collect asset IDs for clips that don't already have a cached date.
         let missingIDs = clips.compactMap { clip -> String? in
             guard clip.creationDate == nil, let id = clip.originalAssetID
@@ -195,7 +253,14 @@ final class StitchProject: ObservableObject {
                 )
             }
         }
-        return sortByCreationDate()
+        // After the date-resolution pass, count clips still missing a date.
+        // Anything still missing was parked at the end of the timeline by
+        // sortByCreationDate's "Photos-less clips sort last" rule.
+        let unresolvedCount = clips.reduce(into: 0) { count, clip in
+            if clip.creationDate == nil { count += 1 }
+        }
+        let didChange = sortByCreationDate()
+        return SortByDateOutcome(didChange: didChange, unresolvedCount: unresolvedCount)
     }
 
     /// Mutates `ClipEdits` for the clip with the given id in place, triggering
@@ -360,7 +425,7 @@ final class StitchProject: ObservableObject {
         fromSeconds: Double,
         toSeconds: Double
     ) -> Bool {
-        guard let original = clips.first(where: { $0.id == clipID }) else { return false }
+        guard clips.contains(where: { $0.id == clipID }) else { return false }
         guard fromSeconds < toSeconds else { return false }
 
         // Split at `fromSeconds`. After this, originalID is the FIRST half.
@@ -434,16 +499,19 @@ final class StitchProject: ObservableObject {
 
     // MARK: - Export
 
-    /// Kicks off a new export with the given settings. Cancels any in-flight
-    /// export first. Idempotent — calling repeatedly while one is running
-    /// replaces the running task.
+    /// Kicks off a new export with the given settings. Repeated calls while
+    /// an export is already running are ignored; callers must cancel or wait
+    /// for completion before starting a replacement export.
     func export(settings: CompressionSettings) {
-        exportTask?.cancel()
+        guard !isClearing, !isExporting else { return }
+        let exportID = UUID()
+        activeExportID = exportID
         exportState = .building
         let snapshot = clips
         let outputURL = makeOutputURL()
         exportTask = Task { [weak self] in
             await self?.runExport(
+                exportID: exportID,
                 clipsSnapshot: snapshot,
                 outputURL: outputURL,
                 settings: settings
@@ -456,7 +524,27 @@ final class StitchProject: ObservableObject {
         exportTask?.cancel()
     }
 
+    private func cancelExport(exportID: UUID) {
+        guard activeExportID == exportID else { return }
+        exportTask?.cancel()
+    }
+
+    private func isCurrentExport(_ exportID: UUID) -> Bool {
+        activeExportID == exportID && !isClearing
+    }
+
+    #if DEBUG
+    func testHook_setExportTask(_ task: Task<Void, Never>?) {
+        exportTask = task
+    }
+
+    func testHook_setExportRunner(_ runner: TestExportRunner?) {
+        testExportRunner = runner
+    }
+    #endif
+
     private func runExport(
+        exportID: UUID,
         clipsSnapshot: [StitchClip],
         outputURL: URL,
         settings: CompressionSettings
@@ -467,13 +555,36 @@ final class StitchProject: ObservableObject {
         // of AVErrorOperationInterrupted (-11847) failures the user sees.
         let bgTaskID = UIApplication.shared.beginBackgroundTask(
             withName: "VideoCompressor.stitchExport"
-        )
+        ) { [weak self, exportID] in
+            Task { @MainActor in
+                self?.cancelExport(exportID: exportID)
+            }
+        }
         AudioBackgroundKeeper.shared.begin()
         defer {
             if bgTaskID != .invalid {
                 UIApplication.shared.endBackgroundTask(bgTaskID)
             }
             AudioBackgroundKeeper.shared.end()
+        }
+
+        // Cluster 2.5 audit: pre-flight disk-space check. Multi-cam HEVC at
+        // 1080p is ~80–120 MB/min/camera; a 20-clip stitch can pump 8–12 GB
+        // while reader-decode + writer-encode + post-strip-rewrite all hold
+        // bytes simultaneously. Running out mid-encode used to surface as a
+        // generic "Encode failed" with NSError detail. Now we surface a
+        // specific friendly error before any work starts.
+        let freeBytes = Self.freeDiskBytesForOutput()
+        let estimatedMaxBytes = Self.estimatedExportBytes(for: clipsSnapshot, settings: settings)
+        if freeBytes > 0, estimatedMaxBytes > 0, freeBytes < estimatedMaxBytes {
+            let neededMB = max(1, estimatedMaxBytes / 1_048_576)
+            let freeMB = max(0, freeBytes / 1_048_576)
+            exportState = .failed(error: .fileSystem(message:
+                "Not enough free space to export this stitch. Need ~\(neededMB) MB, only \(freeMB) MB free. Clear storage in Settings → General → iPhone Storage and try again."
+            ))
+            exportTask = nil
+            activeExportID = nil
+            return
         }
 
         let exporter = StitchExporter()
@@ -484,15 +595,17 @@ final class StitchProject: ObservableObject {
                 from: clipsSnapshot,
                 aspectMode: aspect,
                 transition: transition,
-                onPrepareProgress: { [weak self] current, total in
+                onPrepareProgress: { [weak self, exportID] current, total in
                     // Surface still-baking progress so users don't sit on a
                     // mute "Building composition…" for several seconds when
                     // their timeline has photos. Encode progress takes over
                     // immediately after.
-                    self?.exportState = .preparing(current: current, total: total)
+                    guard let self, self.isCurrentExport(exportID) else { return }
+                    self.exportState = .preparing(current: current, total: total)
                 }
             )
             try Task.checkCancellation()
+            guard isCurrentExport(exportID) else { throw CancellationError() }
 
             // Clean up baked-still temp .movs after the export finishes (or
             // throws). Without this, NSTemporaryDirectory accumulates orphaned
@@ -504,19 +617,46 @@ final class StitchProject: ObservableObject {
                 }
             }
 
-            let result = try await exporter.export(
+            let progressHandler: @MainActor @Sendable (BoundedProgress) -> Void = { [weak self, exportID] progress in
+                // onProgress is @MainActor by signature.
+                guard let self, self.isCurrentExport(exportID) else { return }
+                self.exportState = .encoding(progress)
+            }
+            let result: StitchExportResult
+            #if DEBUG
+            if let testExportRunner {
+                result = try await testExportRunner(
+                    exporter,
+                    plan,
+                    settings,
+                    outputURL,
+                    progressHandler
+                )
+            } else {
+                result = try await exporter.export(
+                    plan: plan,
+                    settings: settings,
+                    outputURL: outputURL,
+                    onProgress: progressHandler
+                )
+            }
+            #else
+            result = try await exporter.export(
                 plan: plan,
                 settings: settings,
-                outputURL: outputURL
-            ) { [weak self] progress in
-                // onProgress is @MainActor by signature.
-                self?.exportState = .encoding(progress)
-            }
+                outputURL: outputURL,
+                onProgress: progressHandler
+            )
+            #endif
+            try Task.checkCancellation()
+            guard isCurrentExport(exportID) else { throw CancellationError() }
 
             // Auto-strip Meta-glasses fingerprint atoms from the stitched
             // output so the result is privacy-clean by default. Fail-soft.
             // Per user direction 2026-05-03.
             await VideoLibrary.metadataServiceShared.stripMetaFingerprintInPlace(at: result.url)
+            try Task.checkCancellation()
+            guard isCurrentExport(exportID) else { throw CancellationError() }
 
             let bytes: Int64 = ((try? FileManager.default
                 .attributesOfItem(atPath: result.url.path)[.size]) as? NSNumber)?.int64Value ?? 0
@@ -527,13 +667,112 @@ final class StitchProject: ObservableObject {
                 settings: result.settings,
                 note: result.fallbackMessage
             ))
+            exportTask = nil
+            activeExportID = nil
         } catch is CancellationError {
-            exportState = .cancelled
+            await CacheSweeper.shared.sweepOnCancel(predictedOutputURL: outputURL)
+            if activeExportID == exportID {
+                exportState = .cancelled
+                exportTask = nil
+                activeExportID = nil
+            }
+        } catch CompressionError.cancelled {
+            // Cluster 2.5 audit: CompressionService.encode throws a domain
+            // CompressionError.cancelled when its writer notices Task is
+            // cancelled, which is NOT Swift's CancellationError — without
+            // this arm, user-cancel rendered as a red "Compression was
+            // cancelled" failure banner instead of the silent .cancelled
+            // state. Treat both cancellation flavours identically.
+            await CacheSweeper.shared.sweepOnCancel(predictedOutputURL: outputURL)
+            if activeExportID == exportID {
+                exportState = .cancelled
+                exportTask = nil
+                activeExportID = nil
+            }
         } catch let err as CompressionError {
-            exportState = .failed(error: .compression(err))
+            if activeExportID == exportID {
+                exportState = .failed(error: .compression(err))
+                exportTask = nil
+                activeExportID = nil
+            }
         } catch {
-            exportState = .failed(error: .compression(.exportFailed(error.localizedDescription)))
+            if activeExportID == exportID {
+                exportState = .failed(error: .compression(.exportFailed(error.localizedDescription)))
+                exportTask = nil
+                activeExportID = nil
+            }
         }
+    }
+
+    /// Free space (bytes) on the volume containing Documents/. Returns 0
+    /// when the resource value can't be read — caller should treat 0 as
+    /// "unknown, skip the preflight check". Logs a warning when the read
+    /// fails so support can correlate later "no space left" reports with
+    /// the preflight having silently bypassed (re-audit 1 follow-up).
+    static func freeDiskBytesForOutput() -> Int64 {
+        let log = Logger(
+            subsystem: Bundle.main.bundleIdentifier ?? "ca.nextclass.VideoCompressor",
+            category: "StitchProject.preflight"
+        )
+        guard let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else {
+            log.warning("Documents directory unavailable; preflight will skip")
+            return 0
+        }
+        guard let values = try? docs.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey]),
+              let bytes = values.volumeAvailableCapacityForImportantUsage else {
+            log.warning("volumeAvailableCapacityForImportantUsage unreadable; preflight will skip and any mid-encode out-of-space failure will surface as raw NSError")
+            return 0
+        }
+        return bytes
+    }
+
+    /// Working-space estimate for a stitch export. This intentionally uses the
+    /// selected preset and composed duration instead of source bytes × 3:
+    /// source files are already staged on disk, while the additional pressure
+    /// comes from encoded output, the post-strip rewrite, the Photos save copy,
+    /// and temporary still bakes. Overestimating wildly blocks valid exports on
+    /// near-full devices, which is worse than allowing AVFoundation to surface
+    /// a mid-encode storage error.
+    static func estimatedExportBytes(for clips: [StitchClip], settings: CompressionSettings) -> Int64 {
+        var sourceBytes: Int64 = 0
+        var composedSeconds: Double = 0
+        var stillCount = 0
+
+        for clip in clips {
+            let attrs = try? FileManager.default.attributesOfItem(atPath: clip.sourceURL.path)
+            let size = (attrs?[.size] as? NSNumber)?.int64Value ?? 0
+            sourceBytes += size
+
+            if clip.kind == .still {
+                stillCount += 1
+            }
+
+            let seconds: Double
+            if clip.kind == .still {
+                seconds = min(10.0, max(1.0, clip.edits.stillDuration ?? 3.0))
+            } else {
+                seconds = CMTimeGetSeconds(clip.trimmedRange.duration)
+            }
+            if seconds.isFinite, seconds > 0 {
+                composedSeconds += seconds
+            }
+        }
+
+        guard composedSeconds > 0 else {
+            return sourceBytes > 0 ? min(sourceBytes * 2, 512 * 1_048_576) : 0
+        }
+
+        let sourceBitrate = sourceBytes > 0
+            ? Int64((Double(sourceBytes) * 8.0 / composedSeconds).rounded())
+            : 0
+        let audioBitrate: Int64 = 192_000
+        let outputBitrate = settings.bitrate(forSourceBitrate: sourceBitrate) + audioBitrate
+        let outputBytes = Int64((Double(outputBitrate) * composedSeconds / 8.0).rounded(.up))
+
+        let rewriteAndSaveCopies = outputBytes * 3
+        let stillBakeBudget = Int64(stillCount) * 20 * 1_048_576
+        let minimumWorkingBudget: Int64 = 256 * 1_048_576
+        return max(minimumWorkingBudget, rewriteAndSaveCopies + stillBakeBudget)
     }
 
     /// Output filename is derived from the first clip's display name plus a

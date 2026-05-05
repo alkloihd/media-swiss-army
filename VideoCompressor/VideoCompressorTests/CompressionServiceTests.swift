@@ -143,6 +143,67 @@ final class CompressionServiceTests: XCTestCase {
         )
     }
 
+    // MARK: - Cluster 2.5 HDR-pipeline preconditions
+    //
+    // The HDR encode pipeline (10-bit pixel buffers + BT.2020 colors +
+    // HEVC Main10) is only valid when ALL three preconditions hold:
+    // source is 10-bit, codec is HEVC, and there is no
+    // AVMutableVideoComposition. Earlier code only checked source bit
+    // depth, which produced -11841 on iPhone 18 in two real cases:
+    //   (a) Streaming preset (H.264) on an HDR source.
+    //   (b) Stitch with transitions (composition is 8-bit BT.709) on an
+    //       HDR source.
+    // See DIAG-11841-real-root-cause.md for the full story.
+
+    func testCanEncodeHDR_HEVC_noComposition_HDRSource_isTrue() {
+        XCTAssertTrue(
+            CompressionService.canEncodeHDR(
+                sourceIs10Bit: true,
+                codec: .hevc,
+                hasVideoComposition: false
+            ),
+            "HEVC compress flow on an HDR source with no composition must keep HDR"
+        )
+    }
+
+    func testCanEncodeHDR_H264_HDRSource_isFalse() {
+        XCTAssertFalse(
+            CompressionService.canEncodeHDR(
+                sourceIs10Bit: true,
+                codec: .h264,
+                hasVideoComposition: false
+            ),
+            "Streaming (H.264) preset on an HDR source must downgrade to SDR — H.264 High AutoLevel is 8-bit only"
+        )
+    }
+
+    func testCanEncodeHDR_HEVC_withComposition_HDRSource_isFalse() {
+        XCTAssertFalse(
+            CompressionService.canEncodeHDR(
+                sourceIs10Bit: true,
+                codec: .hevc,
+                hasVideoComposition: true
+            ),
+            "Stitch path (videoComposition non-nil) must downgrade to SDR — composition emits 8-bit BT.709"
+        )
+    }
+
+    func testCanEncodeHDR_SDRSource_alwaysFalse() {
+        // Whatever the codec / composition, an 8-bit source is never HDR.
+        for codec: AVVideoCodecType in [.hevc, .h264] {
+            for hasComp in [false, true] {
+                XCTAssertFalse(
+                    CompressionService.canEncodeHDR(
+                        sourceIs10Bit: false,
+                        codec: codec,
+                        hasVideoComposition: hasComp
+                    ),
+                    "SDR source must never enter HDR pipeline (codec=\(codec), hasComp=\(hasComp))"
+                )
+            }
+        }
+    }
+
     // MARK: - Cluster 0 writer safety settings
 
     func testSDRColorPropertiesShape() {

@@ -198,6 +198,7 @@ actor StillVideoBaker {
         let queue = DispatchQueue(label: "still-bake.\(outputURL.lastPathComponent)")
         let inputRef = input
         let adaptorRef = adaptor
+        let bufferBox = PixelBufferBox(buffer)
         let counter = FrameCounter()
         let appendFailureBox = AppendFailureBox()
 
@@ -221,7 +222,7 @@ actor StillVideoBaker {
                         value: CMTimeValue(frame),
                         timescale: CMTimeScale(self.frameRate)
                     )
-                    if !adaptorRef.append(buffer, withPresentationTime: pts) {
+                    if !adaptorRef.append(bufferBox.buffer, withPresentationTime: pts) {
                         appendFailureBox.message =
                             "append returned false at frame \(frame)"
                         counter.markDone()
@@ -302,6 +303,14 @@ actor StillVideoBaker {
         var message: String? {
             get { lock.lock(); defer { lock.unlock() }; return _message }
             set { lock.lock(); defer { lock.unlock() }; _message = newValue }
+        }
+    }
+
+    private final class PixelBufferBox: @unchecked Sendable {
+        let buffer: CVPixelBuffer
+
+        init(_ buffer: CVPixelBuffer) {
+            self.buffer = buffer
         }
     }
 

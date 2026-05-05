@@ -20,6 +20,9 @@ struct StitchTabView: View {
     @State private var pickerItems: [PhotosPickerItem] = []
     @State private var showExportSheet = false
     @State private var showStartOverConfirmation = false
+    @State private var sortBanner: String = ""
+    @State private var sortBannerVisible: Bool = false
+    @State private var sortBannerDismissTask: Task<Void, Never>?
     /// Drives the inline ClipEditorInlinePanel below the timeline. nil when
     /// no clip is being edited. Tapping a timeline tile sets it; tapping
     /// the same tile again or the panel's X button clears it.
@@ -94,11 +97,33 @@ struct StitchTabView: View {
                             if project.clips.count >= 2 {
                                 Button {
                                     Task {
-                                        let changed = await project.sortByCreationDateAsync()
-                                        if changed {
+                                        let outcome = await project.sortByCreationDateAsync()
+                                        if outcome.didChange {
                                             Haptics.tapMedium()
                                         } else {
                                             Haptics.notifyWarning()
+                                        }
+                                        // Cluster 2.5 audit follow-up: when
+                                        // some clips lacked dates (Limited
+                                        // Photos auth / drag-drop / Share
+                                        // Extension), surface a banner so
+                                        // the user knows why their timeline
+                                        // didn't fully re-order.
+                                        if outcome.unresolvedCount > 0 {
+                                            // Re-audit 6 finding: cancel any
+                                            // existing dismiss task before
+                                            // starting a new one so a fast
+                                            // re-tap doesn't leave a stale
+                                            // sleeper firing mid-display.
+                                            sortBannerDismissTask?.cancel()
+                                            sortBanner = "Couldn't read date for \(outcome.unresolvedCount) clip\(outcome.unresolvedCount == 1 ? "" : "s") — those moved to the end."
+                                            sortBannerVisible = true
+                                            sortBannerDismissTask = Task {
+                                                try? await Task.sleep(for: .seconds(3))
+                                                if !Task.isCancelled {
+                                                    sortBannerVisible = false
+                                                }
+                                            }
                                         }
                                     }
                                 } label: {
@@ -124,8 +149,10 @@ struct StitchTabView: View {
                 titleVisibility: .visible
             ) {
                 Button("Start Over", role: .destructive) {
-                    project.clearAll()
-                    Haptics.notifyWarning()
+                    Task {
+                        await project.clearAll()
+                        Haptics.notifyWarning()
+                    }
                 }
                 Button("Cancel", role: .cancel) {}
             } message: {
@@ -136,6 +163,21 @@ struct StitchTabView: View {
                     stitchActionBar
                 }
             }
+            .overlay(alignment: .top) {
+                if sortBannerVisible {
+                    Text(sortBanner)
+                        .font(.subheadline)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 10)
+                        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
+                        .padding(.horizontal, 16)
+                        .padding(.top, 8)
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                        .accessibilityIdentifier("stitchSortBanner")
+                }
+            }
+            .animation(.easeInOut(duration: 0.3), value: sortBannerVisible)
             .alert(
                 "Import failed",
                 isPresented: Binding(
@@ -236,18 +278,29 @@ struct StitchTabView: View {
     private var stitchActionBar: some View {
         VStack(spacing: 0) {
             Divider()
-            HStack {
-                Spacer()
-                Button {
-                    showExportSheet = true
-                } label: {
-                    Label("Stitch & Export", systemImage: "square.and.arrow.up")
-                        .font(.subheadline.weight(.semibold))
+            VStack(spacing: 6) {
+                HStack {
+                    Spacer()
+                    Button {
+                        showExportSheet = true
+                    } label: {
+                        Label("Stitch & Export", systemImage: "square.and.arrow.up")
+                            .font(.subheadline.weight(.semibold))
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(!project.canExport)
+                    .accessibilityIdentifier("stitchExportButton")
+                    Spacer()
                 }
-                .buttonStyle(.borderedProminent)
-                .disabled(!project.canExport)
-                .accessibilityIdentifier("stitchExportButton")
-                Spacer()
+                if !project.canExport, !project.clips.isEmpty {
+                    // Cluster 2.5 audit: single-clip dead-end was the most
+                    // likely 1-star review trigger. The disabled button alone
+                    // gave new users no signal what they needed to do next.
+                    Text("Add at least one more clip to stitch.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .accessibilityIdentifier("stitchAddMoreHint")
+                }
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 10)
@@ -393,7 +446,24 @@ struct StitchTabView: View {
                 }
             }
         }
-        await Self.finalizeImportOrdering(project: project)
+        // Re-audit 6 wave-3 catch: surface unresolved-date count from the
+        // post-import auto-sort the same way the manual Sort toolbar
+        // surfaces it. Without this, users importing N clips via Limited
+        // Photos auth or drag-drop see an apparently-random order with
+        // zero feedback — same 1-star pattern the manual Sort banner was
+        // built to prevent.
+        let outcome = await Self.finalizeImportOrdering(project: project)
+        if outcome.unresolvedCount > 0 {
+            sortBannerDismissTask?.cancel()
+            sortBanner = "Couldn't read date for \(outcome.unresolvedCount) clip\(outcome.unresolvedCount == 1 ? "" : "s") — those moved to the end."
+            sortBannerVisible = true
+            sortBannerDismissTask = Task {
+                try? await Task.sleep(for: .seconds(3))
+                if !Task.isCancelled {
+                    sortBannerVisible = false
+                }
+            }
+        }
     }
 
     /// Moves the picker-staged temp file into `StitchInputs/`.
@@ -443,16 +513,20 @@ struct StitchTabView: View {
         )
     }
 
+    /// Runs the post-import sort and returns the structured outcome so the
+    /// caller can surface unresolved-date counts to the user. Existing
+    /// callers that only care about whether the order changed should read
+    /// `.didChange` from the result.
     @discardableResult
     @MainActor
-    static func finalizeImportOrdering(project: StitchProject) async -> Bool {
+    static func finalizeImportOrdering(project: StitchProject) async -> StitchProject.SortByDateOutcome {
         await project.sortByCreationDateAsync()
     }
 
     @discardableResult
     @MainActor
     static func testHook_finalizeImportOrdering(project: StitchProject) async -> Bool {
-        await finalizeImportOrdering(project: project)
+        await finalizeImportOrdering(project: project).didChange
     }
 }
 
