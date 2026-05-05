@@ -29,6 +29,34 @@ User can inspect and decide whether to merge PR #18. After merge, TestFlight sho
 
 **Result:** Success
 
+## [2026-05-05 11:07 SAST] {E-0505-1107} -- [TEST] Codex (gpt-5): Cluster 3.5 Task 1 theme tokens green
+
+**In-Reply-To:** {E-0505-1046}
+**Confidence:** HIGH
+**Files:** VideoCompressor/ios/Theme/Theme.swift, VideoCompressor/VideoCompressorTests/ThemeContrastTests.swift, docs/superpowers/plans/2026-05-05-cluster-3.5-visual-calm-cinema-execution.md
+
+### Context
+
+Task 1 adds the Calm-Cinema color/shape tokens and a WCAG AA contrast guard before any visible UI restyling.
+
+### Evidence
+
+Added `ThemeContrastTests.swift` first and verified the expected compile failure because `RGBToken` / `AppTint` did not exist. Added `Theme.swift`, measured the source spec's Stitch light tint at 3.97:1 against the light material midpoint, darkened only that token to `#297066`, and reran tests.
+
+### Findings
+
+The canonical Stitch light tint from the design spec was below the 4.5:1 contrast gate. The adjusted value keeps the mint/teal identity and measures about 4.88:1.
+
+### Verification
+
+`xcodebuildmcp simulator test --project-path VideoCompressor/VideoCompressor_iOS.xcodeproj --scheme VideoCompressor_iOS --simulator-name 'iPhone 16 Pro' --prefer-xcodebuild` passed: 283 total / 282 passed / 1 skipped / 0 failed.
+
+### Next Steps
+
+Commit Task 1, then start Task 2 shared visual components with render smoke tests.
+
+**Result:** Success
+
 ## [2026-05-05 10:46 SAST] {E-0505-1046} -- [TEST] Codex (gpt-5): Cluster 3.5 Task 0 baseline verified
 
 **In-Reply-To:** {E-0505-1042}
