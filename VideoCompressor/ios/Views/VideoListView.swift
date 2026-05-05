@@ -11,6 +11,7 @@ import PhotosUI
 
 struct VideoListView: View {
     @EnvironmentObject private var library: VideoLibrary
+    @Environment(\.colorScheme) private var colorScheme
     @State private var pickerItems: [PhotosPickerItem] = []
     @State private var presetSheet = false
     @State private var saveToastVisible = false
@@ -21,14 +22,18 @@ struct VideoListView: View {
 
     var body: some View {
         NavigationStack {
-            Group {
+            ZStack {
+                MeshAuroraView(tint: compressTint)
+
                 if library.videos.isEmpty {
                     EmptyStateView(pickerItems: $pickerItems)
                 } else {
                     populatedList
                 }
             }
+            .tint(compressTint)
             .navigationTitle("Compress")
+            .toolbarBackground(.hidden, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     PhotosPicker(
@@ -91,18 +96,28 @@ struct VideoListView: View {
 
     private var populatedList: some View {
         List {
+            queueHeader
+                .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 4, trailing: 16))
+                .listRowSeparator(.hidden)
+                .listRowBackground(Color.clear)
+
             ForEach(library.videos) { video in
                 VideoRowView(video: video)
+                    .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
+                    .listRowSeparator(.hidden)
+                    .listRowBackground(Color.clear)
                     .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                         Button(role: .destructive) {
                             library.remove(video.id)
                         } label: {
                             Label("Remove", systemImage: "trash")
                         }
-                    }
+                }
             }
         }
-        .listStyle(.insetGrouped)
+        .listStyle(.plain)
+        .scrollContentBackground(.hidden)
+        .background(Color.clear)
         .accessibilityIdentifier("videoList")
         .overlay(alignment: .bottom) {
             if saveToastVisible {
@@ -132,6 +147,58 @@ struct VideoListView: View {
         }
     }
 
+    private var queueHeader: some View {
+        HStack(alignment: .center, spacing: 12) {
+            Image(systemName: "wand.and.stars")
+                .font(.title3.weight(.semibold))
+                .foregroundStyle(compressTint)
+                .frame(width: 36, height: 36)
+                .appMaterialBackground(
+                    .regularMaterial,
+                    fallback: AppMesh.backdrop(colorScheme),
+                    in: Circle()
+                )
+                .overlay(Circle().strokeBorder(compressTint.opacity(0.18), lineWidth: AppShape.strokeHairline))
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Encoding Queue")
+                    .font(.headline.weight(.semibold))
+                Text(queueSummary)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+
+            Spacer(minLength: 8)
+
+            Text(library.selectedSettings.title)
+                .font(.caption.weight(.semibold))
+                .lineLimit(1)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .appMaterialBackground(
+                    .thinMaterial,
+                    fallback: AppMesh.backdrop(colorScheme),
+                    in: Capsule()
+                )
+                .overlay(Capsule().strokeBorder(compressTint.opacity(0.22), lineWidth: AppShape.strokeHairline))
+                .foregroundStyle(compressTint)
+        }
+        .cardStyle(tint: compressTint)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Encoding queue, \(queueSummary), preset \(library.selectedSettings.title)")
+    }
+
+    private var queueSummary: String {
+        let count = library.videos.count
+        let noun = count == 1 ? "item" : "items"
+        let active = library.videos.filter(\.jobState.isActive).count
+        if active > 0 {
+            return "\(active) active of \(count) \(noun)"
+        }
+        return "\(count) \(noun) ready"
+    }
+
     private var saveToast: some View {
         HStack(spacing: 8) {
             Image(systemName: saveToastIsError ? "exclamationmark.triangle.fill" : "checkmark.circle.fill")
@@ -142,7 +209,18 @@ struct VideoListView: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
+        .appMaterialBackground(
+            .regularMaterial,
+            fallback: AppMesh.backdrop(colorScheme),
+            in: RoundedRectangle(cornerRadius: AppShape.radiusM)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: AppShape.radiusM)
+                .strokeBorder(
+                    (saveToastIsError ? Color.red : Color.green).opacity(0.25),
+                    lineWidth: AppShape.strokeHairline
+                )
+        )
         .shadow(color: .black.opacity(0.15), radius: 8, y: 4)
         .accessibilityIdentifier("saveToast")
     }
@@ -156,49 +234,86 @@ struct VideoListView: View {
     }
 
     private var actionBar: some View {
-        VStack(spacing: 0) {
-            Divider()
-            HStack(spacing: 12) {
-                Button {
-                    presetSheet = true
-                } label: {
-                    HStack(spacing: 8) {
-                        Image(systemName: library.selectedSettings.symbolName)
-                        VStack(alignment: .leading, spacing: 1) {
-                            Text(library.selectedSettings.title)
-                                .font(.subheadline.weight(.semibold))
-                            Text("Preset")
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-                        }
-                        Image(systemName: "chevron.up")
+        HStack(spacing: 12) {
+            Button {
+                presetSheet = true
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: library.selectedSettings.symbolName)
+                        .font(.body.weight(.semibold))
+                        .foregroundStyle(compressTint)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(library.selectedSettings.title)
+                            .font(.subheadline.weight(.semibold))
+                            .lineLimit(1)
+                        Text("Preset")
                             .font(.caption2)
                             .foregroundStyle(.secondary)
                     }
+                    Image(systemName: "chevron.up")
+                        .font(.caption2.weight(.bold))
+                        .foregroundStyle(.secondary)
                 }
-                .buttonStyle(.bordered)
-                .accessibilityIdentifier("presetButton")
-
-                Spacer()
-
-                Button {
-                    library.compressAll()
-                } label: {
-                    Label("Compress All", systemImage: "wand.and.stars")
-                        .font(.subheadline.weight(.semibold))
-                }
-                .buttonStyle(.borderedProminent)
-                .disabled(!hasCompressible)
-                .accessibilityIdentifier("compressAllButton")
+                .padding(.horizontal, 12)
+                .padding(.vertical, 9)
+                .appMaterialBackground(
+                    .regularMaterial,
+                    fallback: AppMesh.backdrop(colorScheme),
+                    in: Capsule()
+                )
+                .overlay(Capsule().strokeBorder(compressTint.opacity(0.20), lineWidth: AppShape.strokeHairline))
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 10)
-            .background(.bar)
+            .buttonStyle(.plain)
+            .accessibilityLabel("Choose preset, \(library.selectedSettings.title)")
+            .accessibilityIdentifier("presetButton")
+
+            Spacer(minLength: 4)
+
+            Button {
+                library.compressAll()
+            } label: {
+                Label("Compress All", systemImage: "wand.and.stars")
+                    .font(.subheadline.weight(.semibold))
+                    .lineLimit(1)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 11)
+                    .foregroundStyle(.white)
+                    .background(
+                        LinearGradient(
+                            colors: [compressTint.opacity(0.92), compressTint],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        in: Capsule()
+                    )
+            }
+            .buttonStyle(.plain)
+            .disabled(!hasCompressible)
+            .opacity(hasCompressible ? 1 : 0.45)
+            .accessibilityIdentifier("compressAllButton")
         }
+        .padding(.horizontal, 16)
+        .padding(.top, 10)
+        .padding(.bottom, 12)
+        .appMaterialBackground(
+            .ultraThinMaterial,
+            fallback: AppMesh.backdrop(colorScheme),
+            in: RoundedRectangle(cornerRadius: AppShape.radiusL)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: AppShape.radiusL)
+                .strokeBorder(compressTint.opacity(0.16), lineWidth: AppShape.strokeHairline)
+        )
+        .padding(.horizontal, 12)
+        .padding(.bottom, 4)
     }
 
     private var hasCompressible: Bool {
         library.videos.contains { !$0.jobState.isActive && $0.jobState != .finished }
+    }
+
+    private var compressTint: Color {
+        AppTint.compress(colorScheme)
     }
 }
 

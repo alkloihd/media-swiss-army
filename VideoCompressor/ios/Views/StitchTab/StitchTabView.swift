@@ -23,10 +23,15 @@ struct StitchTabView: View {
     @State private var sortBanner: String = ""
     @State private var sortBannerVisible: Bool = false
     @State private var sortBannerDismissTask: Task<Void, Never>?
+    @Environment(\.colorScheme) private var colorScheme
     /// Drives the inline ClipEditorInlinePanel below the timeline. nil when
     /// no clip is being edited. Tapping a timeline tile sets it; tapping
     /// the same tile again or the panel's X button clears it.
     @State private var selectedClipID: StitchClip.ID?
+
+    private var stitchTint: Color {
+        AppTint.stitch(colorScheme)
+    }
 
     var body: some View {
         NavigationStack {

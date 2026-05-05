@@ -42,7 +42,7 @@ final class ThemeContrastTests: XCTestCase {
 
     private func relativeLuminance(_ token: RGBToken) -> Double {
         func channel(_ value: Double) -> Double {
-            value <= 0.03928 ? value / 12.92 : pow((value + 0.055) / 1.055, 2.4)
+            value <= 0.04045 ? value / 12.92 : pow((value + 0.055) / 1.055, 2.4)
         }
 
         return 0.2126 * channel(token.red)

@@ -29,6 +29,34 @@ User can inspect and decide whether to merge PR #18. After merge, TestFlight sho
 
 **Result:** Success
 
+## [2026-05-05 11:11 SAST] {E-0505-1111} -- [HANDOFF] Codex (gpt-5): Paused Cluster 3.5 visual redo
+
+**In-Reply-To:** {E-0505-1107}
+**Confidence:** HIGH
+**Files:** .agents/work-sessions/RUNNING-LIST.md, VideoCompressor/ios/Theme/*, VideoCompressor/VideoCompressorTests/ThemeComponentRenderTests.swift
+
+### Context
+
+User is leaving for a flight and asked to pause, but also asked to note that they want the true SwiftUI glass effect later.
+
+### Evidence
+
+Current branch is `feat/cluster-3.5-visual-calm-cinema`. Last committed checkpoint is `aef8b3e feat(theme): add canonical color tokens`, with tests green at 283 total / 282 passed / 1 skipped / 0 failed. Current uncommitted work is Task 2: `Theme.swift` helper edits plus new `CardStyle.swift`, `GaugePill.swift`, `MeshAuroraView.swift`, `Shimmer.swift`, and `ThemeComponentRenderTests.swift`.
+
+### Findings
+
+The iPhone simulator still shows the old theme because only Task 1 is committed and visible UI surfaces have not been restyled yet. True `.glassEffect()` is compile-time blocked on this machine because the installed iOS 18 SDK does not include the symbol; using it now would break builds/TestFlight.
+
+### Decisions
+
+Pause immediately. Record `.glassEffect()` as a future requirement blocked on newer SDK/toolchain availability. Do not continue tests, commits, pushes, or UI edits until user resumes.
+
+### Next Steps
+
+On resume: either finish Task 2 with material fallback, or upgrade/check Xcode SDK first if the user wants true `.glassEffect()` before visual work continues.
+
+**Result:** Partial
+
 ## [2026-05-05 11:07 SAST] {E-0505-1107} -- [TEST] Codex (gpt-5): Cluster 3.5 Task 1 theme tokens green
 
 **In-Reply-To:** {E-0505-1046}
@@ -82,6 +110,58 @@ Proceed with material-only glass fallback for Cluster 3.5. Use explicit XcodeBui
 ### Next Steps
 
 Start Task 1: add failing `ThemeContrastTests.swift`, then implement `Theme.swift` tokens and rerun the simulator suite.
+
+**Result:** Success
+
+## [2026-05-05 19:33 SAST] {E-0505-1933} -- [TEST] Codex (gpt-5): Cluster 3.5 Task 2 compile gate green
+
+**In-Reply-To:** {E-0505-1111}
+**Confidence:** MEDIUM
+**Files:** VideoCompressor/ios/Theme/*, VideoCompressor/VideoCompressorTests/ThemeComponentRenderTests.swift, VideoCompressor/ios/Views/VideoListView.swift, VideoCompressor/ios/Views/MetaCleanTab/MetaCleanRowView.swift, VideoCompressor/ios/Views/MetaCleanTab/MetaCleanTabView.swift, VideoCompressor/ios/Views/StitchTab/StitchTabView.swift
+
+### Context
+
+User resumed Cluster 3.5 and asked for isolated agents plus a fast PR path while avoiding functionality regressions and extra simulator windows.
+
+### Evidence
+
+`xcodebuildmcp simulator build --project-path VideoCompressor/VideoCompressor_iOS.xcodeproj --scheme VideoCompressor_iOS --simulator-name "iPhone 16 Pro"` passed. `xcodebuild -project VideoCompressor/VideoCompressor_iOS.xcodeproj -scheme VideoCompressor_iOS -destination 'generic/platform=iOS Simulator' build-for-testing CODE_SIGNING_ALLOWED=NO` passed. No-touch gates found no service/model/workflow/project.pbxproj edits, no `.glassEffect()` source/test references, and no raw `Color(red:)` outside `Theme.swift`.
+
+### Findings
+
+Shared theme components are implemented with material fallback, Reduce Motion/Transparency handling, clamped mesh points, and render smoke tests that compile. Runtime simulator tests are deferred because the local CoreSimulator/MCP state was opening extra iPhone windows; no simulator is currently booted.
+
+### Decisions
+
+Stop parallel worker edits because agents share this working tree. Keep the worker output that compiles (`VideoListView`, `MetaCleanRowView`, MetaClean call-site tint, and a harmless Stitch tint helper), but continue integration serially from here. Do not stage the Xcode `UserInterfaceState.xcuserstate` file.
+
+### Next Steps
+
+Commit the compile-green checkpoint, then continue with the remaining visual slices serially and request a fresh code review after each coherent checkpoint.
+
+**Result:** Partial
+
+## [2026-05-05 19:34 SAST] {E-0505-1934} -- [PLANNING] Codex (gpt-5): Captured Claude red-team prompt request
+
+**In-Reply-To:** {E-0505-1933}
+**Confidence:** HIGH
+**Files:** .agents/work-sessions/RUNNING-LIST.md
+
+### Context
+
+User asked Codex to provide, when finished, a prompt for Claude to launch a large Opus-agent review team covering tests, red-team, stress, edge cases, and real app-window verification.
+
+### Evidence
+
+Request was captured in the running list under queued items.
+
+### Decisions
+
+Do not run the Claude review now. Include the prompt in Codex's final handoff after the Cluster 3.5 work reaches a PR/testable checkpoint.
+
+### Next Steps
+
+Continue implementation and compile/test gates, then include the Claude prompt in the final summary.
 
 **Result:** Success
 

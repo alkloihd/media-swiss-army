@@ -2,11 +2,13 @@
 
 ## IN PROGRESS
 
+- [2026-05-05] Cluster 3.5 Calm-Cinema visual redo on `feat/cluster-3.5-visual-calm-cinema`. Task 2 components compile in app + test target; runtime simulator tests are deferred until CoreSimulator/MCP stops opening extra iPhone windows. User wants true SwiftUI `.glassEffect()` later, but current Xcode 16 / iOS 18 SDK cannot compile the symbol, so this is blocked until a newer SDK is installed or the branch uses a material-only fallback.
 - [2026-05-02] Protocol hardening and audit kickoff prep. Source: current Codex session.
 - [2026-05-02] XcodeBuildMCP setup across Claude Code and Codex. Source: current Codex session.
 
 ## QUEUED
 
+- [2026-05-05] After Codex finishes Cluster 3.5, provide a Claude prompt asking it to launch a 7-8 Opus-agent red-team pass covering visual QA, functional regressions, accessibility, simulator/app-window walkthrough, XCTest/CI, performance, edge cases, and PR/git hygiene.
 - Run 7-8 lane audit and generate `public/audit/` dashboard plus `public/audit/data/audit.json`.
 - Fix local verification pollution from `.claude/worktrees/` and `design-review/`.
 - Address `npm audit` advisories.

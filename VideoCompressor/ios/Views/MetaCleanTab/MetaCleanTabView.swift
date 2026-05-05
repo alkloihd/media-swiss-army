@@ -19,6 +19,7 @@ import AVFoundation
 struct MetaCleanTabView: View {
     @StateObject private var queue = MetaCleanQueue()
     @EnvironmentObject private var library: VideoLibrary
+    @Environment(\.colorScheme) private var colorScheme
     @State private var pickerItems: [PhotosPickerItem] = []
     @State private var selectedItem: MetaCleanItem?
     @State private var batchToast: SaveBatchResult?
@@ -55,7 +56,7 @@ struct MetaCleanTabView: View {
                     VStack(spacing: 0) {
                         List {
                             ForEach(queue.items) { item in
-                                MetaCleanRowView(item: item)
+                                MetaCleanRowView(item: item, tint: metaTint)
                                     .contentShape(Rectangle())
                                     .onTapGesture { selectedItem = item }
                             }
@@ -130,6 +131,10 @@ struct MetaCleanTabView: View {
             }
         }
         .animation(.easeInOut(duration: 0.20), value: batchToast)
+    }
+
+    private var metaTint: Color {
+        AppTint.metaClean(colorScheme)
     }
 
     // MARK: - Import

@@ -7,6 +7,7 @@
 //
 
 import SwiftUI
+import UIKit
 
 struct RGBToken: Equatable, Sendable {
     let red: Double
@@ -90,4 +91,28 @@ enum AppShape {
     static let auroraFrameRate: Double = 30
     static let scrollTransitionDuration: Double = 0.30
     static let symbolBounceDuration: Double = 0.35
+}
+
+private struct MaterialBackground<BackgroundShape: Shape>: ViewModifier {
+    let material: Material
+    let fallback: Color
+    let shape: BackgroundShape
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+
+    func body(content: Content) -> some View {
+        content.background(
+            reduceTransparency ? AnyShapeStyle(fallback) : AnyShapeStyle(material),
+            in: shape
+        )
+    }
+}
+
+extension View {
+    func appMaterialBackground<BackgroundShape: Shape>(
+        _ material: Material,
+        fallback: Color,
+        in shape: BackgroundShape
+    ) -> some View {
+        modifier(MaterialBackground(material: material, fallback: fallback, shape: shape))
+    }
 }
