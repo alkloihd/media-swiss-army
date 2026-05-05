@@ -193,6 +193,34 @@ Commit Task 3 compile-green checkpoint, then continue serially with Compress car
 
 **Result:** Partial
 
+## [2026-05-05 19:40 SAST] {E-0505-1940} -- [TEST] Codex (gpt-5): Cluster 3.5 Compress card grid compile gate green
+
+**In-Reply-To:** {E-0505-1936}
+**Confidence:** MEDIUM
+**Files:** VideoCompressor/ios/Views/VideoCardView.swift, VideoCompressor/ios/Views/VideoListView.swift
+
+### Context
+
+Task 4 converts the Compress surface from a plain list row to adaptive visual cards while preserving save and remove behavior.
+
+### Evidence
+
+`git mv` renamed `VideoRowView.swift` to `VideoCardView.swift`. Generic `xcodebuild -project VideoCompressor/VideoCompressor_iOS.xcodeproj -scheme VideoCompressor_iOS -destination 'generic/platform=iOS Simulator' build-for-testing CODE_SIGNING_ALLOWED=NO` passed. `rg -n "VideoRowView" VideoCompressor` found only a stale comment in `VideoFile.swift`. No-touch gates found no service/model/workflow/project.pbxproj edits, no `.glassEffect()` source/test references, and no raw `Color(red:)` outside `Theme.swift`.
+
+### Findings
+
+`VideoCardView` uses view-local still/video thumbnail loading, preserves `saveToPhotos-<uuid>` on the finished-row save control, and keeps remove/save actions in a context menu. `VideoListView` now uses a `ScrollView` plus adaptive `LazyVGrid`.
+
+### Decisions
+
+Leave the stale `VideoRowView` comment in `VideoFile.swift` untouched because the visual pass must not edit model files. Runtime simulator tests and screenshots remain deferred until simulator window behavior is cleaned up.
+
+### Next Steps
+
+Commit the Compress card-grid checkpoint, then continue with Stitch timeline/action surfaces.
+
+**Result:** Partial
+
 ## [2026-05-05 10:42 SAST] {E-0505-1042} -- [PLANNING] Codex (gpt-5): Cluster 3.5 visual redo setup and config decision
 
 **In-Reply-To:** {E-0505-0837}

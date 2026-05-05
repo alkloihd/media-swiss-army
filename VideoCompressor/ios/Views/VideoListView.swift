@@ -95,28 +95,22 @@ struct VideoListView: View {
     }
 
     private var populatedList: some View {
-        List {
+        ScrollView {
             queueHeader
-                .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 4, trailing: 16))
-                .listRowSeparator(.hidden)
-                .listRowBackground(Color.clear)
+                .padding(.horizontal, 16)
+                .padding(.top, 8)
+                .padding(.bottom, 4)
 
-            ForEach(library.videos) { video in
-                VideoRowView(video: video)
-                    .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
-                    .listRowSeparator(.hidden)
-                    .listRowBackground(Color.clear)
-                    .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                        Button(role: .destructive) {
-                            library.remove(video.id)
-                        } label: {
-                            Label("Remove", systemImage: "trash")
-                        }
+            LazyVGrid(columns: gridColumns, spacing: 12) {
+                ForEach(library.videos) { video in
+                    VideoCardView(video: video)
+                        .environmentObject(library)
+                        .transition(.scale(scale: 0.98).combined(with: .opacity))
                 }
             }
+            .padding(.horizontal, 16)
+            .padding(.bottom, 96)
         }
-        .listStyle(.plain)
-        .scrollContentBackground(.hidden)
         .background(Color.clear)
         .accessibilityIdentifier("videoList")
         .overlay(alignment: .bottom) {
@@ -197,6 +191,10 @@ struct VideoListView: View {
             return "\(active) active of \(count) \(noun)"
         }
         return "\(count) \(noun) ready"
+    }
+
+    private var gridColumns: [GridItem] {
+        [GridItem(.adaptive(minimum: 168), spacing: 12)]
     }
 
     private var saveToast: some View {
