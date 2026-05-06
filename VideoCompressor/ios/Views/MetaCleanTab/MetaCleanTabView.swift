@@ -70,6 +70,9 @@ struct MetaCleanTabView: View {
                                 MetaCleanRowView(item: item, tint: metaTint)
                                     .contentShape(Rectangle())
                                     .onTapGesture { selectedItem = item }
+                                    .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
+                                    .listRowSeparator(.hidden)
+                                    .listRowBackground(Color.clear)
                             }
                             .onDelete { indexSet in
                                 for offset in indexSet {
@@ -77,6 +80,9 @@ struct MetaCleanTabView: View {
                                 }
                             }
                         }
+                        .listStyle(.plain)
+                        .scrollContentBackground(.hidden)
+                        .background(Color.clear)
                         batchControls
                     }
                 }
@@ -251,6 +257,7 @@ struct MetaCleanTabView: View {
             if queue.batchProgress.isRunning {
                 VStack(alignment: .leading, spacing: 6) {
                     ProgressView(value: queue.batchProgress.fraction)
+                        .tint(metaTint)
                     HStack {
                         Text(queue.batchProgress.userFacingLabel(kind: dominantKind))
                             .font(.caption.monospacedDigit())
@@ -287,6 +294,7 @@ struct MetaCleanTabView: View {
                     .font(.body.weight(.semibold))
                 }
                 .buttonStyle(.borderedProminent)
+                .tint(metaTint)
                 .controlSize(.large)
                 .disabled(queue.items.isEmpty)
                 .accessibilityIdentifier("metaCleanCleanAllButton")
@@ -294,7 +302,17 @@ struct MetaCleanTabView: View {
         }
         .padding(.horizontal)
         .padding(.vertical, 12)
-        .background(.bar)
+        .appMaterialBackground(
+            .thinMaterial,
+            fallback: AppMesh.backdrop(colorScheme),
+            in: RoundedRectangle(cornerRadius: AppShape.radiusL)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: AppShape.radiusL)
+                .strokeBorder(metaTint.opacity(0.16), lineWidth: AppShape.strokeHairline)
+        )
+        .padding(.horizontal, 12)
+        .padding(.bottom, 4)
     }
 }
 

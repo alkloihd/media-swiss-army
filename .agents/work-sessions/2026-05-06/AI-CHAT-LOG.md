@@ -31,3 +31,31 @@ Use compile-only verification for this checkpoint to avoid intentionally opening
 Commit the Stitch visual checkpoint, then continue with MetaClean root/bottom controls and Settings/onboarding/picker tinting.
 
 **Result:** Partial
+
+## [2026-05-06 09:02 SAST] {E-0506-0902} -- [TEST] Codex (gpt-5): Cluster 3.5 MetaClean visual slice compile gate green
+
+**In-Reply-To:** {E-0506-0859}
+**Confidence:** MEDIUM
+**Files:** VideoCompressor/ios/Views/MetaCleanTab/MetaCleanTabView.swift, VideoCompressor/ios/Views/MetaCleanTab/MetaCleanRowView.swift
+
+### Context
+
+Continue Cluster 3.5 after the Stitch checkpoint by applying the MetaClean indigo identity slice without changing MetaClean scan/clean/save behavior.
+
+### Evidence
+
+Generic `xcodebuild -project VideoCompressor/VideoCompressor_iOS.xcodeproj -scheme VideoCompressor_iOS -destination 'generic/platform=iOS Simulator' build-for-testing CODE_SIGNING_ALLOWED=NO` passed. `git diff --check` passed. No-touch gates found no service/model/workflow/project.pbxproj edits, no `.glassEffect()` source/test references, and no raw `Color(red:)` outside `Theme.swift`.
+
+### Findings
+
+MetaClean now uses plain transparent list rows over the app background, indigo-tinted progress/actions, material bottom controls, and reduced-motion-aware cleaned-state symbol feedback.
+
+### Decisions
+
+Keep runtime simulator testing deferred to the final visual PR gate because the MCP/CoreSimulator stack was opening extra simulator windows. Do not stage Xcode `UserInterfaceState.xcuserstate` noise.
+
+### Next Steps
+
+Commit the MetaClean visual checkpoint, then continue Task 7 for Settings, Onboarding, PresetPicker, and tab chrome tint.
+
+**Result:** Partial

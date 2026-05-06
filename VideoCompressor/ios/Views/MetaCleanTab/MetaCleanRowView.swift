@@ -10,6 +10,7 @@ import SwiftUI
 struct MetaCleanRowView: View {
     let item: MetaCleanItem
     let tint: Color
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         HStack(spacing: 12) {
@@ -56,6 +57,9 @@ struct MetaCleanRowView: View {
             Label("Cleaned", systemImage: "checkmark.seal.fill")
                 .font(.caption2)
                 .foregroundStyle(.green)
+                .symbolEffect(.bounce, value: item.cleanResult != nil)
+                .symbolEffectsRemoved(reduceMotion)
+                .transition(.scale.combined(with: .opacity))
         } else if let err = item.scanError {
             Label(err, systemImage: "exclamationmark.triangle")
                 .font(.caption2)
