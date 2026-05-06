@@ -14,6 +14,7 @@ import UIKit
 struct StitchExportSheet: View {
     @ObservedObject var project: StitchProject
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.colorScheme) private var colorScheme
 
     /// Local draft separate from any global selection. Stitch users may want
     /// a different preset than their last single-file compression.
@@ -21,6 +22,10 @@ struct StitchExportSheet: View {
     @State private var saveTask: Task<Void, Never>?
     @State private var saveError: String?
     @State private var saveStatus: SaveStatus = .unsaved
+
+    private var stitchTint: Color {
+        AppTint.stitch(colorScheme)
+    }
 
     static func shouldShowExportAgain(
         for state: StitchExportState,
@@ -45,6 +50,7 @@ struct StitchExportSheet: View {
                 Divider()
                 progressFooter
             }
+            .background(AppMesh.backdrop(colorScheme))
             .navigationTitle("Stitch & Export")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -59,6 +65,7 @@ struct StitchExportSheet: View {
             }
         }
         .interactiveDismissDisabled(project.isExporting)
+        .tint(stitchTint)
         .onDisappear {
             saveTask?.cancel()
             saveTask = nil
@@ -90,15 +97,23 @@ struct StitchExportSheet: View {
                     Spacer()
                     if draftSettings == setting {
                         Image(systemName: "checkmark")
-                            .foregroundStyle(.tint)
+                            .foregroundStyle(stitchTint)
                     }
                 }
+                .padding(.vertical, 4)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .disabled(project.isExporting)
+            .listRowBackground(
+                RoundedRectangle(cornerRadius: AppShape.radiusM)
+                    .fill(.thinMaterial)
+                    .padding(.vertical, 4)
+            )
+            .listRowSeparator(.hidden)
         }
         .listStyle(.plain)
+        .scrollContentBackground(.hidden)
     }
 
     // MARK: - Footer (action button + progress + result)
@@ -111,6 +126,7 @@ struct StitchExportSheet: View {
                 exportButton
             case .building:
                 ProgressView()
+                    .tint(stitchTint)
                 Text("Building composition…")
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -121,6 +137,7 @@ struct StitchExportSheet: View {
                 ProgressView(
                     value: total > 0 ? Double(current) / Double(total) : 0
                 )
+                .tint(stitchTint)
                 Text("Preparing \(current) of \(total) photo\(total == 1 ? "" : "s")…")
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -131,6 +148,7 @@ struct StitchExportSheet: View {
                 .font(.subheadline)
             case .encoding(let progress):
                 ProgressView(value: progress.value)
+                    .tint(stitchTint)
                 Text("Encoding · \(progress.percent)%")
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -157,7 +175,17 @@ struct StitchExportSheet: View {
         }
         .padding(16)
         .frame(maxWidth: .infinity)
-        .background(.bar)
+        .appMaterialBackground(
+            .thickMaterial,
+            fallback: AppMesh.backdrop(colorScheme),
+            in: RoundedRectangle(cornerRadius: AppShape.radiusL)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: AppShape.radiusL)
+                .strokeBorder(stitchTint.opacity(0.18), lineWidth: AppShape.strokeHairline)
+        )
+        .padding(.horizontal, 12)
+        .padding(.bottom, 8)
     }
 
     private var exportButton: some View {
@@ -170,6 +198,7 @@ struct StitchExportSheet: View {
                 .padding(.vertical, 6)
         }
         .buttonStyle(.borderedProminent)
+        .tint(stitchTint)
         .disabled(!project.canExport)
         .accessibilityIdentifier("stitchExportRunButton")
     }
@@ -201,6 +230,7 @@ struct StitchExportSheet: View {
                             .padding(.vertical, 4)
                     }
                     .buttonStyle(.borderedProminent)
+                    .tint(stitchTint)
                     .accessibilityIdentifier("stitchSaveToPhotosButton")
                 case .saving:
                     HStack(spacing: 8) {
@@ -227,6 +257,7 @@ struct StitchExportSheet: View {
                                 .padding(.vertical, 4)
                         }
                         .buttonStyle(.borderedProminent)
+                        .tint(stitchTint)
                         .accessibilityIdentifier("stitchDoneStartNewButton")
                     }
                 case .saveFailed:
@@ -256,6 +287,7 @@ struct StitchExportSheet: View {
                         .padding(.vertical, 4)
                 }
                 .buttonStyle(.bordered)
+                .tint(stitchTint)
                 .accessibilityIdentifier("stitchExportAgainButton")
             }
         }

@@ -302,36 +302,56 @@ struct StitchTabView: View {
     // MARK: - Bottom action bar
 
     private var stitchActionBar: some View {
-        VStack(spacing: 0) {
-            Divider()
-            VStack(spacing: 6) {
-                HStack {
-                    Spacer()
-                    Button {
-                        showExportSheet = true
-                    } label: {
-                        Label("Stitch & Export", systemImage: "square.and.arrow.up")
-                            .font(.subheadline.weight(.semibold))
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(!project.canExport)
-                    .accessibilityIdentifier("stitchExportButton")
-                    Spacer()
+        VStack(spacing: 6) {
+            HStack {
+                Spacer()
+                Button {
+                    showExportSheet = true
+                } label: {
+                    Label("Stitch & Export", systemImage: "square.and.arrow.up")
+                        .font(.subheadline.weight(.semibold))
+                        .lineLimit(1)
+                        .padding(.horizontal, 18)
+                        .padding(.vertical, 11)
+                        .foregroundStyle(.white)
+                        .background(
+                            LinearGradient(
+                                colors: [stitchTint.opacity(0.92), stitchTint],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            ),
+                            in: Capsule()
+                        )
                 }
-                if !project.canExport, !project.clips.isEmpty {
-                    // Cluster 2.5 audit: single-clip dead-end was the most
-                    // likely 1-star review trigger. The disabled button alone
-                    // gave new users no signal what they needed to do next.
-                    Text("Add at least one more clip to stitch.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .accessibilityIdentifier("stitchAddMoreHint")
-                }
+                .buttonStyle(.plain)
+                .disabled(!project.canExport)
+                .opacity(project.canExport ? 1 : 0.45)
+                .accessibilityIdentifier("stitchExportButton")
+                Spacer()
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 10)
-            .background(.bar)
+            if !project.canExport, !project.clips.isEmpty {
+                // Cluster 2.5 audit: single-clip dead-end was the most
+                // likely 1-star review trigger. The disabled button alone
+                // gave new users no signal what they needed to do next.
+                Text("Add at least one more clip to stitch.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .accessibilityIdentifier("stitchAddMoreHint")
+            }
         }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .appMaterialBackground(
+            .thickMaterial,
+            fallback: AppMesh.backdrop(colorScheme),
+            in: RoundedRectangle(cornerRadius: AppShape.radiusL)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: AppShape.radiusL)
+                .strokeBorder(stitchTint.opacity(0.18), lineWidth: AppShape.strokeHairline)
+        )
+        .padding(.horizontal, 12)
+        .padding(.bottom, 4)
     }
 
     // MARK: - Import

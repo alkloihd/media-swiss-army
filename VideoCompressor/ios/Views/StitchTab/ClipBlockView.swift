@@ -13,6 +13,7 @@ import UIKit
 
 struct ClipBlockView: View {
     let clip: StitchClip
+    let tint: Color
     @State private var thumbnails: [UIImage] = []
     @State private var thumbnailLoadError: String?
 
@@ -20,7 +21,11 @@ struct ClipBlockView: View {
         HStack(spacing: 12) {
             thumbnailStrip
                 .frame(width: 144, height: 80)
-                .clipShape(RoundedRectangle(cornerRadius: 6))
+                .clipShape(RoundedRectangle(cornerRadius: AppShape.radiusS))
+                .overlay(
+                    RoundedRectangle(cornerRadius: AppShape.radiusS)
+                        .strokeBorder(tint.opacity(0.18), lineWidth: AppShape.strokeHairline)
+                )
             VStack(alignment: .leading, spacing: 4) {
                 Text(clip.displayName)
                     .font(.subheadline.weight(.semibold))
@@ -33,12 +38,12 @@ struct ClipBlockView: View {
                     Label("Edited", systemImage: "scissors")
                         .font(.caption2)
                         .labelStyle(.titleAndIcon)
-                        .foregroundStyle(.tint)
+                        .foregroundStyle(tint)
                 }
             }
             Spacer()
         }
-        .padding(.vertical, 4)
+        .cardStyle(tint: tint)
         .task(id: clip.sourceURL) { await loadThumbnails() }
     }
 
@@ -49,12 +54,12 @@ struct ClipBlockView: View {
             // knows thumbnails couldn't be generated for this clip but the
             // import itself is valid (closes review {E-0503-1050} MED-3).
             ZStack {
-                Rectangle().fill(.quaternary)
+                Rectangle().fill(tint.opacity(0.10))
                 Image(systemName: "exclamationmark.triangle.fill")
                     .foregroundStyle(.secondary)
             }
         } else if thumbnails.isEmpty {
-            Rectangle().fill(.quaternary)
+            Rectangle().fill(tint.opacity(0.10))
         } else {
             HStack(spacing: 1) {
                 ForEach(Array(thumbnails.enumerated()), id: \.offset) { _, img in
