@@ -53,6 +53,7 @@ struct StitchExportSheet: View {
             .background(AppMesh.backdrop(colorScheme))
             .navigationTitle("Stitch & Export")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(.thinMaterial, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Close") {

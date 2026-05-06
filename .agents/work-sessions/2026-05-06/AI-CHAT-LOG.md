@@ -32,6 +32,62 @@ Commit the Stitch visual checkpoint, then continue with MetaClean root/bottom co
 
 **Result:** Partial
 
+## [2026-05-06 09:04 SAST] {E-0506-0904} -- [FEAT] Codex (gpt-5): Committed MetaClean visual checkpoint
+
+**In-Reply-To:** {E-0506-0902}
+**Confidence:** MEDIUM
+**Files:** VideoCompressor/ios/Views/MetaCleanTab/MetaCleanTabView.swift, VideoCompressor/ios/Views/MetaCleanTab/MetaCleanRowView.swift, docs/superpowers/plans/2026-05-05-cluster-3.5-visual-calm-cinema-execution.md
+
+### Context
+
+Record the committed Cluster 3.5 Task 6 MetaClean visual slice.
+
+### Evidence
+
+Commit `404afc8` landed after fresh build-for-testing and scope gates.
+
+### Findings
+
+Only Xcode `UserInterfaceState.xcuserstate` remains as unstaged local UI state noise.
+
+### Decisions
+
+Continue to Task 7 and keep runtime simulator testing deferred until final PR gate.
+
+### Next Steps
+
+Apply graphite Settings polish, onboarding page tint/aurora, PresetPicker tint, and tab chrome tint.
+
+**Result:** Success
+
+## [2026-05-06 09:06 SAST] {E-0506-0906} -- [TEST] Codex (gpt-5): Cluster 3.5 app chrome compile gate green
+
+**In-Reply-To:** {E-0506-0904}
+**Confidence:** MEDIUM
+**Files:** VideoCompressor/ios/Views/SettingsTabView.swift, VideoCompressor/ios/Views/Onboarding/OnboardingView.swift, VideoCompressor/ios/Views/PresetPickerView.swift, VideoCompressor/ios/Views/StitchTab/StitchExportSheet.swift, VideoCompressor/ios/ContentView.swift
+
+### Context
+
+Execute Cluster 3.5 Task 7 across Settings, onboarding, picker sheets, and tab chrome.
+
+### Evidence
+
+Generic `xcodebuild -project VideoCompressor/VideoCompressor_iOS.xcodeproj -scheme VideoCompressor_iOS -destination 'generic/platform=iOS Simulator' build-for-testing CODE_SIGNING_ALLOWED=NO` passed. `git diff --check` passed. No-touch gates found no service/model/workflow/project.pbxproj edits, no `.glassEffect()` source/test references, and no raw `Color(red:)` outside `Theme.swift`.
+
+### Findings
+
+Settings uses graphite tint and hidden form background; onboarding keeps the paged flow while adding per-page aurora/tints; PresetPicker uses compress tint and material rows; tab chrome now follows the active tab. The Stitch export Done/start-new-project path was not changed.
+
+### Decisions
+
+Keep using compile-only verification until final PR gating to avoid triggering additional simulator windows while CoreSimulator/MCP is unstable.
+
+### Next Steps
+
+Commit Task 7, then add visual snapshot smoke tests and attempt one controlled runtime simulator walkthrough before PR.
+
+**Result:** Partial
+
 ## [2026-05-06 09:02 SAST] {E-0506-0902} -- [TEST] Codex (gpt-5): Cluster 3.5 MetaClean visual slice compile gate green
 
 **In-Reply-To:** {E-0506-0859}

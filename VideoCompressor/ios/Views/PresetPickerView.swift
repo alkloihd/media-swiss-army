@@ -11,10 +11,15 @@ import SwiftUI
 struct PresetPickerView: View {
     @EnvironmentObject private var library: VideoLibrary
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.colorScheme) private var colorScheme
 
     /// Phase 3 commit 9 — Advanced mode toggle. Persists across launches so
     /// users who like the detail don't have to flip it every time.
     @AppStorage("showAdvancedDetails") private var showAdvanced: Bool = false
+
+    private var compressTint: Color {
+        AppTint.compress(colorScheme)
+    }
 
     /// True when the current selection is photos-only. Drives which preset
     /// list is rendered. Mixed selections fall through to the video picker
@@ -35,6 +40,9 @@ struct PresetPickerView: View {
             }
             .navigationTitle("Choose Preset")
             .navigationBarTitleDisplayMode(.inline)
+            .tint(compressTint)
+            .background(AppMesh.backdrop(colorScheme))
+            .toolbarBackground(.thinMaterial, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Toggle(isOn: $showAdvanced) {
@@ -71,6 +79,8 @@ struct PresetPickerView: View {
             }
         }
         .listStyle(.plain)
+        .scrollContentBackground(.hidden)
+        .background(AppMesh.backdrop(colorScheme))
     }
 
     @ViewBuilder
@@ -105,6 +115,8 @@ struct PresetPickerView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .listRowSeparator(.hidden)
+        .listRowBackground(rowBackground)
     }
 
     @ViewBuilder
@@ -188,8 +200,22 @@ struct PresetPickerView: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .listRowSeparator(.hidden)
+            .listRowBackground(rowBackground)
         }
         .listStyle(.plain)
+        .scrollContentBackground(.hidden)
+        .background(AppMesh.backdrop(colorScheme))
+    }
+
+    private var rowBackground: some View {
+        RoundedRectangle(cornerRadius: AppShape.radiusM)
+            .fill(.thinMaterial)
+            .overlay(
+                RoundedRectangle(cornerRadius: AppShape.radiusM)
+                    .strokeBorder(compressTint.opacity(0.12), lineWidth: AppShape.strokeHairline)
+            )
+            .padding(.vertical, 4)
     }
 }
 
