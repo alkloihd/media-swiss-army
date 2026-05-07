@@ -5,6 +5,7 @@
 //  Settings tab — opt-in controls for power-user features.
 //  Sections:
 //    • What MetaClean does
+//    • Help & how to use
 //    • Background encoding toggle (Audio Background Mode)
 //    • Advanced performance
 //    • Storage (cache management — Phase 3 commit 4)
@@ -75,6 +76,9 @@ struct SettingsTabView: View {
                     settingsHeader("What MetaClean does", systemImage: "eye.slash")
                 }
                 .accessibilityIdentifier("settingsWhatMetaCleanDoesSection")
+
+                SettingsHelpSection(tint: settingsTint)
+                    .accessibilityIdentifier("settingsHelpSection")
 
                 // MARK: Background encoding
                 Section {
@@ -238,6 +242,69 @@ struct SettingsTabView: View {
         } icon: {
             Image(systemName: systemImage)
                 .foregroundStyle(settingsTint)
+        }
+    }
+}
+
+struct SettingsHelpTopic: Identifiable, Equatable {
+    let title: String
+    let systemImage: String
+    let details: String
+
+    var id: String { title }
+
+    static let all: [SettingsHelpTopic] = [
+        SettingsHelpTopic(
+            title: "Compress",
+            systemImage: "wand.and.stars",
+            details: "Import videos or photos from Photos, choose a preset, then tap Compress All. Video presets include Max Quality, Balanced, Small, and Streaming; photo presets appear when your selection is photos-only. Finished items show size savings and can be saved back to Photos. If an output is not meaningfully smaller, the app keeps the original."
+        ),
+        SettingsHelpTopic(
+            title: "Stitch",
+            systemImage: "square.stack.3d.up",
+            details: "Import two or more clips or stills, then arrange them on the timeline. Drag to reorder, long-press for timeline actions, or sort by Date Taken when available. Choose an aspect ratio and transition, tap a clip to trim, crop, split, or set photo duration, then export and save to Photos."
+        ),
+        SettingsHelpTopic(
+            title: "MetaClean",
+            systemImage: "eye.slash",
+            details: "Import videos or photos to inspect metadata before sharing. Tags are grouped by type. Auto strips only detected Meta/Ray-Ban glasses fingerprint metadata, Strip All removes broader non-technical metadata, and Keep All preserves metadata. Cleaned files save with a _CLEAN suffix."
+        ),
+        SettingsHelpTopic(
+            title: "Settings",
+            systemImage: "gearshape",
+            details: "Background encoding is off by default. When enabled, long jobs can continue while the app is locked or backgrounded; iOS may show Media Swiss Army in Now Playing, but no sound is played. Clear cache removes staged imports and processed app copies, not files already saved to Photos."
+        ),
+    ]
+}
+
+struct SettingsHelpSection: View {
+    let tint: Color
+
+    var body: some View {
+        Section {
+            ForEach(SettingsHelpTopic.all) { topic in
+                DisclosureGroup {
+                    Text(topic.details)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                } label: {
+                    Label {
+                        Text(topic.title)
+                    } icon: {
+                        Image(systemName: topic.systemImage)
+                            .foregroundStyle(tint)
+                    }
+                }
+            }
+        } header: {
+            Label("Help & how to use", systemImage: "questionmark.circle")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(tint)
+                .textCase(.uppercase)
+        } footer: {
+            Text("Each tool works locally on this device. Import from Photos, export when the job finishes, then save only the results you want to keep.")
+                .font(.caption)
         }
     }
 }

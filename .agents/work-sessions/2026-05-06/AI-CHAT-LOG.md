@@ -32,6 +32,34 @@ Commit the Stitch visual checkpoint, then continue with MetaClean root/bottom co
 
 **Result:** Partial
 
+## [2026-05-06 09:07 SAST] {E-0506-0907} -- [FEAT] Codex (gpt-5): Committed app chrome visual checkpoint
+
+**In-Reply-To:** {E-0506-0906}
+**Confidence:** MEDIUM
+**Files:** VideoCompressor/ios/Views/SettingsTabView.swift, VideoCompressor/ios/Views/Onboarding/OnboardingView.swift, VideoCompressor/ios/Views/PresetPickerView.swift, VideoCompressor/ios/Views/StitchTab/StitchExportSheet.swift, VideoCompressor/ios/ContentView.swift, docs/superpowers/plans/2026-05-05-cluster-3.5-visual-calm-cinema-execution.md
+
+### Context
+
+Record the committed Cluster 3.5 Task 7 app chrome and onboarding visual slice.
+
+### Evidence
+
+Commit `ea4ed80` landed after fresh build-for-testing and scope gates.
+
+### Findings
+
+The branch still has only Xcode `UserInterfaceState.xcuserstate` as unstaged local UI state noise.
+
+### Decisions
+
+Proceed to Task 8 snapshot smoke tests and one controlled runtime simulator attempt before PR.
+
+### Next Steps
+
+Add `ThemeSnapshotTests.swift`, run compile/test gates, then attempt screenshots if the simulator stack stabilizes.
+
+**Result:** Success
+
 ## [2026-05-06 09:04 SAST] {E-0506-0904} -- [FEAT] Codex (gpt-5): Committed MetaClean visual checkpoint
 
 **In-Reply-To:** {E-0506-0902}

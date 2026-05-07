@@ -35,10 +35,14 @@ struct OnboardingView: View {
 
             VStack(spacing: 0) {
                 TabView(selection: $page) {
-                    ForEach(Array(Self.pages.enumerated()), id: \.offset) { index, model in
-                        card(model, tint: tint(for: index))
-                            .tag(index)
-                    }
+                    card(Self.pages[0], tint: tint(for: 0))
+                        .tag(0)
+
+                    card(Self.pages[1], tint: tint(for: 1))
+                        .tag(1)
+
+                    card(Self.pages[2], tint: tint(for: 2))
+                        .tag(2)
                 }
                 .tabViewStyle(.page(indexDisplayMode: .always))
                 .indexViewStyle(.page(backgroundDisplayMode: .always))
