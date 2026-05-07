@@ -70,3 +70,34 @@ Use the simulator screenshot set plus render tests for PR evidence. Keep real-de
 Commit the snapshot/help/log artifacts, push the branch, open PR, and hand Rishaal the Claude red-team prompt.
 
 **Result:** Success
+
+## [2026-05-07 11:45 SAST] {E-0507-1145} -- [BLOCKED] Codex (gpt-5): Cluster 3.5 visual redo ready for real-device verification
+
+**In-Reply-To:** {E-0507-1142}
+**Confidence:** MEDIUM
+**Files:** Visual theme branch, screenshot artifacts, PR #19
+
+### Context
+
+Cluster 3.5 visual redo is implemented on `feat/cluster-3.5-visual-calm-cinema` and PR #19 is open, but real-device visual verification is required before merge.
+
+### Evidence
+
+- PR: https://github.com/alkloihd/media-swiss-army/pull/19
+- Head commit at PR creation: `d5c84c90b58192e2c449e2cd1190b8b3074bccdf`
+- Mergeability check: `MERGEABLE`
+- Fresh simulator XCTest result: 290 total, 289 passed, 1 skipped, 0 failed.
+- Screenshot artifacts: `.agents/work-sessions/2026-05-05/snapshots/cluster-3.5/compress-empty.jpg`, `stitch-empty.jpg`, `metaclean-empty.jpg`, `settings.jpg`, `settings-help.jpg`.
+- SDK deviation: `.glassEffect()` was not used because the local Xcode 16 / iOS 18 SDK cannot compile it; Cluster 3.5 uses material fallback surfaces instead.
+- App-window caveat: populated media screenshots and first-launch onboarding captures were deferred; onboarding pages are covered by direct render smoke tests.
+- CI at this checkpoint: ESLint, Prettier, Syntax Check, and Security Audit passed; iOS XCTest was still in progress on GitHub.
+
+### Decisions
+
+Keep PR #19 unmerged until Rishaal confirms real-device visual pass. The Settings Help section is present in source and in `settings-help.jpg`; if the currently open simulator does not show it, rebuild/reinstall or scroll Settings below the MetaClean explanation block.
+
+### Next Steps
+
+Wait for GitHub iOS XCTest to finish, then have the PR red-teamed and manually check the latest build on device: Compress empty/populated, Stitch empty/timeline/drop indicator, MetaClean scanning/cleaned, Settings Help, Onboarding, and tab transitions in light and dark. The separate Stitch compact-controls/custom-transition request remains queued in `RUNNING-LIST.md`.
+
+**Result:** Partial
