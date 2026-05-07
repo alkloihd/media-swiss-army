@@ -10,6 +10,7 @@ import SwiftUI
 struct ContentView: View {
     @State private var selectedTab: AppTab = .compress
     @AppStorage("hasSeenOnboarding_v1") private var hasSeenOnboarding = false
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         TabView(selection: $selectedTab) {
@@ -37,6 +38,9 @@ struct ContentView: View {
                 }
                 .tag(AppTab.settings)
         }
+        .tint(tint(for: selectedTab))
+        .toolbarBackground(.thinMaterial, for: .tabBar)
+        .animation(.smooth(duration: 0.20), value: selectedTab)
         .fullScreenCover(isPresented: Binding(
             get: { OnboardingGate(hasSeen: hasSeenOnboarding).shouldPresent },
             set: { if !$0 { hasSeenOnboarding = true } }
@@ -47,6 +51,19 @@ struct ContentView: View {
                 hasSeenOnboarding = gate.hasSeen
                 selectedTab = gate.landingTab
             }
+        }
+    }
+
+    private func tint(for tab: AppTab) -> Color {
+        switch tab {
+        case .compress:
+            AppTint.compress(colorScheme)
+        case .stitch:
+            AppTint.stitch(colorScheme)
+        case .metaClean:
+            AppTint.metaClean(colorScheme)
+        case .settings:
+            AppTint.settings(colorScheme)
         }
     }
 }

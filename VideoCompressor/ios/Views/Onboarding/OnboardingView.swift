@@ -21,75 +21,135 @@ struct OnboardingGate {
 struct OnboardingView: View {
     let onFinish: () -> Void
 
+    @Environment(\.colorScheme) private var colorScheme
     @State private var page = 0
 
+    init(initialPage: Int = 0, onFinish: @escaping () -> Void) {
+        self.onFinish = onFinish
+        _page = State(initialValue: min(max(initialPage, 0), Self.pages.count - 1))
+    }
+
     var body: some View {
-        VStack(spacing: 0) {
-            TabView(selection: $page) {
-                card(
-                    symbol: "eye.slash",
-                    title: "Strip Meta AI fingerprints",
-                    body: "Remove the hidden Meta glasses marker while keeping the photo details that make your library useful."
-                )
-                .tag(0)
+        ZStack {
+            MeshAuroraView(tint: currentTint)
 
-                card(
-                    symbol: "wand.and.stars",
-                    title: "Shrink before sharing",
-                    body: "Compress photos and videos on device with smart presets built for everyday sharing."
-                )
-                .tag(1)
+            VStack(spacing: 0) {
+                TabView(selection: $page) {
+                    card(Self.pages[0], tint: tint(for: 0))
+                        .tag(0)
 
-                card(
-                    symbol: "square.stack.3d.up",
-                    title: "Stitch clips together",
-                    body: "Combine photos and videos, reorder the timeline, and export a clean result without cloud processing."
-                )
-                .tag(2)
-            }
-            .tabViewStyle(.page(indexDisplayMode: .always))
-            .indexViewStyle(.page(backgroundDisplayMode: .always))
+                    card(Self.pages[1], tint: tint(for: 1))
+                        .tag(1)
 
-            Button {
-                if page < 2 {
-                    withAnimation(.easeInOut(duration: 0.20)) {
-                        page += 1
-                    }
-                } else {
-                    onFinish()
+                    card(Self.pages[2], tint: tint(for: 2))
+                        .tag(2)
                 }
-            } label: {
-                Text(page < 2 ? "Next" : "Get started")
-                    .font(.body.weight(.semibold))
-                    .frame(maxWidth: .infinity)
+                .tabViewStyle(.page(indexDisplayMode: .always))
+                .indexViewStyle(.page(backgroundDisplayMode: .always))
+
+                Button {
+                    if page < Self.pages.count - 1 {
+                        withAnimation(.smooth(duration: 0.20)) {
+                            page += 1
+                        }
+                    } else {
+                        onFinish()
+                    }
+                } label: {
+                    Text(page < Self.pages.count - 1 ? "Next" : "Get started")
+                        .font(.body.weight(.semibold))
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.large)
+                .tint(currentTint)
+                .padding(.horizontal, 24)
+                .padding(.bottom, 24)
+                .accessibilityIdentifier("onboardingPrimaryButton")
             }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.large)
-            .padding(.horizontal, 24)
-            .padding(.bottom, 24)
-            .accessibilityIdentifier("onboardingPrimaryButton")
         }
-        .background(Color(.systemBackground))
     }
 
-    private func card(symbol: String, title: String, body: String) -> some View {
-        VStack(spacing: 16) {
+    private var currentTint: Color {
+        tint(for: page)
+    }
+
+    private func card(_ model: OnboardingPage, tint: Color) -> some View {
+        VStack(spacing: 18) {
             Spacer()
-            Image(systemName: symbol)
-                .font(.system(size: 68, weight: .light))
-                .foregroundStyle(.tint)
-                .accessibilityHidden(true)
-            Text(title)
-                .font(.title.weight(.semibold))
-                .multilineTextAlignment(.center)
-            Text(body)
-                .font(.body)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 32)
+            VStack(spacing: 18) {
+                Image(systemName: model.symbol)
+                    .font(.system(size: 62, weight: .light))
+                    .symbolRenderingMode(.palette)
+                    .foregroundStyle(tint, AppMesh.bloom(colorScheme), .secondary)
+                    .frame(width: 116, height: 116)
+                    .appMaterialBackground(
+                        .ultraThinMaterial,
+                        fallback: Color(.secondarySystemBackground),
+                        in: Circle()
+                    )
+                    .accessibilityHidden(true)
+
+                Text(model.title)
+                    .font(.title2.weight(.semibold))
+                    .multilineTextAlignment(.center)
+                    .foregroundStyle(.primary)
+
+                Text(model.body)
+                    .font(.body)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(.horizontal, 24)
+            .padding(.vertical, 28)
+            .frame(maxWidth: 360)
+            .cardStyle(tint: tint)
+            .padding(.horizontal, 24)
             Spacer()
         }
     }
+
+    private func tint(for index: Int) -> Color {
+        switch Self.pages[index].tab {
+        case .compress:
+            AppTint.compress(colorScheme)
+        case .stitch:
+            AppTint.stitch(colorScheme)
+        case .metaClean:
+            AppTint.metaClean(colorScheme)
+        case .settings:
+            AppTint.settings(colorScheme)
+        }
+    }
+
+    private static let pages = [
+        OnboardingPage(
+            tab: .metaClean,
+            symbol: "eye.slash",
+            title: "Strip Meta AI fingerprints",
+            body: "Remove the hidden Meta glasses marker while keeping the photo details that make your library useful."
+        ),
+        OnboardingPage(
+            tab: .compress,
+            symbol: "wand.and.stars",
+            title: "Shrink before sharing",
+            body: "Compress photos and videos on device with smart presets built for everyday sharing."
+        ),
+        OnboardingPage(
+            tab: .stitch,
+            symbol: "square.stack.3d.up",
+            title: "Stitch clips together",
+            body: "Combine photos and videos, reorder the timeline, and export a clean result without cloud processing."
+        ),
+    ]
+}
+
+private struct OnboardingPage {
+    let tab: AppTab
+    let symbol: String
+    let title: String
+    let body: String
 }
 
 #Preview {

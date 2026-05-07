@@ -57,11 +57,16 @@ struct StitchTimelineView: View {
     /// across launches (intentional; users typically want default zoom).
     @State private var zoom: CGFloat = 1.0
     @State private var pinchAnchor: CGFloat? = nil
+    @Environment(\.colorScheme) private var colorScheme
 
     private let baseClipWidth: CGFloat = 200
     private let baseClipHeight: CGFloat = 140
     private let minZoom: CGFloat = 0.5
     private let maxZoom: CGFloat = 2.5
+
+    private var stitchTint: Color {
+        AppTint.stitch(colorScheme)
+    }
 
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
@@ -73,31 +78,31 @@ struct StitchTimelineView: View {
                         // current drop target and the dragged clip is being
                         // moved into this position.
                         Capsule()
-                            .fill(Color.accentColor)
+                            .fill(stitchTint)
                             .frame(
-                                width: dropTargetID == clip.id && draggedID != clip.id ? 8 : 0,
+                                width: dropTargetID == clip.id && draggedID != clip.id ? 6 : 0,
                                 height: baseClipHeight * zoom * 0.85
                             )
                             .shadow(
                                 color: dropTargetID == clip.id && draggedID != clip.id
-                                    ? Color.accentColor.opacity(0.4)
+                                    ? stitchTint.opacity(0.4)
                                     : .clear,
                                 radius: 6
                             )
                             .padding(.trailing, dropTargetID == clip.id && draggedID != clip.id ? 4 : 0)
-                            .animation(.easeInOut(duration: 0.20), value: dropTargetID)
+                            .animation(.smooth(duration: 0.18), value: dropTargetID)
 
-                    ClipBlockView(clip: clip)
+                    ClipBlockView(clip: clip, tint: stitchTint)
                         .frame(width: baseClipWidth * zoom, height: baseClipHeight * zoom)
                         .padding(.leading, dropTargetID == clip.id && draggedID != clip.id ? 12 : 0)
-                        .animation(.easeInOut(duration: 0.20), value: dropTargetID)
+                        .animation(.smooth(duration: 0.18), value: dropTargetID)
                         .opacity(draggedID == clip.id ? 0.4 : 1.0)
                         .overlay(
                             // Selection ring — visible when this clip is the
                             // one being edited inline.
                             RoundedRectangle(cornerRadius: 8)
                                 .stroke(
-                                    selectedClipID == clip.id ? Color.accentColor : Color.clear,
+                                    selectedClipID == clip.id ? stitchTint : Color.clear,
                                     lineWidth: 3
                                 )
                         )
@@ -112,7 +117,7 @@ struct StitchTimelineView: View {
                         }
                         .draggable(ClipID(value: clip.id)) {
                             // Drag preview — semi-transparent thumbnail
-                            ClipBlockView(clip: clip)
+                            ClipBlockView(clip: clip, tint: stitchTint)
                                 .frame(width: 160 * zoom, height: 110 * zoom)
                                 .opacity(0.85)
                                 .onAppear {
@@ -187,6 +192,7 @@ struct StitchTimelineView: View {
                     Haptics.tapRigid()
                 }
         )
+        .tint(stitchTint)
         .sheet(item: Binding(
             get: {
                 previewClipID.flatMap { id in

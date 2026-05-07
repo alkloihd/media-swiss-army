@@ -19,6 +19,7 @@ import AVFoundation
 struct MetaCleanTabView: View {
     @StateObject private var queue = MetaCleanQueue()
     @EnvironmentObject private var library: VideoLibrary
+    @Environment(\.colorScheme) private var colorScheme
     @State private var pickerItems: [PhotosPickerItem] = []
     @State private var selectedItem: MetaCleanItem?
     @State private var batchToast: SaveBatchResult?
@@ -31,12 +32,16 @@ struct MetaCleanTabView: View {
 
     var body: some View {
         NavigationStack {
-            Group {
+            ZStack {
+                MeshAuroraView(tint: metaTint)
+
                 if queue.items.isEmpty {
                     CenteredEmptyState(
-                        systemImage: "eye.slash",
+                        systemImage: "eye.slash.circle",
                         title: "No videos to clean",
-                        message: "Pick videos to inspect and strip metadata before sharing."
+                        message: "Pick videos to inspect and strip metadata before sharing.",
+                        tint: metaTint,
+                        symbolSize: 96
                     ) {
                         PhotosPicker(
                             selection: $pickerItems,
@@ -46,18 +51,28 @@ struct MetaCleanTabView: View {
                         ) {
                             Label("Import Videos", systemImage: "photo.on.rectangle.angled")
                                 .font(.body.weight(.semibold))
-                                .padding(.horizontal, 8)
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 10)
+                                .appMaterialBackground(
+                                    .regularMaterial,
+                                    fallback: AppMesh.backdrop(colorScheme),
+                                    in: Capsule()
+                                )
+                                .overlay(Capsule().strokeBorder(metaTint.opacity(0.25), lineWidth: AppShape.strokeHairline))
                         }
-                        .buttonStyle(.borderedProminent)
+                        .buttonStyle(.plain)
                         .accessibilityIdentifier("metaCleanImportButton")
                     }
                 } else {
                     VStack(spacing: 0) {
                         List {
                             ForEach(queue.items) { item in
-                                MetaCleanRowView(item: item)
+                                MetaCleanRowView(item: item, tint: metaTint)
                                     .contentShape(Rectangle())
                                     .onTapGesture { selectedItem = item }
+                                    .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
+                                    .listRowSeparator(.hidden)
+                                    .listRowBackground(Color.clear)
                             }
                             .onDelete { indexSet in
                                 for offset in indexSet {
@@ -65,11 +80,16 @@ struct MetaCleanTabView: View {
                                 }
                             }
                         }
+                        .listStyle(.plain)
+                        .scrollContentBackground(.hidden)
+                        .background(Color.clear)
                         batchControls
                     }
                 }
             }
+            .tint(metaTint)
             .navigationTitle("MetaClean")
+            .toolbarBackground(.hidden, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     PhotosPicker(
@@ -123,13 +143,22 @@ struct MetaCleanTabView: View {
                     .font(.subheadline.weight(.semibold))
                     .padding(.horizontal, 16)
                     .padding(.vertical, 10)
-                    .background(.thinMaterial, in: Capsule())
+                    .appMaterialBackground(
+                        .thinMaterial,
+                        fallback: AppMesh.backdrop(colorScheme),
+                        in: Capsule()
+                    )
+                    .overlay(Capsule().strokeBorder(metaTint.opacity(0.20), lineWidth: AppShape.strokeHairline))
                     .padding(.bottom, 84)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
                     .accessibilityIdentifier("metaCleanBatchSaveToast")
             }
         }
         .animation(.easeInOut(duration: 0.20), value: batchToast)
+    }
+
+    private var metaTint: Color {
+        AppTint.metaClean(colorScheme)
     }
 
     // MARK: - Import
@@ -228,6 +257,7 @@ struct MetaCleanTabView: View {
             if queue.batchProgress.isRunning {
                 VStack(alignment: .leading, spacing: 6) {
                     ProgressView(value: queue.batchProgress.fraction)
+                        .tint(metaTint)
                     HStack {
                         Text(queue.batchProgress.userFacingLabel(kind: dominantKind))
                             .font(.caption.monospacedDigit())
@@ -264,6 +294,7 @@ struct MetaCleanTabView: View {
                     .font(.body.weight(.semibold))
                 }
                 .buttonStyle(.borderedProminent)
+                .tint(metaTint)
                 .controlSize(.large)
                 .disabled(queue.items.isEmpty)
                 .accessibilityIdentifier("metaCleanCleanAllButton")
@@ -271,7 +302,17 @@ struct MetaCleanTabView: View {
         }
         .padding(.horizontal)
         .padding(.vertical, 12)
-        .background(.bar)
+        .appMaterialBackground(
+            .thinMaterial,
+            fallback: AppMesh.backdrop(colorScheme),
+            in: RoundedRectangle(cornerRadius: AppShape.radiusL)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: AppShape.radiusL)
+                .strokeBorder(metaTint.opacity(0.16), lineWidth: AppShape.strokeHairline)
+        )
+        .padding(.horizontal, 12)
+        .padding(.bottom, 4)
     }
 }
 

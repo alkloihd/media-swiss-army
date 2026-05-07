@@ -23,19 +23,28 @@ struct StitchTabView: View {
     @State private var sortBanner: String = ""
     @State private var sortBannerVisible: Bool = false
     @State private var sortBannerDismissTask: Task<Void, Never>?
+    @Environment(\.colorScheme) private var colorScheme
     /// Drives the inline ClipEditorInlinePanel below the timeline. nil when
     /// no clip is being edited. Tapping a timeline tile sets it; tapping
     /// the same tile again or the panel's X button clears it.
     @State private var selectedClipID: StitchClip.ID?
 
+    private var stitchTint: Color {
+        AppTint.stitch(colorScheme)
+    }
+
     var body: some View {
         NavigationStack {
-            Group {
+            ZStack {
+                MeshAuroraView(tint: stitchTint)
+
                 if project.clips.isEmpty {
                     CenteredEmptyState(
-                        systemImage: "square.stack.3d.up",
+                        systemImage: "film.stack",
                         title: "No clips yet",
-                        message: "Pick two or more videos to stitch together into one."
+                        message: "Pick two or more videos to stitch together into one.",
+                        tint: stitchTint,
+                        symbolSize: 96
                     ) {
                         PhotosPicker(
                             selection: $pickerItems,
@@ -45,9 +54,16 @@ struct StitchTabView: View {
                         ) {
                             Label("Import Videos", systemImage: "photo.on.rectangle.angled")
                                 .font(.body.weight(.semibold))
-                                .padding(.horizontal, 8)
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 10)
+                                .appMaterialBackground(
+                                    .regularMaterial,
+                                    fallback: AppMesh.backdrop(colorScheme),
+                                    in: Capsule()
+                                )
+                                .overlay(Capsule().strokeBorder(stitchTint.opacity(0.25), lineWidth: AppShape.strokeHairline))
                         }
-                        .buttonStyle(.borderedProminent)
+                        .buttonStyle(.plain)
                         .accessibilityIdentifier("stitchImportButton")
                     }
                 } else {
@@ -76,7 +92,9 @@ struct StitchTabView: View {
                     .animation(.easeInOut(duration: 0.22), value: selectedClipID)
                 }
             }
+            .tint(stitchTint)
             .navigationTitle("Stitch")
+            .toolbarBackground(.hidden, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     PhotosPicker(
@@ -170,7 +188,15 @@ struct StitchTabView: View {
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, 16)
                         .padding(.vertical, 10)
-                        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
+                        .appMaterialBackground(
+                            .regularMaterial,
+                            fallback: AppMesh.backdrop(colorScheme),
+                            in: RoundedRectangle(cornerRadius: AppShape.radiusM)
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: AppShape.radiusM)
+                                .strokeBorder(stitchTint.opacity(0.20), lineWidth: AppShape.strokeHairline)
+                        )
                         .padding(.horizontal, 16)
                         .padding(.top, 8)
                         .transition(.move(edge: .top).combined(with: .opacity))
@@ -276,36 +302,56 @@ struct StitchTabView: View {
     // MARK: - Bottom action bar
 
     private var stitchActionBar: some View {
-        VStack(spacing: 0) {
-            Divider()
-            VStack(spacing: 6) {
-                HStack {
-                    Spacer()
-                    Button {
-                        showExportSheet = true
-                    } label: {
-                        Label("Stitch & Export", systemImage: "square.and.arrow.up")
-                            .font(.subheadline.weight(.semibold))
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(!project.canExport)
-                    .accessibilityIdentifier("stitchExportButton")
-                    Spacer()
+        VStack(spacing: 6) {
+            HStack {
+                Spacer()
+                Button {
+                    showExportSheet = true
+                } label: {
+                    Label("Stitch & Export", systemImage: "square.and.arrow.up")
+                        .font(.subheadline.weight(.semibold))
+                        .lineLimit(1)
+                        .padding(.horizontal, 18)
+                        .padding(.vertical, 11)
+                        .foregroundStyle(.white)
+                        .background(
+                            LinearGradient(
+                                colors: [stitchTint.opacity(0.92), stitchTint],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            ),
+                            in: Capsule()
+                        )
                 }
-                if !project.canExport, !project.clips.isEmpty {
-                    // Cluster 2.5 audit: single-clip dead-end was the most
-                    // likely 1-star review trigger. The disabled button alone
-                    // gave new users no signal what they needed to do next.
-                    Text("Add at least one more clip to stitch.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .accessibilityIdentifier("stitchAddMoreHint")
-                }
+                .buttonStyle(.plain)
+                .disabled(!project.canExport)
+                .opacity(project.canExport ? 1 : 0.45)
+                .accessibilityIdentifier("stitchExportButton")
+                Spacer()
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 10)
-            .background(.bar)
+            if !project.canExport, !project.clips.isEmpty {
+                // Cluster 2.5 audit: single-clip dead-end was the most
+                // likely 1-star review trigger. The disabled button alone
+                // gave new users no signal what they needed to do next.
+                Text("Add at least one more clip to stitch.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .accessibilityIdentifier("stitchAddMoreHint")
+            }
         }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .appMaterialBackground(
+            .thickMaterial,
+            fallback: AppMesh.backdrop(colorScheme),
+            in: RoundedRectangle(cornerRadius: AppShape.radiusL)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: AppShape.radiusL)
+                .strokeBorder(stitchTint.opacity(0.18), lineWidth: AppShape.strokeHairline)
+        )
+        .padding(.horizontal, 12)
+        .padding(.bottom, 4)
     }
 
     // MARK: - Import
